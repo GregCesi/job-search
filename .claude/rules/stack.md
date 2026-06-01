@@ -2,7 +2,7 @@
 
 ## Runtime & langage
 - **Python** (venv ou uv). Pydantic pour les schémas.
-- **FastAPI** — exposition API (run déclenché / consultation), ultérieur. Le run matinal en V1 peut être un simple `run.py` CLI.
+- **FastAPI** — exposition API (lecture offres, verdicts). Livré dans `api/`. Lancé via `uvicorn api.main:app --reload` (port 8000).
 
 ## LLM — Ollama local
 - Modèle local 7B/8B (réaliste sur la machine). Zéro API payante.
@@ -14,7 +14,8 @@
 - Profil ré-embeddé uniquement au changement de hash (cf. architecture.md §2).
 
 ## Persistance — SQLite
-- 2 tables : `offers`, `verdicts` (cf. IMPLEMENTATION.md). Léger, requêtable, dataset V2-ready.
+- 2 tables : `offers`, `verdicts`. Léger, requêtable, dataset V2-ready.
+- Fichier : `data/job_search.sqlite` à la racine du repo, partagé entre `orchestrator/` (écriture) et `api/` (lecture/écriture verdicts). Chaque brique résout le chemin depuis `Path(__file__).parent...` ou depuis le CWD.
 
 ## Source externe — API France Travail (Offres d'emploi v2)
 - **OAuth2** : token à obtenir + rafraîchir. Stocker les credentials hors repo (`.env`, jamais commité).
@@ -22,5 +23,7 @@
 - Filtres pull : localisation Strasbourg + rayon, OR full-remote.
 - Doc : https://francetravail.io/data/api/offres-emploi (vérifier le schéma au câblage du livrable 2).
 
-## Frontend — Nuxt 3
-- Ultérieur. Pas en V1. Le digest V1 est un livrable texte/poussable, pas une UI.
+## Frontend — Nuxt 4 + Pinia v3
+- Livré dans `web/`. Tailwind CSS, Pinia v3, `@nuxtjs/tailwindcss`.
+- API base : `http://localhost:8000` (configurable via `runtimeConfig.public.apiBase` dans `nuxt.config.ts`).
+- Lancé via `cd web && npm run dev` (port 3000 par défaut).
