@@ -4,3 +4,5 @@ chromadb>=0.5
 ollama>=0.3
 requests>=2.31
 python-dotenv>=1.0
+fastapi>=0.111
+uvicorn[standard]>=0.29
