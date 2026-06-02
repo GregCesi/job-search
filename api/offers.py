@@ -7,39 +7,49 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from .db import get_conn
-from .schemas import CriterionScore, OfferDetail, OfferRow, VerdictIn
+from .schemas import (
+    AttainabilityDetailSchema,
+    ExtractedFactsSchema,
+    OfferDetail,
+    OfferRow,
+    VerdictIn,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-_SORT_COLS = {"score", "fetched_at", "title", "company"}
+_SORT_COLS = {"desirability", "fetched_at", "title", "company"}
 
 
 # ---------------------------------------------------------------------------
-# L2 — GET /offers
+# GET /offers
 # ---------------------------------------------------------------------------
 
 @router.get("/offers", response_model=list[OfferRow])
 def list_offers(
-    score_min: float | None = Query(None),
-    score_max: float | None = Query(None),
+    desirability_min: float | None = Query(None),
+    desirability_max: float | None = Query(None),
+    attainability: str | None = Query(None, pattern="^(at_level|one_step_up|out_of_reach)$"),
     remote: bool | None = Query(None),
     source: str | None = Query(None),
     verdict: str | None = Query(None),
     seen: bool | None = Query(None),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
-    sort: str = Query("score", pattern="^(score|fetched_at|title|company)$"),
+    sort: str = Query("desirability", pattern="^(desirability|fetched_at|title|company)$"),
     order: Literal["asc", "desc"] = Query("desc"),
 ) -> list[OfferRow]:
     conditions: list[str] = []
     params: list = []
 
-    if score_min is not None:
-        conditions.append("o.score >= ?")
-        params.append(score_min)
-    if score_max is not None:
-        conditions.append("o.score <= ?")
-        params.append(score_max)
+    if desirability_min is not None:
+        conditions.append("o.desirability >= ?")
+        params.append(desirability_min)
+    if desirability_max is not None:
+        conditions.append("o.desirability <= ?")
+        params.append(desirability_max)
+    if attainability is not None:
+        conditions.append("o.attainability = ?")
+        params.append(attainability)
     if remote is not None:
         conditions.append("o.remote = ?")
         params.append(1 if remote else 0)
@@ -58,10 +68,11 @@ def list_offers(
         params.extend([like, like])
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    sort_col = sort if sort in _SORT_COLS else "score"
+    sort_col = sort if sort in _SORT_COLS else "desirability"
     sql = f"""
         SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
-               o.score, o.seen, o.fetched_at, v.status AS verdict
+               o.desirability, o.attainability, o.seen, o.fetched_at,
+               v.status AS verdict
         FROM offers o
         LEFT JOIN verdicts v ON v.offer_id = o.id
         {where}
@@ -81,7 +92,8 @@ def list_offers(
             location=r["location"],
             remote=bool(r["remote"]),
             contract_type=r["contract_type"],
-            score=r["score"],
+            desirability=r["desirability"],
+            attainability=r["attainability"],
             verdict=r["verdict"],
             seen=bool(r["seen"]),
             fetched_at=r["fetched_at"] or "",
@@ -91,7 +103,7 @@ def list_offers(
 
 
 # ---------------------------------------------------------------------------
-# L3 — GET /offers/{id}  (effet de bord : seen = 1)
+# GET /offers/{id}  (effet de bord : seen = 1)
 # ---------------------------------------------------------------------------
 
 @router.get("/offers/{offer_id}", response_model=OfferDetail)
@@ -110,13 +122,10 @@ def get_offer(offer_id: int) -> OfferDetail:
         if row is None:
             raise HTTPException(status_code=404, detail="offer not found")
 
-        # Effet de bord : marquer comme vu
         conn.execute("UPDATE offers SET seen = 1 WHERE id = ?", (offer_id,))
         conn.commit()
     finally:
         conn.close()
-
-    criteria = _parse_criteria(row["criteria_json"], offer_id)
 
     return OfferDetail(
         id=row["id"],
@@ -125,31 +134,53 @@ def get_offer(offer_id: int) -> OfferDetail:
         location=row["location"],
         remote=bool(row["remote"]),
         contract_type=row["contract_type"],
-        score=row["score"],
+        desirability=row["desirability"],
+        attainability=row["attainability"],
         verdict=row["verdict"],
         seen=True,
         fetched_at=row["fetched_at"] or "",
         description=row["description"],
         url=row["url"],
         source=row["source"],
-        criteria=criteria,
+        extracted_facts=_parse_facts(row["extracted_facts_json"], offer_id),
+        desirability_detail=_parse_json(row["desirability_detail"], offer_id, "desirability_detail"),
+        attainability_detail=_parse_attainability(row["attainability_detail"], offer_id),
     )
 
 
-def _parse_criteria(raw: str | None, offer_id: int) -> list[CriterionScore]:
+def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:
     if not raw:
-        return []
+        return None
     try:
-        data = json.loads(raw)
-        return [CriterionScore(**item) for item in data]
+        return ExtractedFactsSchema(**json.loads(raw))
     except Exception as exc:
-        log.warning("criteria_json parse failed for offer %s: %s", offer_id, exc)
-        return []
+        log.warning("extracted_facts_json parse failed for offer %s: %s", offer_id, exc)
+        return None
+
+
+def _parse_json(raw: str | None, offer_id: int, field: str) -> dict | None:
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception as exc:
+        log.warning("%s parse failed for offer %s: %s", field, offer_id, exc)
+        return None
+
+
+def _parse_attainability(raw: str | None, offer_id: int) -> AttainabilityDetailSchema | None:
+    if not raw:
+        return None
+    try:
+        return AttainabilityDetailSchema(**json.loads(raw))
+    except Exception as exc:
+        log.warning("attainability_detail parse failed for offer %s: %s", offer_id, exc)
+        return None
 
 
 # ---------------------------------------------------------------------------
-# L4 — PUT /offers/{id}/verdict  (UPSERT)
-#       DELETE /offers/{id}/verdict
+# PUT /offers/{id}/verdict  (UPSERT)
+# DELETE /offers/{id}/verdict
 # ---------------------------------------------------------------------------
 
 @router.put("/offers/{offer_id}/verdict", status_code=204)

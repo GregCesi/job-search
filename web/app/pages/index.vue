@@ -54,10 +54,10 @@ const store = useOffersStore()
 onMounted(() => store.fetchOffers())
 
 const VIEWS: { key: ActiveView; label: string }[] = [
-  { key: 'a_traiter',  label: 'À traiter'  },
-  { key: 'top_scores', label: 'Top scores' },
-  { key: 'favoris',    label: 'Favoris'    },
-  { key: 'tout',       label: 'Tout'       },
+  { key: 'a_traiter',    label: 'À traiter'    },
+  { key: 'atteignables', label: 'Atteignables' },
+  { key: 'favoris',      label: 'Favoris'      },
+  { key: 'tout',         label: 'Tout'         },
 ]
 
 async function handleSelect(offer: OfferRow) {

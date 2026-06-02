@@ -10,24 +10,33 @@ class OfferRow(BaseModel):
     location: str | None
     remote: bool
     contract_type: str | None
-    score: float | None
+    desirability: float | None
+    attainability: str | None
     verdict: str | None
     seen: bool
     fetched_at: str
 
 
-class CriterionScore(BaseModel):
-    key: str
-    score: float
-    justification: str
+class ExtractedFactsSchema(BaseModel):
+    seniority_required: str
+    techs_required: list[str]
+    domain: str
     parse_failed: bool = False
+
+
+class AttainabilityDetailSchema(BaseModel):
+    techs_matched: list[str]
+    techs_missing: list[str]
+    seniority_gap: int
 
 
 class OfferDetail(OfferRow):
     description: str | None
     url: str | None
     source: str
-    criteria: list[CriterionScore]
+    extracted_facts: ExtractedFactsSchema | None
+    desirability_detail: dict | None
+    attainability_detail: AttainabilityDetailSchema | None
 
 
 class VerdictIn(BaseModel):

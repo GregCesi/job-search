@@ -16,10 +16,10 @@ _VALID_STATUSES = {"favori", "rejeté", "candidaté"}
 def _list_recent(conn) -> list:
     return conn.execute(
         """
-        SELECT id, title, company, score
+        SELECT id, title, company, desirability, attainability
         FROM offers
-        WHERE score IS NOT NULL
-        ORDER BY score DESC, fetched_at DESC
+        WHERE desirability IS NOT NULL
+        ORDER BY desirability DESC, fetched_at DESC
         LIMIT 30
         """
     ).fetchall()
@@ -48,7 +48,7 @@ def main() -> None:
     parser.add_argument("--status", choices=list(_VALID_STATUSES), help="favori | rejeté | candidaté")
     args = parser.parse_args()
 
-    from job_search.storage.db import get_connection, init_db
+    from orchestrator.job_search.storage.db import get_connection, init_db
 
     conn = get_connection()
     init_db(conn)
@@ -64,11 +64,12 @@ def main() -> None:
         print("Aucune offre scorée en base. Lance d'abord : python -m job_search.run")
         return
 
-    print(f"\n{'ID':>4}  {'Score':>6}  Titre")
+    print(f"\n{'ID':>4}  {'Desir':>6}  {'Reach':<12}  Titre")
     print("─" * 70)
     for o in offers:
-        score = f"{o['score']:.1f}" if o["score"] is not None else "  —"
-        print(f"{o['id']:>4}  {score:>6}  {o['title'][:50]}  ({o['company'] or '?'})")
+        d = f"{o['desirability']:.1f}" if o["desirability"] is not None else "  —"
+        a = o["attainability"] or "?"
+        print(f"{o['id']:>4}  {d:>6}  {a:<12}  {o['title'][:45]}  ({o['company'] or '?'})")
 
     print()
     try:

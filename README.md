@@ -1,8 +1,17 @@
-# job-search-zone-a
+# job-search
 
-Run matinal de sourcing et tri automatique d'offres d'emploi : pull France Travail → dédup → scoring LLM explicable → digest.
+Run matinal de sourcing et tri automatique d'offres d'emploi : pull France Travail → dédup → scoring LLM explicable → digest + interface de pilotage web.
 
-Voir [CLAUDE.md](CLAUDE.md) pour l'architecture et les règles de développement.
+## Architecture
+
+```
+job-search/
+├── orchestrator/job_search/   ← CLI run matinal
+├── api/                       ← FastAPI (offres + verdicts)
+├── web/                       ← Nuxt 4 + Tailwind + Pinia v3
+├── data/                      ← SQLite + ChromaDB (partagés)
+└── profiles/                  ← profils YAML
+```
 
 ## Setup
 
@@ -17,27 +26,48 @@ Credentials nécessaires dans `.env` :
 - `FRANCE_TRAVAIL_CLIENT_ID` / `FRANCE_TRAVAIL_CLIENT_SECRET` — [francetravail.io](https://francetravail.io) > Mes applications > API Offres d'emploi v2
 - `OLLAMA_HOST` / `OLLAMA_MODEL` — Ollama local (`ollama pull llama3.1:8b`)
 
-## Usage
+## Lancement
+
+### Orchestrateur (run matinal)
+
+Ollama doit tourner avant le run.
 
 ```bash
-# Run matinal complet (fetch → dédup → score → digest)
-python -m job_search.run
+# Run complet (fetch → dédup → score → digest)
+python -m orchestrator.job_search.run --profile profiles/gregoire.yaml
 
 # Options
-python -m job_search.run --max 100          # nombre max d'offres à fetcher
-python -m job_search.run --since-hours 48   # fenêtre du digest (défaut: 24h)
-python -m job_search.run --profile profiles/gregoire.yaml  # profil cible
+python -m orchestrator.job_search.run --max 100            # nombre max d'offres à fetcher
+python -m orchestrator.job_search.run --since-hours 48     # fenêtre du digest (défaut : 24h)
+```
 
-# Lire une annonce avant de juger
-python -m job_search.view                   # liste interactive
-python -m job_search.view --offer-id 3      # direct par id
+### API
 
-# Enregistrer un verdict
-python -m job_search.verdict                # interactif
-python -m job_search.verdict --offer-id 3 --status favori
-# statuts : favori | rejeté | candidaté
+```bash
+uvicorn api.main:app --reload
+# → http://localhost:8000
+```
+
+### Interface web
+
+```bash
+cd web && npm run dev
+# → http://localhost:3000
 ```
 
 ## Profil cible
 
-Editer `profiles/gregoire.yaml` — le scoring se recalibre automatiquement au prochain run (ré-embed conditionnel au hash du fichier).
+Éditer `profiles/gregoire.yaml` — le scoring se recalibre automatiquement au prochain run (ré-embed conditionnel au hash du fichier).
+
+## CLI utilitaires
+
+```bash
+# Lire une annonce
+python -m orchestrator.job_search.view
+python -m orchestrator.job_search.view --offer-id 3
+
+# Enregistrer un verdict
+python -m orchestrator.job_search.verdict
+python -m orchestrator.job_search.verdict --offer-id 3 --status favori
+# statuts : favori | rejeté | candidaté
+```

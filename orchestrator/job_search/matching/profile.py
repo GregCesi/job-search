@@ -1,36 +1,35 @@
 import hashlib
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
+
+from orchestrator.job_search.sources.base import SeniorityLevel
 
 
-class CriterionConfig(BaseModel):
-    key: str
-    weight: float
+class MasteryLevel(str, Enum):
+    notions = "notions"
+    working = "working"
+    confirmed = "confirmed"
 
 
-class LocationConfig(BaseModel):
-    base: str
-    radius_km: int
-    remote_ok: bool
+class SearchCriteria(BaseModel):
+    domains: list[str]
+    locations: list[str]
+    contract_types: list[str]
 
 
 class Profile(BaseModel):
     profile_id: str
-    title: str
-    seniority: str
-    stack: list[str]
-    location: LocationConfig
-    criteria: list[CriterionConfig]
+    seniority: SeniorityLevel
+    techs: dict[str, MasteryLevel]
+    search_criteria: SearchCriteria
 
-    @model_validator(mode="after")
-    def weights_sum_to_one(self) -> "Profile":
-        total = sum(c.weight for c in self.criteria)
-        if abs(total - 1.0) > 1e-6:
-            raise ValueError(f"criteria weights must sum to 1.0, got {total:.4f}")
-        return self
+    def tech_level(self, tech: str) -> MasteryLevel | None:
+        """Mastery level for a tech (case-insensitive), or None if not in profile."""
+        return self.techs.get(tech.lower())
 
 
 def load_profile(path: str | Path) -> tuple[Profile, str]:
@@ -39,5 +38,4 @@ def load_profile(path: str | Path) -> tuple[Profile, str]:
     raw = path.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     data: dict[str, Any] = yaml.safe_load(raw)
-    profile = Profile.model_validate(data)
-    return profile, digest
+    return Profile.model_validate(data), digest

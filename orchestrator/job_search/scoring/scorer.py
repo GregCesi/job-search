@@ -13,8 +13,16 @@ from dataclasses import dataclass, field
 import ollama
 from dotenv import load_dotenv
 
-from job_search.matching.profile import CriterionConfig, Profile
-from job_search.sources.base import JobOffer
+from dataclasses import dataclass as _dataclass
+
+from orchestrator.job_search.matching.profile import Profile
+
+
+@_dataclass
+class CriterionConfig:
+    key: str
+    weight: float
+from orchestrator.job_search.sources.base import JobOffer
 
 load_dotenv()
 

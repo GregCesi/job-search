@@ -14,20 +14,31 @@ def get_connection() -> sqlite3.Connection:
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS offers (
-            id           INTEGER PRIMARY KEY,
-            source       TEXT NOT NULL,
-            source_id    TEXT NOT NULL,
-            fingerprint  TEXT NOT NULL,
-            title        TEXT,
-            company      TEXT,
-            location     TEXT,
-            remote       INTEGER,
-            contract_type TEXT,
-            url          TEXT,
-            fetched_at   TEXT,
-            score        REAL,
-            criteria_json TEXT,
-            description  TEXT,
+            id                   INTEGER PRIMARY KEY,
+            source               TEXT NOT NULL,
+            source_id            TEXT NOT NULL,
+            fingerprint          TEXT NOT NULL,
+            title                TEXT,
+            company              TEXT,
+            location             TEXT,
+            remote               INTEGER,
+            contract_type        TEXT,
+            nature_contract      TEXT,
+            alternance           INTEGER NOT NULL DEFAULT 0,
+            full_time            INTEGER,
+            company_size         TEXT,
+            experience_required  TEXT,
+            rome_code            TEXT,
+            rome_label           TEXT,
+            url                  TEXT,
+            fetched_at           TEXT,
+            description          TEXT,
+            seen                 INTEGER NOT NULL DEFAULT 0,
+            extracted_facts_json TEXT,
+            desirability         REAL,
+            desirability_detail  TEXT,
+            attainability        TEXT,
+            attainability_detail TEXT,
             UNIQUE(source, source_id)
         );
 
@@ -40,9 +51,36 @@ def init_db(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_offers_fingerprint ON offers(fingerprint);
     """)
-    # Migration : ajoute description si colonne absente (DB existante)
-    try:
-        conn.execute("ALTER TABLE offers ADD COLUMN description TEXT")
-        conn.commit()
-    except Exception:
-        pass  # colonne déjà présente
+    migrate_offers_schema(conn)
+
+
+def migrate_offers_schema(conn: sqlite3.Connection) -> None:
+    """Apply incremental column additions/removals to an existing offers table."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(offers)").fetchall()}
+
+    add_cols = [
+        ("description",          "TEXT"),
+        ("seen",                 "INTEGER NOT NULL DEFAULT 0"),
+        ("nature_contract",      "TEXT"),
+        ("alternance",           "INTEGER NOT NULL DEFAULT 0"),
+        ("full_time",            "INTEGER"),
+        ("company_size",         "TEXT"),
+        ("experience_required",  "TEXT"),
+        ("rome_code",            "TEXT"),
+        ("rome_label",           "TEXT"),
+        ("extracted_facts_json", "TEXT"),
+        ("desirability",         "REAL"),
+        ("desirability_detail",  "TEXT"),
+        ("attainability",        "TEXT"),
+        ("attainability_detail", "TEXT"),
+    ]
+    for col, col_type in add_cols:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE offers ADD COLUMN {col} {col_type}")
+
+    # Suppression des anciens champs de scoring Zone A
+    for col in ("score", "criteria_json"):
+        if col in existing:
+            conn.execute(f"ALTER TABLE offers DROP COLUMN {col}")
+
+    conn.commit()

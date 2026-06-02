@@ -4,8 +4,8 @@ from pathlib import Path
 import chromadb
 from chromadb.utils import embedding_functions
 
-from job_search.matching.profile import Profile
-from job_search.sources.base import JobOffer
+from orchestrator.job_search.matching.profile import Profile
+from orchestrator.job_search.sources.base import JobOffer
 
 _CHROMA_PATH = Path("data/chroma")
 _PROFILE_CACHE = Path("data/profile_cache.json")
@@ -17,11 +17,12 @@ def _offer_text(offer: JobOffer) -> str:
 
 
 def _profile_text(profile: Profile) -> str:
+    techs = ", ".join(f"{t} ({m.value})" for t, m in profile.techs.items())
     return (
-        f"Role: {profile.title} ({profile.seniority} level)\n"
-        f"Stack: {', '.join(profile.stack)}\n"
-        f"Location: {profile.location.base}, radius {profile.location.radius_km}km, "
-        f"remote accepted: {profile.location.remote_ok}"
+        f"Role: AI Engineer ({profile.seniority.value} level)\n"
+        f"Techs: {techs}\n"
+        f"Domains: {', '.join(profile.search_criteria.domains)}\n"
+        f"Locations: {', '.join(profile.search_criteria.locations)}"
     )
 
 

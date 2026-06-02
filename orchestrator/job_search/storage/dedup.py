@@ -1,6 +1,6 @@
 import sqlite3
 
-from job_search.sources.base import JobOffer
+from orchestrator.job_search.sources.base import JobOffer
 
 
 def filter_new(conn: sqlite3.Connection, offers: list[JobOffer]) -> list[JobOffer]:

@@ -28,7 +28,7 @@
 
         <!-- Meta bar -->
         <div class="flex items-center gap-3 px-6 py-3 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 flex-wrap">
-          <ScoreBadge :score="offer.score" />
+          <ScoreBadge :score="offer.desirability" />
           <span>{{ offer.contract_type ?? '—' }}</span>
           <span>{{ offer.fetched_at?.slice(0, 10) }}</span>
           <VerdictBadge :verdict="offer.verdict" />
@@ -67,44 +67,61 @@
             </div>
           </section>
 
-          <!-- Critères de scoring -->
-          <section v-if="offer.criteria.length > 0">
-            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-              Scoring par critère
-            </h3>
-            <div class="space-y-3">
-              <div
-                v-for="c in offer.criteria" :key="c.key"
-                class="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
-              >
-                <div class="flex items-center justify-between mb-1.5">
-                  <span class="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    {{ formatKey(c.key) }}
-                  </span>
-                  <div class="flex items-center gap-2">
-                    <div class="w-24 h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                      <div
-                        :style="{ width: `${c.score * 10}%` }"
-                        :class="scoreBarClass(c.score)"
-                        class="h-full rounded-full transition-all"
-                      />
-                    </div>
-                    <ScoreBadge :score="c.score * 10" />
+          <!-- Scoring double-axe -->
+          <section>
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Scoring</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <!-- Désirabilité -->
+              <div class="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Désirabilité</p>
+                <div class="flex items-center gap-2">
+                  <ScoreBadge :score="offer.desirability" />
+                  <div class="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                    <div
+                      :style="{ width: `${offer.desirability ?? 0}%` }"
+                      :class="scoreBarClass(offer.desirability ?? 0)"
+                      class="h-full rounded-full transition-all"
+                    />
                   </div>
                 </div>
-                <p class="text-xs text-gray-500 leading-relaxed">{{ c.justification }}</p>
-                <p v-if="c.parse_failed" class="mt-1 text-xs text-amber-600 font-medium">
-                  ⚠ parse échoué
-                </p>
+                <div v-if="offer.desirability_detail" class="mt-2 space-y-0.5">
+                  <div v-for="(v, k) in offer.desirability_detail" :key="k"
+                       class="flex justify-between text-xs text-gray-400">
+                    <span>{{ k }}</span>
+                    <span :class="(v as any).score === 1 ? 'text-green-600' : 'text-red-400'">
+                      {{ (v as any).score === 1 ? '✓' : '✗' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <!-- Atteignabilité -->
+              <div class="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Atteignabilité</p>
+                <span :class="reachClass(offer.attainability)" class="inline-block px-2 py-0.5 rounded text-xs font-semibold">
+                  {{ reachLabel(offer.attainability) }}
+                </span>
+                <div v-if="offer.attainability_detail" class="mt-2 space-y-1 text-xs text-gray-500">
+                  <p v-if="offer.attainability_detail.techs_matched.length > 0">
+                    <span class="text-green-600 font-medium">✓</span>
+                    {{ offer.attainability_detail.techs_matched.join(', ') }}
+                  </p>
+                  <p v-if="offer.attainability_detail.techs_missing.length > 0">
+                    <span class="text-red-500 font-medium">✗</span>
+                    {{ offer.attainability_detail.techs_missing.join(', ') }}
+                  </p>
+                  <p class="text-gray-400">
+                    Écart séniorité : {{ offer.attainability_detail.seniority_gap > 0 ? '+' : '' }}{{ offer.attainability_detail.seniority_gap }}
+                  </p>
+                </div>
               </div>
             </div>
-          </section>
-
-          <section v-else-if="offer.criteria.length === 0">
-            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-              Scoring par critère
-            </h3>
-            <p class="text-xs text-gray-400 italic">Critères non disponibles pour cette offre.</p>
+            <!-- Faits extraits -->
+            <div v-if="offer.extracted_facts" class="mt-2 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+              <span class="font-medium text-gray-700">{{ offer.extracted_facts.domain }}</span>
+              · {{ offer.extracted_facts.seniority_required }}
+              · {{ offer.extracted_facts.techs_required.join(', ') || '—' }}
+              <span v-if="offer.extracted_facts.parse_failed" class="ml-1 text-amber-600">⚠ parse_failed</span>
+            </div>
           </section>
 
           <!-- Description -->
@@ -151,13 +168,23 @@ function toggleVerdict(status: string) {
   }
 }
 
-function formatKey(key: string) {
-  return key.replace(/_/g, ' ')
+function reachLabel(a: string | null) {
+  if (a === 'at_level') return '✓ À portée'
+  if (a === 'one_step_up') return '↑ Un cran au-dessus'
+  if (a === 'out_of_reach') return '✗ Hors de portée'
+  return '—'
+}
+
+function reachClass(a: string | null) {
+  if (a === 'at_level') return 'bg-green-50 text-green-700'
+  if (a === 'one_step_up') return 'bg-amber-50 text-amber-700'
+  if (a === 'out_of_reach') return 'bg-red-50 text-red-600'
+  return 'bg-gray-100 text-gray-400'
 }
 
 function scoreBarClass(score: number) {
-  if (score >= 7) return 'bg-green-400'
-  if (score >= 4) return 'bg-amber-400'
+  if (score >= 70) return 'bg-green-400'
+  if (score >= 40) return 'bg-amber-400'
   return 'bg-red-400'
 }
 </script>

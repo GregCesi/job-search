@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import requests
 from dotenv import load_dotenv
 
-from job_search.sources.base import JobOffer, Source
+from orchestrator.job_search.sources.base import JobOffer, Source
 
 load_dotenv()
 
@@ -122,6 +122,8 @@ class FranceTravailSource(Source):
             raw.get("origineOffre", {}).get("urlOrigine")
             or f"https://candidat.francetravail.fr/offres/recherche/detail/{offer_id}"
         )
+        duree = raw.get("dureeTravailLibelleConverti", "")
+        full_time: bool | None = ("plein" in duree.lower()) if duree else None
         return JobOffer(
             source="france_travail",
             source_id=offer_id,
@@ -132,6 +134,13 @@ class FranceTravailSource(Source):
             location=location or None,
             remote=_detect_remote(raw),
             contract_type=raw.get("typeContrat"),
+            nature_contract=raw.get("natureContrat") or None,
+            alternance=raw.get("alternance", False),
+            full_time=full_time,
+            company_size=raw.get("trancheEffectifEtab") or None,
+            experience_required=raw.get("experienceExige") or None,
+            rome_code=raw.get("romeCode") or None,
+            rome_label=raw.get("romeLibelle") or None,
             url=url,
             fetched_at=datetime.now(timezone.utc),
         )

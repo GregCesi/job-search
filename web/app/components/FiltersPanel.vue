@@ -13,19 +13,19 @@
       />
     </div>
 
-    <!-- Score min/max -->
+    <!-- Désirabilité min/max -->
     <div class="flex flex-col gap-1">
-      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Score</label>
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Désirabilité</label>
       <div class="flex items-center gap-1">
         <input
-          v-model.number="local.score_min"
+          v-model.number="local.desirability_min"
           type="number" min="0" max="100"
           placeholder="min"
           class="w-16 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
         />
         <span class="text-gray-400">–</span>
         <input
-          v-model.number="local.score_max"
+          v-model.number="local.desirability_max"
           type="number" min="0" max="100"
           placeholder="max"
           class="w-16 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
@@ -86,24 +86,24 @@ const store = useOffersStore()
 
 interface LocalFilters {
   q: string
-  score_min: number | undefined
-  score_max: number | undefined
+  desirability_min: number | undefined
+  desirability_max: number | undefined
   remote: boolean | undefined
   verdict: string
 }
 
 const local = reactive<LocalFilters>({
   q: '',
-  score_min: undefined,
-  score_max: undefined,
+  desirability_min: undefined,
+  desirability_max: undefined,
   remote: undefined,
   verdict: '',
 })
 
 function apply() {
   store.filters.q          = local.q || undefined
-  store.filters.score_min  = local.score_min
-  store.filters.score_max  = local.score_max
+  store.filters.desirability_min  = local.desirability_min
+  store.filters.desirability_max  = local.desirability_max
   store.filters.remote     = local.remote
   store.filters.verdict    = local.verdict || undefined
   store.fetchOffers()
@@ -111,13 +111,13 @@ function apply() {
 
 function reset() {
   local.q         = ''
-  local.score_min = undefined
-  local.score_max = undefined
+  local.desirability_min = undefined
+  local.desirability_max = undefined
   local.remote    = undefined
   local.verdict   = ''
   store.filters.q        = undefined
-  store.filters.score_min = undefined
-  store.filters.score_max = undefined
+  store.filters.desirability_min = undefined
+  store.filters.desirability_max = undefined
   store.filters.remote    = undefined
   store.filters.verdict   = undefined
   store.fetchOffers()

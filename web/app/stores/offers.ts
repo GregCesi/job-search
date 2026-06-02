@@ -9,29 +9,39 @@ export interface OfferRow {
   location: string | null
   remote: boolean
   contract_type: string | null
-  score: number | null
+  desirability: number | null
+  attainability: string | null
   verdict: string | null
   seen: boolean
   fetched_at: string
 }
 
-export interface CriterionScore {
-  key: string
-  score: number
-  justification: string
+export interface ExtractedFacts {
+  seniority_required: string
+  techs_required: string[]
+  domain: string
   parse_failed: boolean
+}
+
+export interface AttainabilityDetail {
+  techs_matched: string[]
+  techs_missing: string[]
+  seniority_gap: number
 }
 
 export interface OfferDetail extends OfferRow {
   description: string | null
   url: string | null
   source: string
-  criteria: CriterionScore[]
+  extracted_facts: ExtractedFacts | null
+  desirability_detail: Record<string, unknown> | null
+  attainability_detail: AttainabilityDetail | null
 }
 
 export interface Filters {
-  score_min?: number
-  score_max?: number
+  desirability_min?: number
+  desirability_max?: number
+  attainability?: string
   remote?: boolean
   source?: string
   verdict?: string
@@ -41,14 +51,13 @@ export interface Filters {
   order: 'asc' | 'desc'
 }
 
-export type ActiveView = 'a_traiter' | 'top_scores' | 'favoris' | 'tout'
+export type ActiveView = 'a_traiter' | 'atteignables' | 'favoris' | 'tout'
 
-// Préréglages de filtres par vue
 const VIEW_PRESETS: Record<ActiveView, Partial<Filters>> = {
-  a_traiter:  { seen: false, sort: 'score', order: 'desc' },
-  top_scores: { score_min: 80, sort: 'score', order: 'desc' },
-  favoris:    { verdict: 'favori', sort: 'score', order: 'desc' },
-  tout:       { sort: 'score', order: 'desc' },
+  a_traiter:    { seen: false,                              sort: 'desirability', order: 'desc' },
+  atteignables: { desirability_min: 60, attainability: 'at_level', sort: 'desirability', order: 'desc' },
+  favoris:      { verdict: 'favori',                        sort: 'desirability', order: 'desc' },
+  tout:         {                                            sort: 'desirability', order: 'desc' },
 }
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -59,7 +68,7 @@ export const useOffersStore = defineStore('offers', () => {
   const offers = ref<OfferRow[]>([])
   const openedOffer = ref<OfferDetail | null>(null)
   const activeView = ref<ActiveView>('a_traiter')
-  const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter, sort: 'score', order: 'desc' })
+  const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter })
   const loading = ref(false)
 
   async function fetchOffers() {
@@ -69,8 +78,9 @@ export const useOffersStore = defineStore('offers', () => {
         sort: filters.value.sort,
         order: filters.value.order,
       }
-      if (filters.value.score_min !== undefined) params.score_min = filters.value.score_min
-      if (filters.value.score_max !== undefined) params.score_max = filters.value.score_max
+      if (filters.value.desirability_min !== undefined) params.desirability_min = filters.value.desirability_min
+      if (filters.value.desirability_max !== undefined) params.desirability_max = filters.value.desirability_max
+      if (filters.value.attainability !== undefined) params.attainability = filters.value.attainability
       if (filters.value.remote !== undefined) params.remote = filters.value.remote
       if (filters.value.source !== undefined) params.source = filters.value.source
       if (filters.value.verdict !== undefined) params.verdict = filters.value.verdict
@@ -79,7 +89,6 @@ export const useOffersStore = defineStore('offers', () => {
 
       const data = await $fetch<OfferRow[]>(`${config.public.apiBase}/offers`, { params })
       offers.value = data
-      console.log(`[offers] ${data.length} offres chargées`, data)
     } finally {
       loading.value = false
     }
@@ -88,7 +97,6 @@ export const useOffersStore = defineStore('offers', () => {
   async function openDetail(id: number) {
     const data = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id}`)
     openedOffer.value = data
-    // Mettre à jour seen dans la liste locale
     const idx = offers.value.findIndex(o => o.id === id)
     if (idx !== -1) offers.value[idx].seen = true
   }
@@ -101,7 +109,6 @@ export const useOffersStore = defineStore('offers', () => {
     const idx = offers.value.findIndex(o => o.id === id)
     if (idx !== -1) {
       offers.value[idx].verdict = status
-      // "masqué" disparaît des vues filtrées (tout sauf "tout")
       if (status === 'masqué' && activeView.value !== 'tout') {
         offers.value.splice(idx, 1)
         openedOffer.value = null
@@ -120,7 +127,7 @@ export const useOffersStore = defineStore('offers', () => {
 
   function setView(view: ActiveView) {
     activeView.value = view
-    filters.value = { sort: 'score', order: 'desc', ...VIEW_PRESETS[view] }
+    filters.value = { sort: 'desirability', order: 'desc', ...VIEW_PRESETS[view] }
     fetchOffers()
   }
 

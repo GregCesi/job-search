@@ -60,9 +60,15 @@
             <span v-else class="text-gray-500">{{ offer.location ?? '—' }}</span>
           </td>
 
-          <!-- Score -->
+          <!-- Désirabilité + Atteignabilité -->
           <td class="px-3 py-3 whitespace-nowrap">
-            <ScoreBadge :score="offer.score" />
+            <div class="flex items-center gap-1.5">
+              <ScoreBadge :score="offer.desirability" />
+              <span v-if="offer.attainability" :class="reachClass(offer.attainability)"
+                    class="text-xs px-1.5 py-0.5 rounded font-medium">
+                {{ reachLabel(offer.attainability) }}
+              </span>
+            </div>
           </td>
 
           <!-- Date -->
@@ -94,14 +100,27 @@ defineProps<{ selectedId?: number }>()
 const store = useOffersStore()
 
 const COLS = [
-  { key: 'title',        label: 'Poste',     sortable: true  },
-  { key: 'company',      label: 'Entreprise', sortable: false },
-  { key: 'contract_type',label: 'Contrat',   sortable: false },
-  { key: 'location',     label: 'Lieu',      sortable: false },
-  { key: 'score',        label: 'Score',     sortable: true  },
-  { key: 'fetched_at',   label: 'Récupéré',  sortable: true  },
-  { key: 'verdict',      label: 'Verdict',   sortable: false },
+  { key: 'title',        label: 'Poste',       sortable: true  },
+  { key: 'company',      label: 'Entreprise',  sortable: false },
+  { key: 'contract_type',label: 'Contrat',     sortable: false },
+  { key: 'location',     label: 'Lieu',        sortable: false },
+  { key: 'desirability', label: 'Désir / Reach', sortable: true  },
+  { key: 'fetched_at',   label: 'Récupéré',    sortable: true  },
+  { key: 'verdict',      label: 'Verdict',     sortable: false },
 ]
+
+function reachLabel(a: string) {
+  if (a === 'at_level') return '✓'
+  if (a === 'one_step_up') return '↑'
+  if (a === 'out_of_reach') return '✗'
+  return a
+}
+
+function reachClass(a: string) {
+  if (a === 'at_level') return 'bg-green-50 text-green-700'
+  if (a === 'one_step_up') return 'bg-amber-50 text-amber-700'
+  return 'bg-red-50 text-red-600'
+}
 
 function toggleSort(key: string) {
   if (store.filters.sort === key) {

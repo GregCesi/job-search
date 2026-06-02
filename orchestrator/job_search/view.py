@@ -44,7 +44,7 @@ def main() -> None:
     parser.add_argument("--offer-id", type=int)
     args = parser.parse_args()
 
-    from job_search.storage.db import get_connection, init_db
+    from orchestrator.job_search.storage.db import get_connection, init_db
 
     conn = get_connection()
     init_db(conn)
