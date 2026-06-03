@@ -29,6 +29,23 @@ export interface AttainabilityDetail {
   seniority_gap: number
 }
 
+export interface Criterion {
+  nom: string
+  note: number
+  justif: string
+  axe: string
+}
+
+export interface ReviewOut {
+  offer_id: string
+  ratings_json: Record<string, { note: number | null; justif: string | null }>
+  ai_snapshot_json: Criterion[]
+  global_audit_text: string | null
+  global_score: number | null
+  seen_at_review: boolean
+  created_at: string
+}
+
 export interface OfferDetail extends OfferRow {
   description: string | null
   url: string | null
@@ -36,6 +53,7 @@ export interface OfferDetail extends OfferRow {
   extracted_facts: ExtractedFacts | null
   desirability_detail: Record<string, unknown> | null
   attainability_detail: AttainabilityDetail | null
+  criteria: Criterion[]
 }
 
 export interface Filters {
@@ -67,6 +85,7 @@ export const useOffersStore = defineStore('offers', () => {
 
   const offers = ref<OfferRow[]>([])
   const openedOffer = ref<OfferDetail | null>(null)
+  const openedReview = ref<ReviewOut | null>(null)
   const activeView = ref<ActiveView>('a_traiter')
   const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter })
   const loading = ref(false)
@@ -95,10 +114,30 @@ export const useOffersStore = defineStore('offers', () => {
   }
 
   async function openDetail(id: number) {
-    const data = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id}`)
+    const [data] = await Promise.all([
+      $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id}`),
+    ])
     openedOffer.value = data
+    openedReview.value = await $fetch<ReviewOut>(
+      `${config.public.apiBase}/offers/${id}/review`
+    ).catch(() => null)
     const idx = offers.value.findIndex(o => o.id === id)
     if (idx !== -1) offers.value[idx].seen = true
+  }
+
+  async function saveReview(
+    id: number,
+    ratingsJson: Record<string, { note: number | null; justif: string }>,
+    globalAuditText: string | null,
+    globalScore: number | null,
+  ) {
+    await $fetch(`${config.public.apiBase}/offers/${id}/review`, {
+      method: 'PUT',
+      body: { ratings_json: ratingsJson, global_audit_text: globalAuditText, global_score: globalScore },
+    })
+    openedReview.value = await $fetch<ReviewOut>(
+      `${config.public.apiBase}/offers/${id}/review`
+    )
   }
 
   async function setVerdict(id: number, status: string) {
@@ -134,6 +173,7 @@ export const useOffersStore = defineStore('offers', () => {
   return {
     offers,
     openedOffer,
+    openedReview,
     activeView,
     filters,
     loading,
@@ -142,5 +182,6 @@ export const useOffersStore = defineStore('offers', () => {
     setVerdict,
     clearVerdict,
     setView,
+    saveReview,
   }
 })

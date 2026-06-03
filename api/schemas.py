@@ -39,7 +39,31 @@ class OfferDetail(OfferRow):
     extracted_facts: ExtractedFactsSchema | None
     desirability_detail: dict | None
     attainability_detail: AttainabilityDetailSchema | None
+    criteria: list[CriterionSchema]
 
 
 class VerdictIn(BaseModel):
     status: Literal["favori", "rejeté", "candidaté", "masqué"]
+
+
+class CriterionSchema(BaseModel):
+    nom: str
+    note: float        # 0-10
+    justif: str
+    axe: str           # "desirability" | "attainability"
+
+
+class ReviewIn(BaseModel):
+    ratings_json: dict              # {nom_critère: {note: int|null, justif: str|null}}
+    global_audit_text: str | None = None
+    global_score: int | None = None
+
+
+class ReviewOut(BaseModel):
+    offer_id: str
+    ratings_json: dict
+    ai_snapshot_json: list          # copie figée des criteria à l'instant T
+    global_audit_text: str | None
+    global_score: int | None
+    seen_at_review: bool
+    created_at: str

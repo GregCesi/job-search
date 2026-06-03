@@ -50,6 +50,16 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_offers_fingerprint ON offers(fingerprint);
+
+        CREATE TABLE IF NOT EXISTS human_reviews (
+            offer_id          TEXT PRIMARY KEY,
+            ratings_json      TEXT NOT NULL,
+            ai_snapshot_json  TEXT NOT NULL,
+            global_audit_text TEXT,
+            global_score      INTEGER,
+            seen_at_review    INTEGER NOT NULL DEFAULT 0,
+            created_at        TEXT NOT NULL
+        );
     """)
     migrate_offers_schema(conn)
 

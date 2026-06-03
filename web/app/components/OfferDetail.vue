@@ -130,12 +130,89 @@
             <p class="whitespace-pre-line leading-relaxed text-gray-600">{{ offer.description }}</p>
           </section>
 
-          <!-- Zone V2 — réservée, vide en V1 -->
-          <!--
-            V2 : note perso, suivi CV/LM, compétences entretien
-          -->
-          <section class="rounded-lg border border-dashed border-gray-200 px-4 py-3 text-xs text-gray-300">
-            Zone V2 — suivi candidature (note perso, CV/LM, compétences entretien)
+          <!-- Calibration — avis humain par critère -->
+          <section v-if="offer.criteria.length > 0">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Calibration</h3>
+
+            <!-- Warning offre non vue -->
+            <div v-if="!offer.seen" class="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+              <span>⚠</span>
+              <span>Offre non consultée — l'avis sera marqué <code>seen_at_review=false</code>.</span>
+            </div>
+
+            <!-- Grille critères — L4 (lecture seule IA) + L5 (champs avis) -->
+            <div class="space-y-2">
+              <div
+                v-for="c in offer.criteria" :key="c.nom"
+                class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-xs"
+              >
+                <!-- Ligne critère IA (L4 — lecture seule) -->
+                <div class="flex items-start justify-between gap-2 mb-2">
+                  <div class="flex-1 min-w-0">
+                    <span class="font-semibold text-gray-700 capitalize">{{ c.nom.replace('_', ' ') }}</span>
+                    <span class="ml-1.5 text-gray-400 text-[10px] uppercase tracking-wide">{{ c.axe }}</span>
+                    <p class="text-gray-400 mt-0.5 leading-snug">{{ c.justif }}</p>
+                  </div>
+                  <span :class="noteClass(c.note)" class="flex-shrink-0 font-bold text-sm tabular-nums px-1.5">
+                    {{ c.note }}/10
+                  </span>
+                </div>
+
+                <!-- Champs avis humain (L5) -->
+                <div class="flex items-center gap-2 pt-2 border-t border-gray-200">
+                  <label class="text-gray-400 shrink-0">Note :</label>
+                  <input
+                    v-model.number="review[c.nom].note"
+                    type="number" min="0" max="10" step="1"
+                    placeholder="—"
+                    class="w-16 rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-700 focus:outline-none focus:border-indigo-300"
+                  />
+                  <input
+                    v-model="review[c.nom].justif"
+                    type="text"
+                    placeholder="justif (optionnel)"
+                    class="flex-1 rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-500 placeholder-gray-300 focus:outline-none focus:border-indigo-300"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Bloc audit global (L6) -->
+            <div class="mt-3 space-y-2">
+              <div class="flex items-center gap-2">
+                <label class="text-xs text-gray-500 shrink-0">Note globale :</label>
+                <input
+                  v-model.number="globalScore"
+                  type="number" min="0" max="10" step="1"
+                  placeholder="—"
+                  class="w-16 rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-700 focus:outline-none focus:border-indigo-300"
+                />
+              </div>
+              <textarea
+                v-model="globalAudit"
+                placeholder="Audit global (impression générale, biais repérés…)"
+                rows="3"
+                class="w-full rounded border border-gray-200 px-2 py-1.5 text-xs text-gray-600 placeholder-gray-300 focus:outline-none focus:border-indigo-300 resize-none"
+              />
+              <div class="flex items-center justify-between">
+                <span v-if="store.openedReview" class="text-[10px] text-gray-400">
+                  Sauvegardé {{ store.openedReview.created_at.slice(0, 16).replace('T', ' ') }}
+                </span>
+                <span v-else class="text-[10px] text-gray-300">Non sauvegardé</span>
+                <button
+                  @click="handleSave"
+                  :disabled="saving"
+                  :class="[
+                    'px-3 py-1 rounded text-xs font-medium transition-all',
+                    saved
+                      ? 'bg-green-50 border border-green-200 text-green-700'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50',
+                  ]"
+                >
+                  {{ saved ? '✓ Sauvegardé' : saving ? '…' : 'Sauvegarder' }}
+                </button>
+              </div>
+            </div>
           </section>
 
         </div>
@@ -152,6 +229,69 @@ const props = defineProps<{ offer: OfferDetail }>()
 defineEmits<{ close: [] }>()
 
 const store = useOffersStore()
+
+// ── Calibration state (L5/L6) — local, persisted in C-3 ───────────────────
+type CriterionReview = { note: number | null; justif: string }
+
+const review = ref<Record<string, CriterionReview>>({})
+const globalScore = ref<number | null>(null)
+const globalAudit = ref('')
+
+// Hydratation depuis la review existante (L8), sinon initialisation vide
+watch(
+  () => props.offer.id,
+  () => {
+    const existing = store.openedReview
+    review.value = Object.fromEntries(
+      props.offer.criteria.map(c => [
+        c.nom,
+        {
+          note: existing?.ratings_json[c.nom]?.note ?? null,
+          justif: existing?.ratings_json[c.nom]?.justif ?? '',
+        },
+      ])
+    )
+    globalScore.value = existing?.global_score ?? null
+    globalAudit.value = existing?.global_audit_text ?? ''
+  },
+  { immediate: true },
+)
+
+// Ré-hydrate si la review change (après save)
+watch(
+  () => store.openedReview,
+  (r) => {
+    if (!r) return
+    for (const c of props.offer.criteria) {
+      review.value[c.nom] = {
+        note: r.ratings_json[c.nom]?.note ?? null,
+        justif: r.ratings_json[c.nom]?.justif ?? '',
+      }
+    }
+    globalScore.value = r.global_score ?? null
+    globalAudit.value = r.global_audit_text ?? ''
+  },
+)
+
+const saving = ref(false)
+const saved = ref(false)
+
+async function handleSave() {
+  saving.value = true
+  saved.value = false
+  try {
+    await store.saveReview(
+      props.offer.id,
+      review.value as Record<string, { note: number | null; justif: string }>,
+      globalAudit.value || null,
+      globalScore.value,
+    )
+    saved.value = true
+    setTimeout(() => { saved.value = false }, 2000)
+  } finally {
+    saving.value = false
+  }
+}
 
 const VERDICTS = [
   { status: 'favori',    label: '★ Favori',     activeClass: 'bg-blue-50 border-blue-300 text-blue-700' },
@@ -186,5 +326,11 @@ function scoreBarClass(score: number) {
   if (score >= 70) return 'bg-green-400'
   if (score >= 40) return 'bg-amber-400'
   return 'bg-red-400'
+}
+
+function noteClass(note: number) {
+  if (note >= 7) return 'text-green-600'
+  if (note >= 4) return 'text-amber-600'
+  return 'text-red-500'
 }
 </script>

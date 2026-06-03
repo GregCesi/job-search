@@ -9,9 +9,12 @@ from fastapi import APIRouter, HTTPException, Query
 from .db import get_conn
 from .schemas import (
     AttainabilityDetailSchema,
+    CriterionSchema,
     ExtractedFactsSchema,
     OfferDetail,
     OfferRow,
+    ReviewIn,
+    ReviewOut,
     VerdictIn,
 )
 
@@ -139,6 +142,9 @@ def get_offer(offer_id: int) -> OfferDetail:
     finally:
         conn.close()
 
+    desirability_detail = _parse_json(row["desirability_detail"], offer_id, "desirability_detail")
+    attainability_detail = _parse_attainability(row["attainability_detail"], offer_id)
+
     return OfferDetail(
         id=row["id"],
         title=row["title"],
@@ -157,8 +163,9 @@ def get_offer(offer_id: int) -> OfferDetail:
         url=row["url"],
         source=row["source"],
         extracted_facts=_parse_facts(row["extracted_facts_json"], offer_id),
-        desirability_detail=_parse_json(row["desirability_detail"], offer_id, "desirability_detail"),
-        attainability_detail=_parse_attainability(row["attainability_detail"], offer_id),
+        desirability_detail=desirability_detail,
+        attainability_detail=attainability_detail,
+        criteria=_build_criteria(desirability_detail, attainability_detail),
     )
 
 
@@ -192,6 +199,60 @@ def _parse_attainability(raw: str | None, offer_id: int) -> AttainabilityDetailS
         return None
 
 
+def _build_criteria(
+    desirability_detail: dict | None,
+    attainability_detail: AttainabilityDetailSchema | None,
+) -> list[CriterionSchema]:
+    """Normalise les champs de scoring existants vers une liste {nom, note 0-10, justif, axe}.
+
+    Hypothèse de stabilité vérifiée au point de validation C-2 (IMPLEMENTATION-calibration.md).
+    """
+    criteria: list[CriterionSchema] = []
+
+    if desirability_detail:
+        domain = desirability_detail.get("domain")
+        if domain:
+            gradient = float(domain.get("gradient", domain.get("score", 0)))
+            value = domain.get("value", "?")
+            criteria.append(CriterionSchema(
+                nom="domain",
+                note=round(gradient * 10, 1),
+                justif=f"{value} (gradient {gradient:.2f})",
+                axe="desirability",
+            ))
+
+    if attainability_detail:
+        gap = attainability_detail.seniority_gap
+        seniority_note = 10.0 if gap <= 0 else (7.0 if gap == 1 else 0.0)
+        gap_str = f"{'+' if gap > 0 else ''}{gap}"
+        criteria.append(CriterionSchema(
+            nom="seniority",
+            note=seniority_note,
+            justif=f"Écart séniorité : {gap_str}",
+            axe="attainability",
+        ))
+
+        matched = attainability_detail.techs_matched
+        missing = attainability_detail.techs_missing
+        total = len(matched) + len(missing)
+        if total > 0:
+            coverage = len(matched) / total
+            tech_note = round(coverage * 10, 1)
+            justif_parts: list[str] = []
+            if matched:
+                justif_parts.append(f"✓ {', '.join(matched)}")
+            if missing:
+                justif_parts.append(f"✗ {', '.join(missing)}")
+            criteria.append(CriterionSchema(
+                nom="tech_coverage",
+                note=tech_note,
+                justif=" — ".join(justif_parts) or "aucune techno requise",
+                axe="attainability",
+            ))
+
+    return criteria
+
+
 # ---------------------------------------------------------------------------
 # PUT /offers/{id}/verdict  (UPSERT)
 # DELETE /offers/{id}/verdict
@@ -220,6 +281,81 @@ def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
                 (offer_id, body.status, now),
             )
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# PUT /offers/{id}/review   — upsert human review + snapshot IA (L7/L9)
+# GET /offers/{id}/review   — hydratation (L8)
+# ---------------------------------------------------------------------------
+
+@router.put("/offers/{offer_id}/review", status_code=204)
+def upsert_review(offer_id: int, body: ReviewIn) -> None:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT seen, desirability_detail, attainability_detail FROM offers WHERE id = ?",
+            (offer_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="offer not found")
+
+        desr_detail = _parse_json(row["desirability_detail"], offer_id, "desirability_detail")
+        att_detail = _parse_attainability(row["attainability_detail"], offer_id)
+        criteria = _build_criteria(desr_detail, att_detail)
+        ai_snapshot = [c.model_dump() for c in criteria]
+        seen_at_review = bool(row["seen"])
+        now = datetime.now(timezone.utc).isoformat()
+
+        conn.execute(
+            """
+            INSERT INTO human_reviews
+                (offer_id, ratings_json, ai_snapshot_json,
+                 global_audit_text, global_score, seen_at_review, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(offer_id) DO UPDATE SET
+                ratings_json      = excluded.ratings_json,
+                ai_snapshot_json  = excluded.ai_snapshot_json,
+                global_audit_text = excluded.global_audit_text,
+                global_score      = excluded.global_score,
+                seen_at_review    = excluded.seen_at_review,
+                created_at        = excluded.created_at
+            """,
+            (
+                str(offer_id),
+                json.dumps(body.ratings_json),
+                json.dumps(ai_snapshot),
+                body.global_audit_text,
+                body.global_score,
+                int(seen_at_review),
+                now,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@router.get("/offers/{offer_id}/review", response_model=ReviewOut)
+def get_review(offer_id: int) -> ReviewOut:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM human_reviews WHERE offer_id = ?",
+            (str(offer_id),),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="no review for this offer")
+        return ReviewOut(
+            offer_id=row["offer_id"],
+            ratings_json=json.loads(row["ratings_json"]),
+            ai_snapshot_json=json.loads(row["ai_snapshot_json"]),
+            global_audit_text=row["global_audit_text"],
+            global_score=row["global_score"],
+            seen_at_review=bool(row["seen_at_review"]),
+            created_at=row["created_at"],
+        )
     finally:
         conn.close()
 

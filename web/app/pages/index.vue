@@ -21,10 +21,19 @@
         </button>
       </nav>
 
-      <!-- Offer count -->
-      <span class="ml-auto text-xs text-gray-400">
-        {{ store.offers.length }} offre{{ store.offers.length !== 1 ? 's' : '' }}
-      </span>
+      <!-- Offer count + export calibration (L11) -->
+      <div class="ml-auto flex items-center gap-3">
+        <span class="text-xs text-gray-400">
+          {{ store.offers.length }} offre{{ store.offers.length !== 1 ? 's' : '' }}
+        </span>
+        <a
+          :href="`${config.public.apiBase}/export/calibration`"
+          target="_blank"
+          class="text-xs text-indigo-600 hover:underline font-medium"
+        >
+          Export calibration ↗
+        </a>
+      </div>
     </header>
 
     <!-- Filters (L8) — visible only in "tout" view -->
@@ -50,6 +59,7 @@
 import { useOffersStore } from '~/stores/offers'
 import type { OfferRow, ActiveView } from '~/stores/offers'
 
+const config = useRuntimeConfig()
 const store = useOffersStore()
 onMounted(() => store.fetchOffers())
 
