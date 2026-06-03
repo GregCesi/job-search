@@ -23,7 +23,6 @@ data/
 chroma/
 
 # .claude
-.claude/state/
 .claude/prompts/
 
 # OS

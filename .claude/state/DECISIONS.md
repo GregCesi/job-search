@@ -1,0 +1,24 @@
+# DECISIONS — job-search-zone-a
+
+Une ligne par décision architecturale ou de cadrage prise en cours de route. Format : `{YYYY-MM-DD} — {décision} — {raison} — {alternative écartée}`.
+
+- 2026-05-30 — Architecture `.claude/` modulaire adoptée — séparation invariant/évolutif/état pour éviter le monolithe CLAUDE.md.
+- 2026-05-30 — Scoring par critères atomiques + agrégation côté code — fidélité structurelle score↔justif sur 7B/8B local — écarté : score libre en un prompt (rationalisation post-hoc).
+- 2026-05-30 — Sources derrière interface `Source` + schéma neutre `JobOffer` — extensibilité multi-source sans refonte aval — écarté : consommer le JSON France Travail brut (couplage).
+- 2026-05-30 — Profil en `profile.yaml` ré-embeddé au hash — cible mutable sans rebuild base — écarté : profil hardcodé dans gregoire.py.
+- 2026-05-30 — SQLite source de vérité, tables offers/verdicts séparées — dataset V2 (score LLM vs verdict humain) — écarté : Notion comme base relationnelle.
+- 2026-05-31 — Multi-appels API FT par mot-clé (python, data engineer, machine learning, développeur) au lieu d'un seul appel sans filtre — l'API FT ne supporte pas l'opérateur OR dans motsCles — écarté : appel unique sans filtre (renvoie toutes catégories).
+- 2026-05-31 — llama3.1:8b choisi comme modèle de scoring — meilleur instruction-following 8B, multilingue FR — écarté : mistral:7b, qwen2.5:7b.
+- 2026-05-31 — description stockée en DB (colonne ajoutée via migration ALTER TABLE) — nécessaire pour workflow view→verdict sans ouvrir le navigateur — écarté : fetch à la demande (latence + dépendance réseau au moment du verdict).
+- 2026-06-01 — Nuxt 4 (minimal template) + Pinia v3 au lieu de Nuxt 3 — template minimal disponible était Nuxt 4 ; Pinia v3 imposée par la peer dep vue-router v5 — écarté : downgrade Nuxt 3.
+- 2026-06-01 — `offers.seen` écrit par l'API (GET /offers/{id}) et non par le front — cohérence : "vu" = ouvert via l'API, pas un clic côté client — écarté : flag géré côté store uniquement.
+- 2026-06-01 — "masqué" retire l'offre de la liste locale immédiatement (store splice) sans refetch — UX réactive sans round-trip — écarté : refetch complet après chaque verdict.
+- 2026-06-01 — Package orchestrateur déplacé dans orchestrator/job_search/ (migration physique) — préparation structure multi-module (orchestrator / api / web) — écarté : rester à la racine (collision future avec d'autres packages).
+- 2026-06-02 — Frontière extraction/matching : LLM une fois par offre (faits intrinsèques), scoring désirabilité+atteignabilité en Python pur — 0 appel LLM au recalcul profil, recalculable à froid sur N offres — écarté : LLM dans la boucle de matching (coût + instabilité 7B/8B sur jugement relatif).
+- 2026-06-02 — `techs_missing` inclut les technos au niveau `notions` (pas uniquement absentes) — `notions` = connaissance insuffisante pour une offre, même palier `at_level` — écarté : `techs_missing` = absent du profil seulement (kubernetes serait tombé dans les limbes).
+- 2026-06-02 — `at_level` déterminé uniquement par l'écart séniorité (gap=0), pas par la couverture technos — intentionnel : couverture visible dans `techs_missing` ; décision de postuler reste humaine — écarté : bloquer `at_level` si tech coverage < seuil (à revisiter si trop d'offres hors-domaine passent).
+- 2026-06-02 — contract/location/full_time transformés en filtres durs pré-scoring (scoring/filters.py) — ce sont des faits binaires, pas des critères de désir ; les scorer polluait la désirabilité — écarté : garder dans la grille pondérée (cause de saturation à 100).
+- 2026-06-02 — Domain scoré via gradient Python hardcodé (_DOMAIN_GRADIENT) plutôt que par le LLM — 0 LLM au recalcul (§4), gradient stable et observable ; profile.criteria.domains ignoré en faveur de la table de distance — écarté : LLM note la distance (re-extraction nécessaire sur 68 offres).
+- 2026-06-03 — human_reviews utilise offer_id TEXT (pas INTEGER FK) — forward-compat multi-source (source_id string à terme), découplage volontaire du PK offers.id — écarté : FK INTEGER (rigidité schéma, empêche les reviews sur offres archivées).
+- 2026-06-03 — Normaliseur criteria côté API (_build_criteria) : 3 critères fixes (domain/seniority/tech_coverage) dérivés des champs scoring existants — critères stables sans nouvelle colonne DB, 0 LLM, forme [{nom,note,justif,axe}] consommable par le front et le snapshot — écarté : exposer desirability_detail brut au front (format ad-hoc, non comparable côté humain).
+- 2026-06-03 — ai_snapshot_json capturé à l'instant du PUT /review côté API (pas côté front) — garantit que le snapshot est déterministe et reproductible, indépendant de la version front — écarté : front envoie le snapshot (risque de désynchronisation si front retardé).

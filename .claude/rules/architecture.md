@@ -36,8 +36,14 @@ Le LLM intervient UNE SEULE FOIS par offre, à l'ingestion, pour extraire des **
 - Les faits extraits sont persistés sur `offers` et ne sont JAMAIS recalculés tant que l'offre ne change pas. Seuls les scores dérivés se recalculent.
 - Corollaire matching : le match technique est un **recouvrement de listes** (technos exigées ∩ profil), observable par construction. Pas de jugement LLM nuancé dans le match — on n'en rajoute QUE si l'observation prouve que le Python pur se trompe.
 
-## Persistance — séparation offers / verdicts
+## Persistance — séparation offers / verdicts / human_reviews
 
-`offers` stocke le score LLM. `verdicts` stocke le statut humain (favori/rejeté/candidaté), séparément. Ne JAMAIS fusionner les deux : leur écart est le signal d'apprentissage de la V2 (boucle de feedback). Mauvais schéma ici = re-migration plus tard.
+Trois tables d'interaction, jamais fusionnées :
 
-> Note refonte scoring double-axe (juin 2026) : `offers` porte désormais les faits extraits + les deux scores (désirabilité, atteignabilité) à la place de l'ancien `score`/`criteria_json` unique. `verdicts` reste strictement intouché par la refonte.
+- `offers` — score LLM + `criteria_json` (décision IA). Source de vérité du scoring.
+- `verdicts` — statut humain global (favori/rejeté/candidaté).
+- `human_reviews` — notation humaine **par-critère** contre l'IA, pour la calibration. Clé `offer_id`. Stocke `ratings_json` (notes/justifs humaines par critère, optionnelles) + `ai_snapshot_json` (copie figée du `criteria_json` à l'instant de la review) + audit global libre.
+
+**Interdit** : écrire dans `offers` (score, criteria_json) depuis un avis humain, ou recalculer le scoring depuis `verdicts` / `human_reviews`. Ce sont des données d'interaction (même statut que `seen`), pas des intrants de recalcul. Leur écart avec le score IA est le signal d'apprentissage — le fusionner le détruit.
+
+Le snapshot dans `human_reviews` rend chaque review auto-portante : la distance de désaccord se calcule contre l'IA _telle qu'elle était_ au moment de l'avis, et survit aux évolutions du scoring (refonte profil, nouveaux critères). Une review n'est jamais invalidée par un changement de grille ultérieur.
