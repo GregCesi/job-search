@@ -73,6 +73,8 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("desirability_detail",  "TEXT"),
         ("attainability",        "TEXT"),
         ("attainability_detail", "TEXT"),
+        ("filtered_out",         "INTEGER NOT NULL DEFAULT 0"),
+        ("filter_reason",        "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:

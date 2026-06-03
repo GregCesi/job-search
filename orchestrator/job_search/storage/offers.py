@@ -25,25 +25,33 @@ class StoredOffer:
     attainability: str | None         # ReachLevel value
     attainability_detail: str | None  # JSON {techs_matched, techs_missing, seniority_gap}
     description: str | None = None
+    filtered_out: bool = False
+    filter_reason: str | None = None
 
 
 def save_offer(
     conn: sqlite3.Connection,
     offer: JobOffer,
-    desirability: Desirability,
-    attainability: Attainability,
+    desirability: Desirability | None,
+    attainability: Attainability | None,
+    filtered_out: bool = False,
+    filter_reason: str | None = None,
 ) -> None:
-    """Upsert offer with scores. Updates scores/facts if offer already exists."""
+    """Upsert offer with scores. Filtered offers are saved without scores."""
     facts_json = (
         offer.extracted_facts.model_dump_json()
         if offer.extracted_facts is not None
         else None
     )
-    attainability_detail = json.dumps({
-        "techs_matched": attainability.techs_matched,
-        "techs_missing": attainability.techs_missing,
-        "seniority_gap": attainability.seniority_gap,
-    })
+    attainability_detail = (
+        json.dumps({
+            "techs_matched": attainability.techs_matched,
+            "techs_missing": attainability.techs_missing,
+            "seniority_gap": attainability.seniority_gap,
+        })
+        if attainability is not None
+        else None
+    )
     full_time_int = None if offer.full_time is None else int(offer.full_time)
 
     conn.execute(
@@ -54,16 +62,19 @@ def save_offer(
              company_size, experience_required, rome_code, rome_label,
              url, fetched_at, description, seen,
              extracted_facts_json, desirability, desirability_detail,
-             attainability, attainability_detail)
+             attainability, attainability_detail,
+             filtered_out, filter_reason)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-                ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json = excluded.extracted_facts_json,
             desirability         = excluded.desirability,
             desirability_detail  = excluded.desirability_detail,
             attainability        = excluded.attainability,
             attainability_detail = excluded.attainability_detail,
-            description          = excluded.description
+            description          = excluded.description,
+            filtered_out         = excluded.filtered_out,
+            filter_reason        = excluded.filter_reason
         """,
         (
             offer.source, offer.source_id, offer.fingerprint,
@@ -74,8 +85,12 @@ def save_offer(
             offer.rome_code, offer.rome_label,
             offer.url, offer.fetched_at.isoformat(), offer.description,
             facts_json,
-            desirability.score, json.dumps(desirability.detail),
-            attainability.level.value, attainability_detail,
+            desirability.score if desirability is not None else None,
+            json.dumps(desirability.detail) if desirability is not None else None,
+            attainability.level.value if attainability is not None else None,
+            attainability_detail,
+            int(filtered_out),
+            filter_reason,
         ),
     )
     conn.commit()
@@ -87,14 +102,17 @@ def get_offers_since(
     min_desirability: float = 0.0,
     limit: int = 50,
 ) -> list[StoredOffer]:
-    """Return offers fetched after `since`, ordered by desirability desc."""
+    """Return scored (non-filtered) offers fetched after `since`, ordered by desirability desc."""
     rows = conn.execute(
         """
         SELECT id, source, source_id, title, company, location, remote,
                contract_type, url, fetched_at, description,
-               desirability, desirability_detail, attainability, attainability_detail
+               desirability, desirability_detail, attainability, attainability_detail,
+               filtered_out, filter_reason
         FROM offers
-        WHERE fetched_at >= ? AND (desirability IS NULL OR desirability >= ?)
+        WHERE fetched_at >= ?
+          AND filtered_out = 0
+          AND (desirability IS NULL OR desirability >= ?)
         ORDER BY desirability DESC NULLS LAST
         LIMIT ?
         """,
@@ -117,6 +135,8 @@ def get_offers_since(
             attainability=r["attainability"],
             attainability_detail=r["attainability_detail"],
             description=r["description"],
+            filtered_out=bool(r["filtered_out"]),
+            filter_reason=r["filter_reason"],
         )
         for r in rows
     ]

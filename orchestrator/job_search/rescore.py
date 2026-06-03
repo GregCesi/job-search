@@ -14,6 +14,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Re-score offers missing double-axis scores")
     parser.add_argument("--profile", default="profiles/gregoire.yaml")
     parser.add_argument("--dry-run", action="store_true", help="Affiche sans écrire en base")
+    parser.add_argument("--force", action="store_true", help="Recalcule toutes les offres (y compris déjà scorées)")
     args = parser.parse_args()
 
     from dotenv import load_dotenv
@@ -23,6 +24,7 @@ def main() -> None:
     from orchestrator.job_search.scoring.attainability import compute_attainability
     from orchestrator.job_search.scoring.desirability import compute_desirability
     from orchestrator.job_search.scoring.extractor import extract_facts
+    from orchestrator.job_search.scoring.filters import apply_hard_filters
     from orchestrator.job_search.sources.base import JobOffer
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.offers import save_offer
@@ -37,14 +39,16 @@ def main() -> None:
     conn = get_connection()
     init_db(conn)
 
+    desirability_cond = "" if args.force else "AND desirability IS NULL"
     rows = conn.execute(
-        """
+        f"""
         SELECT source, source_id, fingerprint, title, description,
                company, location, remote, contract_type, nature_contract,
                alternance, full_time, company_size, experience_required,
-               rome_code, rome_label, url, fetched_at
+               rome_code, rome_label, url, fetched_at, extracted_facts_json
         FROM offers
-        WHERE desirability IS NULL
+        WHERE (filtered_out = 0 OR filtered_out IS NULL)
+          {desirability_cond}
         ORDER BY fetched_at DESC
         """
     ).fetchall()
@@ -80,9 +84,28 @@ def main() -> None:
 
         print(f"[rescore] ({i}/{len(rows)}) {offer.title[:55]}", flush=True)
 
-        facts = extract_facts(offer, model=model, host=host)
+        filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria)
+        if filtered_out:
+            print(f"           → filtré : {filter_reason}")
+            if not args.dry_run:
+                save_offer(conn, offer, None, None, filtered_out=True, filter_reason=filter_reason)
+            n_ok += 1
+            continue
+
+        # Réutilise les faits déjà extraits si disponibles — 0 LLM (architecture.md §4)
+        facts = None
+        if r["extracted_facts_json"]:
+            try:
+                from orchestrator.job_search.sources.base import ExtractedFacts
+                facts = ExtractedFacts.model_validate_json(r["extracted_facts_json"])
+            except Exception:
+                facts = None
+
+        if facts is None:
+            facts = extract_facts(offer, model=model, host=host)
+
         offer = offer.model_copy(update={"extracted_facts": facts})
-        d = compute_desirability(offer, facts, profile.search_criteria)
+        d = compute_desirability(facts, profile.search_criteria)
         a = compute_attainability(facts, profile)
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""

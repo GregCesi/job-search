@@ -27,6 +27,7 @@ def main() -> None:
     from orchestrator.job_search.scoring.attainability import compute_attainability
     from orchestrator.job_search.scoring.desirability import compute_desirability
     from orchestrator.job_search.scoring.extractor import extract_facts
+    from orchestrator.job_search.scoring.filters import apply_hard_filters
     from orchestrator.job_search.sources.france_travail import FranceTravailSource
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.dedup import filter_new
@@ -62,15 +63,22 @@ def main() -> None:
     new_offers = filter_new(conn, all_offers)
     print(f"[run] {len(new_offers)} nouvelles ({len(all_offers) - len(new_offers)} déjà vues)")
 
-    # 6. Extract (LLM, 1 appel/offre) + Score (Python) + Persist
+    # 6. Filtre dur + Extract (LLM, 1 appel/offre) + Score (Python) + Persist
     for i, offer in enumerate(new_offers, 1):
         print(f"[run] ({i}/{len(new_offers)}) {offer.title[:55]}", flush=True)
+
+        filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria)
+        if filtered_out:
+            save_offer(conn, offer, None, None, filtered_out=True, filter_reason=filter_reason)
+            print(f"         → filtré : {filter_reason}")
+            continue
+
         embedder.add_offer(offer)
 
         facts = extract_facts(offer, model=model, host=host)
         offer = offer.model_copy(update={"extracted_facts": facts})
 
-        d = compute_desirability(offer, facts, profile.search_criteria)
+        d = compute_desirability(facts, profile.search_criteria)
         a = compute_attainability(facts, profile)
         save_offer(conn, offer, d, a)
 

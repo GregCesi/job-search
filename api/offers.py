@@ -34,12 +34,21 @@ def list_offers(
     source: str | None = Query(None),
     verdict: str | None = Query(None),
     seen: bool | None = Query(None),
+    filtered_out: bool | None = Query(None, description="None=exclut les filtrées, True=seulement les filtrées, False=non filtrées"),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
     sort: str = Query("desirability", pattern="^(desirability|fetched_at|title|company)$"),
     order: Literal["asc", "desc"] = Query("desc"),
 ) -> list[OfferRow]:
     conditions: list[str] = []
     params: list = []
+
+    # Par défaut on exclut les offres filtrées (stage, hors-zone, etc.)
+    if filtered_out is None:
+        conditions.append("o.filtered_out = 0")
+    elif filtered_out:
+        conditions.append("o.filtered_out = 1")
+    else:
+        conditions.append("o.filtered_out = 0")
 
     if desirability_min is not None:
         conditions.append("o.desirability >= ?")
@@ -72,6 +81,7 @@ def list_offers(
     sql = f"""
         SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
                o.desirability, o.attainability, o.seen, o.fetched_at,
+               o.filtered_out, o.filter_reason,
                v.status AS verdict
         FROM offers o
         LEFT JOIN verdicts v ON v.offer_id = o.id
@@ -97,6 +107,8 @@ def list_offers(
             verdict=r["verdict"],
             seen=bool(r["seen"]),
             fetched_at=r["fetched_at"] or "",
+            filtered_out=bool(r["filtered_out"]),
+            filter_reason=r["filter_reason"],
         )
         for r in rows
     ]
@@ -139,6 +151,8 @@ def get_offer(offer_id: int) -> OfferDetail:
         verdict=row["verdict"],
         seen=True,
         fetched_at=row["fetched_at"] or "",
+        filtered_out=bool(row["filtered_out"]),
+        filter_reason=row["filter_reason"],
         description=row["description"],
         url=row["url"],
         source=row["source"],

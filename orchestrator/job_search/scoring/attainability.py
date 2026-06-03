@@ -21,6 +21,29 @@ _SENIORITY_ORDER: dict[SeniorityLevel, int] = {
 # Niveaux de maîtrise considérés comme "connu" pour le matching
 _KNOWN = {MasteryLevel.working, MasteryLevel.confirmed}
 
+# Alias de technos équivalentes (équivalences évidentes seulement — architecture.md §4).
+# postgres → sql, sqlite → sql, etc. Pas de jugement de niveau (chantier 2).
+_TECH_ALIASES: dict[str, str] = {
+    # Famille SQL → "sql"
+    "postgresql": "sql",
+    "postgres":   "sql",
+    "mysql":      "sql",
+    "mariadb":    "sql",
+    "mssql":      "sql",
+    "bigquery":   "sql",
+    "snowflake":  "sql",
+    "supabase":   "sql",
+    # SQLite variante
+    "sqlite3":    "sqlite",
+    # LangChain écosystème
+    "langsmith":  "langchain",
+}
+
+
+def _canonical(tech: str) -> str:
+    """Normalise une techno vers son alias canonique si équivalence évidente."""
+    return _TECH_ALIASES.get(tech.lower(), tech.lower())
+
 
 class ReachLevel(str, Enum):
     at_level = "at_level"
@@ -48,11 +71,11 @@ def compute_attainability(facts: ExtractedFacts, profile: Profile) -> Attainabil
 
     techs_matched = [
         t for t in facts.techs_required
-        if profile.tech_level(t) in _KNOWN
+        if profile.tech_level(_canonical(t)) in _KNOWN
     ]
     techs_missing = [
         t for t in facts.techs_required
-        if profile.tech_level(t) not in _KNOWN  # None + notions = gap réel
+        if profile.tech_level(_canonical(t)) not in _KNOWN  # None + notions = gap réel
     ]
 
     n_req = len(facts.techs_required)

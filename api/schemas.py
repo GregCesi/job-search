@@ -15,6 +15,8 @@ class OfferRow(BaseModel):
     verdict: str | None
     seen: bool
     fetched_at: str
+    filtered_out: bool = False
+    filter_reason: str | None = None
 
 
 class ExtractedFactsSchema(BaseModel):
