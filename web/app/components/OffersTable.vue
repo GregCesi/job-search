@@ -60,13 +60,15 @@
             <span v-else class="text-gray-500">{{ offer.location ?? '—' }}</span>
           </td>
 
-          <!-- Désirabilité + Atteignabilité -->
+          <!-- Désirabilité + Catégorie -->
           <td class="px-3 py-3 whitespace-nowrap">
             <div class="flex items-center gap-1.5">
               <ScoreBadge :score="offer.desirability" />
-              <span v-if="offer.attainability" :class="reachClass(offer.attainability)"
+              <span class="text-gray-300 text-xs">·</span>
+              <ScoreBadge :score="offer.attainability" />
+              <span v-if="offer.category" :class="categoryClass(offer.category)"
                     class="text-xs px-1.5 py-0.5 rounded font-medium">
-                {{ reachLabel(offer.attainability) }}
+                {{ categoryLabel(offer.category) }}
               </span>
             </div>
           </td>
@@ -109,17 +111,18 @@ const COLS = [
   { key: 'verdict',      label: 'Verdict',     sortable: false },
 ]
 
-function reachLabel(a: string) {
-  if (a === 'at_level') return '✓'
-  if (a === 'one_step_up') return '↑'
-  if (a === 'out_of_reach') return '✗'
-  return a
+function categoryLabel(c: string) {
+  if (c === 'parfait')     return '★ parfait'
+  if (c === 'reve')        return '◈ rêve'
+  if (c === 'atteignable') return '✓ atteignable'
+  return '✗ hors'
 }
 
-function reachClass(a: string) {
-  if (a === 'at_level') return 'bg-green-50 text-green-700'
-  if (a === 'one_step_up') return 'bg-amber-50 text-amber-700'
-  return 'bg-red-50 text-red-600'
+function categoryClass(c: string) {
+  if (c === 'parfait')     return 'bg-green-50 text-green-700'
+  if (c === 'reve')        return 'bg-indigo-50 text-indigo-700'
+  if (c === 'atteignable') return 'bg-amber-50 text-amber-700'
+  return 'bg-gray-100 text-gray-400'
 }
 
 function toggleSort(key: string) {

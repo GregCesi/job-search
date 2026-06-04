@@ -97,10 +97,27 @@
               <!-- Atteignabilité -->
               <div class="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
                 <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Atteignabilité</p>
-                <span :class="reachClass(offer.attainability)" class="inline-block px-2 py-0.5 rounded text-xs font-semibold">
-                  {{ reachLabel(offer.attainability) }}
+                <div class="flex items-center gap-2 mb-1">
+                  <ScoreBadge :score="offer.attainability" />
+                  <div class="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                    <div
+                      :style="{ width: `${offer.attainability ?? 0}%` }"
+                      :class="scoreBarClass(offer.attainability ?? 0)"
+                      class="h-full rounded-full transition-all"
+                    />
+                  </div>
+                </div>
+                <span :class="categoryClass(offer.category)" class="inline-block px-2 py-0.5 rounded text-xs font-semibold">
+                  {{ categoryLabel(offer.category) }}
                 </span>
                 <div v-if="offer.attainability_detail" class="mt-2 space-y-1 text-xs text-gray-500">
+                  <p>
+                    tech <span class="font-medium text-gray-700">{{ offer.attainability_detail.attain_tech.toFixed(0) }}</span>
+                    · rôle <span class="font-medium text-gray-700">{{ offer.attainability_detail.attain_role.toFixed(0) }}</span>
+                    <span v-if="offer.attainability_detail.blocked_by" class="ml-1 text-amber-600">
+                      ← bloqué par {{ offer.attainability_detail.blocked_by }}
+                    </span>
+                  </p>
                   <p v-if="offer.attainability_detail.techs_matched.length > 0">
                     <span class="text-green-600 font-medium">✓</span>
                     {{ offer.attainability_detail.techs_matched.join(', ') }}
@@ -108,9 +125,6 @@
                   <p v-if="offer.attainability_detail.techs_missing.length > 0">
                     <span class="text-red-500 font-medium">✗</span>
                     {{ offer.attainability_detail.techs_missing.join(', ') }}
-                  </p>
-                  <p class="text-gray-400">
-                    Écart séniorité : {{ offer.attainability_detail.seniority_gap > 0 ? '+' : '' }}{{ offer.attainability_detail.seniority_gap }}
                   </p>
                 </div>
               </div>
@@ -308,17 +322,18 @@ function toggleVerdict(status: string) {
   }
 }
 
-function reachLabel(a: string | null) {
-  if (a === 'at_level') return '✓ À portée'
-  if (a === 'one_step_up') return '↑ Un cran au-dessus'
-  if (a === 'out_of_reach') return '✗ Hors de portée'
+function categoryLabel(c: string | null) {
+  if (c === 'parfait')     return '★ Parfait'
+  if (c === 'reve')        return '◈ Rêve'
+  if (c === 'atteignable') return '✓ Atteignable'
+  if (c === 'hors')        return '✗ Hors de portée'
   return '—'
 }
 
-function reachClass(a: string | null) {
-  if (a === 'at_level') return 'bg-green-50 text-green-700'
-  if (a === 'one_step_up') return 'bg-amber-50 text-amber-700'
-  if (a === 'out_of_reach') return 'bg-red-50 text-red-600'
+function categoryClass(c: string | null) {
+  if (c === 'parfait')     return 'bg-green-50 text-green-700'
+  if (c === 'reve')        return 'bg-indigo-50 text-indigo-700'
+  if (c === 'atteignable') return 'bg-amber-50 text-amber-700'
   return 'bg-gray-100 text-gray-400'
 }
 

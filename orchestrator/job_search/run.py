@@ -42,7 +42,7 @@ def main() -> None:
 
     # 1. Profil
     profile, profile_hash = load_profile(args.profile)
-    print(f"[run] profil : {profile.profile_id} seniority={profile.seniority.value} (hash={profile_hash[:8]}…)")
+    print(f"[run] profil : {profile.profile_id} role_ceiling={profile.role_ceiling.value} (hash={profile_hash[:8]}…)")
 
     # 2. DB
     conn = get_connection()
@@ -78,7 +78,7 @@ def main() -> None:
         facts = extract_facts(offer, model=model, host=host)
         offer = offer.model_copy(update={"extracted_facts": facts})
 
-        d = compute_desirability(facts, profile.search_criteria)
+        d = compute_desirability(facts, profile.search_criteria, profile)
         a = compute_attainability(facts, profile)
         save_offer(conn, offer, d, a)
 

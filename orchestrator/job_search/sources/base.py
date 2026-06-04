@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class SeniorityLevel(str, Enum):
@@ -12,12 +13,37 @@ class SeniorityLevel(str, Enum):
     lead = "lead"
 
 
+class RoleLevel(str, Enum):
+    ic = "ic"
+    lead = "lead"
+    manager = "manager"
+
+
+class TechRequirement(BaseModel):
+    name: str
+    importance: Literal["core", "required", "nice_to_have"]
+
+
 class ExtractedFacts(BaseModel):
     """Faits intrinsèques extraits par LLM une seule fois à l'ingestion (architecture.md §4)."""
     seniority_required: SeniorityLevel
-    techs_required: list[str]          # y compris implicites ("RAG en prod" → "RAG")
-    domain: str                         # domaine métier réel désambiguïsé
-    parse_failed: bool = False          # flag si extraction LLM dégradée (architecture.md §3)
+    techs_required: list[TechRequirement]   # y compris implicites ("RAG en prod" → "RAG")
+    domain: str                              # domaine métier réel désambiguïsé
+    role_level: RoleLevel = RoleLevel.ic    # rôle non-technique (ic/lead/manager)
+    parse_failed: bool = False              # flag si extraction LLM dégradée (architecture.md §3)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_techs_v1(cls, data: object) -> object:
+        """Compat v1 : techs_required était list[str] — coerce en list[TechRequirement]."""
+        if isinstance(data, dict):
+            techs = data.get("techs_required", [])
+            if techs and isinstance(techs[0], str):
+                data = dict(data)
+                data["techs_required"] = [
+                    {"name": t, "importance": "required"} for t in techs
+                ]
+        return data
 
 
 class JobOffer(BaseModel):

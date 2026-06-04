@@ -10,7 +10,9 @@ export interface OfferRow {
   remote: boolean
   contract_type: string | null
   desirability: number | null
-  attainability: string | null
+  attainability: number | null       // score 0-100 (chantier 2)
+  category: string | null            // parfait | reve | atteignable | hors
+  score_in_category: number | null
   verdict: string | null
   seen: boolean
   fetched_at: string
@@ -24,9 +26,11 @@ export interface ExtractedFacts {
 }
 
 export interface AttainabilityDetail {
+  attain_tech: number
+  attain_role: number
+  blocked_by: string | null
   techs_matched: string[]
   techs_missing: string[]
-  seniority_gap: number
 }
 
 export interface Criterion {
@@ -59,7 +63,8 @@ export interface OfferDetail extends OfferRow {
 export interface Filters {
   desirability_min?: number
   desirability_max?: number
-  attainability?: string
+  attainability_min?: number
+  category?: string
   remote?: boolean
   source?: string
   verdict?: string
@@ -72,10 +77,10 @@ export interface Filters {
 export type ActiveView = 'a_traiter' | 'atteignables' | 'favoris' | 'tout'
 
 const VIEW_PRESETS: Record<ActiveView, Partial<Filters>> = {
-  a_traiter:    { seen: false,                              sort: 'desirability', order: 'desc' },
-  atteignables: { desirability_min: 60, attainability: 'at_level', sort: 'desirability', order: 'desc' },
-  favoris:      { verdict: 'favori',                        sort: 'desirability', order: 'desc' },
-  tout:         {                                            sort: 'desirability', order: 'desc' },
+  a_traiter:    { seen: false,                                           sort: 'category',     order: 'desc' },
+  atteignables: { desirability_min: 50, attainability_min: 40,           sort: 'desirability', order: 'desc' },
+  favoris:      { verdict: 'favori',                                     sort: 'desirability', order: 'desc' },
+  tout:         {                                                         sort: 'desirability', order: 'desc' },
 }
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -99,7 +104,8 @@ export const useOffersStore = defineStore('offers', () => {
       }
       if (filters.value.desirability_min !== undefined) params.desirability_min = filters.value.desirability_min
       if (filters.value.desirability_max !== undefined) params.desirability_max = filters.value.desirability_max
-      if (filters.value.attainability !== undefined) params.attainability = filters.value.attainability
+      if (filters.value.attainability_min !== undefined) params.attainability_min = filters.value.attainability_min
+      if (filters.value.category !== undefined) params.category = filters.value.category
       if (filters.value.remote !== undefined) params.remote = filters.value.remote
       if (filters.value.source !== undefined) params.source = filters.value.source
       if (filters.value.verdict !== undefined) params.verdict = filters.value.verdict

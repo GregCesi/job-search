@@ -2,6 +2,7 @@
 
 Une ligne par décision architecturale ou de cadrage prise en cours de route. Format : `{YYYY-MM-DD} — {décision} — {raison} — {alternative écartée}`.
 
+- 2026-06-03 — Chantier 2 Phase 1 : `attainability.py` accepté cassé entre L1 et L9 (Option B) — la réécriture Phase 3 est totale, une compat temporaire imposerait un shim `seniority←role_ceiling` sémantiquement faux — écarté : compat shim (mensonge dans le loader).
 - 2026-05-30 — Architecture `.claude/` modulaire adoptée — séparation invariant/évolutif/état pour éviter le monolithe CLAUDE.md.
 - 2026-05-30 — Scoring par critères atomiques + agrégation côté code — fidélité structurelle score↔justif sur 7B/8B local — écarté : score libre en un prompt (rationalisation post-hoc).
 - 2026-05-30 — Sources derrière interface `Source` + schéma neutre `JobOffer` — extensibilité multi-source sans refonte aval — écarté : consommer le JSON France Travail brut (couplage).
@@ -22,3 +23,5 @@ Une ligne par décision architecturale ou de cadrage prise en cours de route. Fo
 - 2026-06-03 — human_reviews utilise offer_id TEXT (pas INTEGER FK) — forward-compat multi-source (source_id string à terme), découplage volontaire du PK offers.id — écarté : FK INTEGER (rigidité schéma, empêche les reviews sur offres archivées).
 - 2026-06-03 — Normaliseur criteria côté API (_build_criteria) : 3 critères fixes (domain/seniority/tech_coverage) dérivés des champs scoring existants — critères stables sans nouvelle colonne DB, 0 LLM, forme [{nom,note,justif,axe}] consommable par le front et le snapshot — écarté : exposer desirability_detail brut au front (format ad-hoc, non comparable côté humain).
 - 2026-06-03 — ai_snapshot_json capturé à l'instant du PUT /review côté API (pas côté front) — garantit que le snapshot est déterministe et reproductible, indépendant de la version front — écarté : front envoie le snapshot (risque de désynchronisation si front retardé).
+- 2026-06-03 — Vue "À traiter" triée par catégorie (parfait→rêve→atteignable→hors) + score_in_category intra-case — cohérent avec la sémantique des 4 cases : le rang absolu entre cases n'a pas de sens, chaque case est une pile distincte — écarté : tri par désirabilité global (mélange les cases, duplique l'ancienne logique scalaire).
+- 2026-06-03 — FiltersPanel "Tout" : filtre désirabilité min/max remplacé par select catégorie — le filtre numérique est redondant avec le tri catégoriel ; le select catégorie est plus naturel pour naviguer par case — écarté : garder les deux (surcharge UI).

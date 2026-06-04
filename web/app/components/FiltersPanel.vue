@@ -13,24 +13,19 @@
       />
     </div>
 
-    <!-- Désirabilité min/max -->
+    <!-- Catégorie -->
     <div class="flex flex-col gap-1">
-      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Désirabilité</label>
-      <div class="flex items-center gap-1">
-        <input
-          v-model.number="local.desirability_min"
-          type="number" min="0" max="100"
-          placeholder="min"
-          class="w-16 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
-        <span class="text-gray-400">–</span>
-        <input
-          v-model.number="local.desirability_max"
-          type="number" min="0" max="100"
-          placeholder="max"
-          class="w-16 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
-      </div>
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Catégorie</label>
+      <select
+        v-model="local.category"
+        class="border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+      >
+        <option value="">Toutes</option>
+        <option value="parfait">★ Parfait</option>
+        <option value="reve">◈ Rêve</option>
+        <option value="atteignable">✓ Atteignable</option>
+        <option value="hors">✗ Hors</option>
+      </select>
     </div>
 
     <!-- Remote -->
@@ -86,40 +81,35 @@ const store = useOffersStore()
 
 interface LocalFilters {
   q: string
-  desirability_min: number | undefined
-  desirability_max: number | undefined
+  category: string
   remote: boolean | undefined
   verdict: string
 }
 
 const local = reactive<LocalFilters>({
   q: '',
-  desirability_min: undefined,
-  desirability_max: undefined,
+  category: '',
   remote: undefined,
   verdict: '',
 })
 
 function apply() {
-  store.filters.q          = local.q || undefined
-  store.filters.desirability_min  = local.desirability_min
-  store.filters.desirability_max  = local.desirability_max
-  store.filters.remote     = local.remote
-  store.filters.verdict    = local.verdict || undefined
+  store.filters.q        = local.q || undefined
+  store.filters.category = local.category || undefined
+  store.filters.remote   = local.remote
+  store.filters.verdict  = local.verdict || undefined
   store.fetchOffers()
 }
 
 function reset() {
-  local.q         = ''
-  local.desirability_min = undefined
-  local.desirability_max = undefined
-  local.remote    = undefined
-  local.verdict   = ''
+  local.q        = ''
+  local.category = ''
+  local.remote   = undefined
+  local.verdict  = ''
   store.filters.q        = undefined
-  store.filters.desirability_min = undefined
-  store.filters.desirability_max = undefined
-  store.filters.remote    = undefined
-  store.filters.verdict   = undefined
+  store.filters.category = undefined
+  store.filters.remote   = undefined
+  store.filters.verdict  = undefined
   store.fetchOffers()
 }
 </script>

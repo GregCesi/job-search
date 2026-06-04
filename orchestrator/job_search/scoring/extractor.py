@@ -11,7 +11,13 @@ import warnings
 import ollama
 from dotenv import load_dotenv
 
-from orchestrator.job_search.sources.base import ExtractedFacts, JobOffer, SeniorityLevel
+from orchestrator.job_search.sources.base import (
+    ExtractedFacts,
+    JobOffer,
+    RoleLevel,
+    SeniorityLevel,
+    TechRequirement,
+)
 
 load_dotenv()
 
@@ -23,38 +29,57 @@ You are a technical job offer analyzer. Extract facts from the job offer — no 
 Reply with a single valid JSON object, nothing else:
 {
   "seniority_required": "<junior|intermediate|senior|lead>",
-  "techs_required": ["<tech1>", "<tech2>", ...],
-  "domain": "<ai_engineering|data_engineering|data_science|backend|devops|fullstack|embedded|other>"
+  "techs_required": [
+    {"name": "<tech>", "importance": "<core|required|nice_to_have>"},
+    ...
+  ],
+  "domain": "<ai_engineering|data_engineering|data_science|backend|devops|fullstack|embedded|other>",
+  "role_level": "<ic|lead|manager>"
 }
 
 Rules:
 - seniority_required: junior=0-2 yrs, intermediate=2-5 yrs, senior=5-10 yrs, lead=tech lead or 10+ yrs or management.
-- techs_required: specific technology names and frameworks only. Include implicit ones \
+- techs_required: specific technology names only. Include implicit ones \
 (e.g. "RAG architectures" → "rag", "orchestration de flux" → "airflow"). All lowercase.
+  importance values:
+    core         = central to the role — explicitly required, mentioned multiple times, or the main stack
+    required     = needed but secondary — must have, but not the focus
+    nice_to_have = optional — "idéalement", "un plus", "apprécié", bonus
 - domain: single best fit from the allowed values only.
+- role_level:
+    ic      = individual contributor — no team management
+    lead    = tech lead / squad lead — technical leadership of a team, but may have no reports
+    manager = people management — hiring, reviews, headcount responsibility
 """
 
 _FEW_SHOT = """\
-Example 1:
-Title: Senior ML Engineer
-Description: Building RAG pipelines with LangChain, fine-tuning LLMs with PyTorch, production deployment on Kubernetes.
-Experience hint: Exigée
-→ {"seniority_required": "senior", "techs_required": ["python", "langchain", "rag", "llm", "pytorch", "kubernetes"], "domain": "ai_engineering"}
-
-Example 2:
-Title: Data Engineer
-Description: Développement de pipelines ETL sur Databricks, SQL, Spark, orchestration Airflow, intégration Salesforce.
-Experience hint: Souhaitée
-→ {"seniority_required": "intermediate", "techs_required": ["python", "databricks", "sql", "spark", "airflow"], "domain": "data_engineering"}
-
-Example 3:
+Example 1 — IC role, mixed importance:
 Title: Développeur IA / LLM (H/F)
-Description: Vous concevez des architectures RAG en production, fine-tunez des modèles open-source, et intégrez des agents LangGraph dans une API FastAPI. Stack : Python, LangChain, LangGraph, PostgreSQL, Docker. Compétences : Python confirmé, Git, REST API.
+Description: Vous concevez des architectures RAG en production avec LangGraph et FastAPI. \
+Stack cœur : Python, LangChain, LangGraph, PostgreSQL, Docker. \
+Maîtrise de Python et LangChain exigée. Git souhaité. Kubernetes serait un plus.
 Experience hint: Souhaitée
-→ {"seniority_required": "intermediate", "techs_required": ["python", "rag", "langchain", "langgraph", "fastapi", "postgresql", "docker", "git"], "domain": "ai_engineering"}
+→ {"seniority_required": "intermediate", "techs_required": [{"name": "python", "importance": "core"}, {"name": "rag", "importance": "core"}, {"name": "langchain", "importance": "core"}, {"name": "langgraph", "importance": "required"}, {"name": "fastapi", "importance": "required"}, {"name": "postgresql", "importance": "required"}, {"name": "docker", "importance": "required"}, {"name": "git", "importance": "required"}, {"name": "kubernetes", "importance": "nice_to_have"}], "domain": "ai_engineering", "role_level": "ic"}
+
+Example 2 — Tech lead role:
+Title: Tech Lead Data / ML (H/F)
+Description: Vous pilotez une équipe de 5 data engineers. Référent technique sur notre stack Spark/Databricks. \
+Recrutement et montée en compétences de l'équipe. Expertise Python et Spark indispensable. SQL, Airflow requis. Kafka apprécié.
+Experience hint: Exigée
+→ {"seniority_required": "lead", "techs_required": [{"name": "python", "importance": "core"}, {"name": "spark", "importance": "core"}, {"name": "databricks", "importance": "required"}, {"name": "sql", "importance": "required"}, {"name": "airflow", "importance": "required"}, {"name": "kafka", "importance": "nice_to_have"}], "domain": "data_engineering", "role_level": "lead"}
+
+Example 3 — Backend IC, legacy stack:
+Title: Développeur Java Backend (H/F)
+Description: Développement de microservices Java/Spring Boot, exposition REST, intégration PostgreSQL. \
+Docker et CI/CD Jenkins sont utilisés. Angular côté client (équipe frontend dédiée, vous n'y touchez pas). \
+Kafka ou RabbitMQ serait un plus.
+Experience hint: Souhaitée
+→ {"seniority_required": "intermediate", "techs_required": [{"name": "java", "importance": "core"}, {"name": "spring", "importance": "core"}, {"name": "postgresql", "importance": "required"}, {"name": "docker", "importance": "required"}, {"name": "jenkins", "importance": "required"}, {"name": "kafka", "importance": "nice_to_have"}, {"name": "rabbitmq", "importance": "nice_to_have"}], "domain": "backend", "role_level": "ic"}
 """
 
 _SENIORITY_VALID = {s.value for s in SeniorityLevel}
+_ROLE_VALID = {r.value for r in RoleLevel}
+_IMPORTANCE_VALID = {"core", "required", "nice_to_have"}
 _DOMAIN_VALID = {
     "ai_engineering", "data_engineering", "data_science",
     "backend", "devops", "fullstack", "embedded", "other",
@@ -67,6 +92,7 @@ def _fallback() -> ExtractedFacts:
         seniority_required=SeniorityLevel.intermediate,
         techs_required=[],
         domain="other",
+        role_level=RoleLevel.ic,
         parse_failed=True,
     )
 
@@ -111,7 +137,6 @@ def extract_facts(
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
                     raw = raw[4:]
-            # Le modèle peut préfixer avec "→ " en imitant les few-shots
             if raw.startswith("→"):
                 raw = raw.lstrip("→").strip()
             data = json.loads(raw)
@@ -123,15 +148,36 @@ def extract_facts(
                 else SeniorityLevel.intermediate
             )
 
-            techs = [str(t).lower().strip() for t in data.get("techs_required", []) if t]
+            raw_techs = data.get("techs_required", [])
+            techs: list[TechRequirement] = []
+            for item in raw_techs:
+                if isinstance(item, str):
+                    # Model ignored the new format — degrade gracefully
+                    name = item.lower().strip()
+                    if name:
+                        techs.append(TechRequirement(name=name, importance="required"))
+                elif isinstance(item, dict):
+                    name = str(item.get("name", "")).lower().strip()
+                    importance = str(item.get("importance", "")).lower()
+                    if name:
+                        techs.append(TechRequirement(
+                            name=name,
+                            importance=importance if importance in _IMPORTANCE_VALID else "required",
+                        ))
 
             domain_raw = str(data.get("domain", "")).lower()
             domain = domain_raw if domain_raw in _DOMAIN_VALID else "other"
+
+            role_raw = str(data.get("role_level", "ic")).lower()
+            role_level = (
+                RoleLevel(role_raw) if role_raw in _ROLE_VALID else RoleLevel.ic
+            )
 
             return ExtractedFacts(
                 seniority_required=seniority,
                 techs_required=techs,
                 domain=domain,
+                role_level=role_level,
             )
         except Exception as exc:
             if attempt == retries:

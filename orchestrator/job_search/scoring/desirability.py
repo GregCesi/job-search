@@ -9,7 +9,8 @@ Phase 2 : domain passe de binaire à gradué par distance au cœur-cible.
 """
 from pydantic import BaseModel
 
-from orchestrator.job_search.matching.profile import SearchCriteria
+from orchestrator.job_search.matching.profile import Profile, SearchCriteria
+from orchestrator.job_search.scoring.attainability import _canonical
 from orchestrator.job_search.sources.base import ExtractedFacts
 
 # Gradient de distance au domaine cible (profil Grégoire : AI Engineering).
@@ -32,6 +33,28 @@ class Desirability(BaseModel):
     detail: dict        # détail par critère — observable
 
 
+# Facteur minimal quand desire=0 sur toutes les technos connues (calibrable)
+_DESIRE_FLOOR = 0.5
+
+
+def _desire_factor(facts: ExtractedFacts, profile: Profile) -> float:
+    """
+    Facteur d'envie-techno ∈ [_DESIRE_FLOOR, 1.0].
+    Inconnu neutre : si aucune techno de l'offre n'est dans le profil → 1.0.
+    desire=0 sur toutes les connues → _DESIRE_FLOOR (score de domaine divisé par 2 max).
+    desire=10 sur toutes → 1.0 (pas de modification).
+    """
+    desires = [
+        profile.tech_desire(_canonical(t.name))
+        for t in facts.techs_required
+        if profile.tech_desire(_canonical(t.name)) is not None
+    ]
+    if not desires:
+        return 1.0  # inconnu = neutre
+    mean_desire = sum(desires) / len(desires) / 10.0  # → [0, 1]
+    return _DESIRE_FLOOR + (1.0 - _DESIRE_FLOOR) * mean_desire
+
+
 def _domain_score(domain: str) -> float:
     """
     Distance graduée au domaine cible. Retourne 0.0 pour tout domaine inconnu.
@@ -43,14 +66,17 @@ def _domain_score(domain: str) -> float:
 def compute_desirability(
     facts: ExtractedFacts,
     criteria: SearchCriteria,
+    profile: Profile | None = None,
 ) -> Desirability:
     """
     Calcule la désirabilité d'une offre.
-    Phase 2 : un seul critère — domain gradué (0-100).
-    criteria conservé en signature pour la traçabilité (preferred domains loggés dans detail).
+    = domain_gradient × desire_factor × 100.
+    desire_factor : envie moyenne sur les technos connues de l'offre (inconnu neutre = 1.0).
+    profile=None : modulation désactivée (desire_factor=1.0).
     """
     d = _domain_score(facts.domain)
-    score = round(d * 100, 1)
+    factor = _desire_factor(facts, profile) if profile is not None else 1.0
+    score = round(d * factor * 100, 1)
 
     return Desirability(
         score=score,
@@ -60,6 +86,10 @@ def compute_desirability(
                 "value": facts.domain,
                 "preferred": criteria.domains,
                 "gradient": _DOMAIN_GRADIENT.get(facts.domain.lower(), 0.0),
+            },
+            "desire": {
+                "factor": round(factor, 3),
+                "active": profile is not None,
             },
         },
     )

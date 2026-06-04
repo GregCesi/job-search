@@ -22,6 +22,7 @@ def main() -> None:
 
     from orchestrator.job_search.matching.profile import load_profile
     from orchestrator.job_search.scoring.attainability import compute_attainability
+    from orchestrator.job_search.scoring.categorize import score_offer
     from orchestrator.job_search.scoring.desirability import compute_desirability
     from orchestrator.job_search.scoring.extractor import extract_facts
     from orchestrator.job_search.scoring.filters import apply_hard_filters
@@ -34,7 +35,7 @@ def main() -> None:
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
     profile, profile_hash = load_profile(args.profile)
-    print(f"[rescore] profil : {profile.profile_id} ({profile.seniority.value})")
+    print(f"[rescore] profil : {profile.profile_id} ({profile.role_ceiling.value})")
 
     conn = get_connection()
     init_db(conn)
@@ -105,17 +106,18 @@ def main() -> None:
             facts = extract_facts(offer, model=model, host=host)
 
         offer = offer.model_copy(update={"extracted_facts": facts})
-        d = compute_desirability(facts, profile.search_criteria)
+        d = compute_desirability(facts, profile.search_criteria, profile)
         a = compute_attainability(facts, profile)
+        s = score_offer(d.score, a.score)
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
         print(
-            f"           → d={d.score:.1f}  a={a.level.value}"
-            f"  ✓{a.techs_matched}  ✗{a.techs_missing}{flag}"
+            f"           → d={d.score:.1f}  a={a.score:.1f}  [{s.category.value}]"
+            f"  blocked={a.blocked_by}{flag}"
         )
 
         if not args.dry_run:
-            save_offer(conn, offer, d, a)
+            save_offer(conn, offer, d, a, scored=s)
             n_ok += 1
         else:
             n_ok += 1

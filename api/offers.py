@@ -21,7 +21,7 @@ from .schemas import (
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-_SORT_COLS = {"desirability", "fetched_at", "title", "company"}
+_SORT_COLS = {"desirability", "fetched_at", "title", "company", "category"}
 
 
 # ---------------------------------------------------------------------------
@@ -32,14 +32,15 @@ _SORT_COLS = {"desirability", "fetched_at", "title", "company"}
 def list_offers(
     desirability_min: float | None = Query(None),
     desirability_max: float | None = Query(None),
-    attainability: str | None = Query(None, pattern="^(at_level|one_step_up|out_of_reach)$"),
+    attainability_min: float | None = Query(None),
     remote: bool | None = Query(None),
     source: str | None = Query(None),
     verdict: str | None = Query(None),
     seen: bool | None = Query(None),
     filtered_out: bool | None = Query(None, description="None=exclut les filtrées, True=seulement les filtrées, False=non filtrées"),
+    category: str | None = Query(None, description="parfait | reve | atteignable | hors"),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
-    sort: str = Query("desirability", pattern="^(desirability|fetched_at|title|company)$"),
+    sort: str = Query("desirability", pattern="^(desirability|fetched_at|title|company|category)$"),
     order: Literal["asc", "desc"] = Query("desc"),
 ) -> list[OfferRow]:
     conditions: list[str] = []
@@ -59,9 +60,9 @@ def list_offers(
     if desirability_max is not None:
         conditions.append("o.desirability <= ?")
         params.append(desirability_max)
-    if attainability is not None:
-        conditions.append("o.attainability = ?")
-        params.append(attainability)
+    if attainability_min is not None:
+        conditions.append("o.attainability >= ?")
+        params.append(attainability_min)
     if remote is not None:
         conditions.append("o.remote = ?")
         params.append(1 if remote else 0)
@@ -74,22 +75,36 @@ def list_offers(
     if seen is not None:
         conditions.append("o.seen = ?")
         params.append(1 if seen else 0)
+    if category is not None:
+        conditions.append("o.category = ?")
+        params.append(category)
     if q is not None:
         conditions.append("(LOWER(o.title) LIKE ? OR LOWER(o.company) LIKE ?)")
         like = f"%{q.lower()}%"
         params.extend([like, like])
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    sort_col = sort if sort in _SORT_COLS else "desirability"
+    if sort == "category":
+        order_clause = """
+            CASE o.category
+                WHEN 'parfait'     THEN 1
+                WHEN 'reve'        THEN 2
+                WHEN 'atteignable' THEN 3
+                WHEN 'hors'        THEN 4
+                ELSE 5
+            END ASC, o.score_in_category DESC NULLS LAST"""
+    else:
+        sort_col = sort if sort in _SORT_COLS else "desirability"
+        order_clause = f"o.{sort_col} {order.upper()} NULLS LAST"
     sql = f"""
         SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
-               o.desirability, o.attainability, o.seen, o.fetched_at,
-               o.filtered_out, o.filter_reason,
+               o.desirability, o.attainability, o.category, o.score_in_category,
+               o.seen, o.fetched_at, o.filtered_out, o.filter_reason,
                v.status AS verdict
         FROM offers o
         LEFT JOIN verdicts v ON v.offer_id = o.id
         {where}
-        ORDER BY o.{sort_col} {order.upper()} NULLS LAST
+        ORDER BY {order_clause}
     """
     conn = get_conn()
     try:
@@ -107,6 +122,8 @@ def list_offers(
             contract_type=r["contract_type"],
             desirability=r["desirability"],
             attainability=r["attainability"],
+            category=r["category"],
+            score_in_category=r["score_in_category"],
             verdict=r["verdict"],
             seen=bool(r["seen"]),
             fetched_at=r["fetched_at"] or "",
@@ -154,6 +171,8 @@ def get_offer(offer_id: int) -> OfferDetail:
         contract_type=row["contract_type"],
         desirability=row["desirability"],
         attainability=row["attainability"],
+        category=row["category"],
+        score_in_category=row["score_in_category"],
         verdict=row["verdict"],
         seen=True,
         fetched_at=row["fetched_at"] or "",
@@ -173,7 +192,16 @@ def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:
     if not raw:
         return None
     try:
-        return ExtractedFactsSchema(**json.loads(raw))
+        data = json.loads(raw)
+        techs = data.get("techs_required", [])
+        # Compat v1 (list[str]) et v2 (list[{name, importance}])
+        names = [t["name"] if isinstance(t, dict) else t for t in techs]
+        return ExtractedFactsSchema(
+            seniority_required=data.get("seniority_required", ""),
+            techs_required=names,
+            domain=data.get("domain", ""),
+            parse_failed=data.get("parse_failed", False),
+        )
     except Exception as exc:
         log.warning("extracted_facts_json parse failed for offer %s: %s", offer_id, exc)
         return None
@@ -203,9 +231,8 @@ def _build_criteria(
     desirability_detail: dict | None,
     attainability_detail: AttainabilityDetailSchema | None,
 ) -> list[CriterionSchema]:
-    """Normalise les champs de scoring existants vers une liste {nom, note 0-10, justif, axe}.
-
-    Hypothèse de stabilité vérifiée au point de validation C-2 (IMPLEMENTATION-calibration.md).
+    """Normalise les champs de scoring vers une liste {nom, note 0-10, justif, axe}.
+    Structure [{nom, note, justif, axe}] inchangée — ai_snapshot_json reste parsable (L14).
     """
     criteria: list[CriterionSchema] = []
 
@@ -214,41 +241,43 @@ def _build_criteria(
         if domain:
             gradient = float(domain.get("gradient", domain.get("score", 0)))
             value = domain.get("value", "?")
+            desire = desirability_detail.get("desire", {})
+            factor = desire.get("factor", 1.0)
             criteria.append(CriterionSchema(
                 nom="domain",
-                note=round(gradient * 10, 1),
-                justif=f"{value} (gradient {gradient:.2f})",
+                note=round(gradient * factor * 10, 1),
+                justif=f"{value} (gradient {gradient:.2f} × envie {factor:.2f})",
                 axe="desirability",
             ))
 
     if attainability_detail:
-        gap = attainability_detail.seniority_gap
-        seniority_note = 10.0 if gap <= 0 else (7.0 if gap == 1 else 0.0)
-        gap_str = f"{'+' if gap > 0 else ''}{gap}"
+        # attain_role → critère "role"
+        role_note = round(attainability_detail.attain_role / 10, 1)
+        blocked = attainability_detail.blocked_by
         criteria.append(CriterionSchema(
-            nom="seniority",
-            note=seniority_note,
-            justif=f"Écart séniorité : {gap_str}",
+            nom="role",
+            note=role_note,
+            justif=f"attain_role={attainability_detail.attain_role:.0f}"
+                   + (" ← bloque" if blocked == "role" else ""),
             axe="attainability",
         ))
 
+        # attain_tech → critère "tech_coverage"
+        tech_note = round(attainability_detail.attain_tech / 10, 1)
         matched = attainability_detail.techs_matched
         missing = attainability_detail.techs_missing
-        total = len(matched) + len(missing)
-        if total > 0:
-            coverage = len(matched) / total
-            tech_note = round(coverage * 10, 1)
-            justif_parts: list[str] = []
-            if matched:
-                justif_parts.append(f"✓ {', '.join(matched)}")
-            if missing:
-                justif_parts.append(f"✗ {', '.join(missing)}")
-            criteria.append(CriterionSchema(
-                nom="tech_coverage",
-                note=tech_note,
-                justif=" — ".join(justif_parts) or "aucune techno requise",
-                axe="attainability",
-            ))
+        justif_parts: list[str] = []
+        if matched:
+            justif_parts.append(f"✓ {', '.join(matched)}")
+        if missing:
+            justif_parts.append(f"✗ {', '.join(missing)}")
+        criteria.append(CriterionSchema(
+            nom="tech_coverage",
+            note=tech_note,
+            justif=" — ".join(justif_parts) or "aucune techno requise"
+                   + (" ← bloque" if blocked == "tech" else ""),
+            axe="attainability",
+        ))
 
     return criteria
 

@@ -11,7 +11,9 @@ class OfferRow(BaseModel):
     remote: bool
     contract_type: str | None
     desirability: float | None
-    attainability: str | None
+    attainability: float | None        # score 0-100 (chantier 2 — était ReachLevel string)
+    category: str | None = None        # parfait | reve | atteignable | hors
+    score_in_category: float | None = None
     verdict: str | None
     seen: bool
     fetched_at: str
@@ -27,9 +29,11 @@ class ExtractedFactsSchema(BaseModel):
 
 
 class AttainabilityDetailSchema(BaseModel):
+    attain_tech: float
+    attain_role: float
+    blocked_by: str | None
     techs_matched: list[str]
     techs_missing: list[str]
-    seniority_gap: int
 
 
 class OfferDetail(OfferRow):

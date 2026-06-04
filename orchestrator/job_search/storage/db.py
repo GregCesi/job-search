@@ -81,10 +81,16 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("extracted_facts_json", "TEXT"),
         ("desirability",         "REAL"),
         ("desirability_detail",  "TEXT"),
-        ("attainability",        "TEXT"),
+        ("attainability",        "REAL"),       # chantier 2 : float 0-100 (était ReachLevel string)
         ("attainability_detail", "TEXT"),
         ("filtered_out",         "INTEGER NOT NULL DEFAULT 0"),
         ("filter_reason",        "TEXT"),
+        # chantier 2 Phase 5 — catégorisation + axes détaillés
+        ("category",             "TEXT"),
+        ("score_in_category",    "REAL"),
+        ("attain_tech",          "REAL"),
+        ("attain_role",          "REAL"),
+        ("blocked_by",           "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:
