@@ -98,7 +98,15 @@ class TraceOut(BaseModel):
     parsed_facts: TraceParsedFacts
     parse_failed: bool
     note: str | None = None             # joint depuis trace_notes (L4)
+    cause: str | None = None            # troncature | bug_llm | ok | null
+    severite: str | None = None         # mineure | majeure | critique | null
+
+
+CAUSE_VALUES = {"troncature", "bug_llm", "ok"}
+SEVERITE_VALUES = {"mineure", "majeure", "critique"}
 
 
 class TraceNoteIn(BaseModel):
     note: str                           # vide = effacement
+    cause: str | None = None
+    severite: str | None = None

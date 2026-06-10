@@ -119,7 +119,9 @@ def extract_facts(
     user_prompt = (
         f"{_FEW_SHOT}\n"
         f"Title: {offer.title}\n"
-        f"Description: {offer.description[:1500]}\n"
+        # Garde-fou sécurité, pas troncature métier : 8000 chars ≈ 2000 tokens,
+        # sous 50 % de la fenêtre 8192-token. Aucune offre réelle n'atteint ce seuil.
+        f"Description: {offer.description[:8000]}\n"
         + ("\n".join(hints) + "\n" if hints else "")
         + "Extract facts now:"
     )
@@ -145,43 +147,54 @@ def extract_facts(
                 raw = raw.lstrip("→").strip()
             data = json.loads(raw)
 
+            _degraded = False
+
             seniority_raw = str(data.get("seniority_required", "")).lower()
-            seniority = (
-                SeniorityLevel(seniority_raw)
-                if seniority_raw in _SENIORITY_VALID
-                else SeniorityLevel.intermediate
-            )
+            if seniority_raw in _SENIORITY_VALID:
+                seniority = SeniorityLevel(seniority_raw)
+            else:
+                seniority = SeniorityLevel.intermediate
+                _degraded = True
 
             raw_techs = data.get("techs_required", [])
             techs: list[TechRequirement] = []
             for item in raw_techs:
                 if isinstance(item, str):
-                    # Model ignored the new format — degrade gracefully
+                    # Model ignored the dict format — format degradation
                     name = item.lower().strip()
                     if name:
                         techs.append(TechRequirement(name=name, importance="required"))
+                        _degraded = True
                 elif isinstance(item, dict):
                     name = str(item.get("name", "")).lower().strip()
                     importance = str(item.get("importance", "")).lower()
                     if name:
-                        techs.append(TechRequirement(
-                            name=name,
-                            importance=importance if importance in _IMPORTANCE_VALID else "required",
-                        ))
+                        if importance in _IMPORTANCE_VALID:
+                            techs.append(TechRequirement(name=name, importance=importance))
+                        else:
+                            techs.append(TechRequirement(name=name, importance="required"))
+                            _degraded = True
 
             domain_raw = str(data.get("domain", "")).lower()
-            domain = domain_raw if domain_raw in _DOMAIN_VALID else "other"
+            if domain_raw in _DOMAIN_VALID:
+                domain = domain_raw
+            else:
+                domain = "other"
+                _degraded = True
 
             role_raw = str(data.get("role_level", "ic")).lower()
-            role_level = (
-                RoleLevel(role_raw) if role_raw in _ROLE_VALID else RoleLevel.ic
-            )
+            if role_raw in _ROLE_VALID:
+                role_level = RoleLevel(role_raw)
+            else:
+                role_level = RoleLevel.ic
+                _degraded = True
 
             facts = ExtractedFacts(
                 seniority_required=seniority,
                 techs_required=techs,
                 domain=domain,
                 role_level=role_level,
+                parse_failed=_degraded,
             )
             _write_trace(LLMTrace(
                 offer_id=offer.source_id,
@@ -191,7 +204,7 @@ def extract_facts(
                 prompt_user=user_prompt,
                 raw_response=_last_raw,
                 parsed_facts=facts.model_dump(),
-                parse_failed=False,
+                parse_failed=_degraded,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             ), TRACE_PATH)
             return facts

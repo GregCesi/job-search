@@ -10,6 +10,13 @@
       <span class="ml-auto text-xs text-gray-400">
         {{ store.loading ? 'Chargement…' : `${store.traces.length} traces · ${groups.length} offres` }}
       </span>
+      <a
+        :href="store.exportUrl()"
+        download="traces_annotated.jsonl"
+        class="ml-2 px-3 py-1.5 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors"
+      >
+        Exporter JSONL annoté
+      </a>
     </header>
 
     <!-- Liste ───────────────────────────────────────────────────────────── -->
@@ -81,15 +88,43 @@
           <div v-if="isExpanded(trace.trace_key)"
                class="border-t border-gray-100 grid grid-cols-3 min-h-64">
 
-            <!-- ── Gauche 1/3 — NOTE ──────────────────────────────────── -->
+            <!-- ── Gauche 1/3 — NOTE + ANNOTATION ─────────────────────── -->
             <div class="border-r border-gray-100 p-4 flex flex-col gap-2">
               <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Note error analysis</span>
               <textarea
                 v-model="localNotes[trace.trace_key]"
                 placeholder="Observations, patterns de défauts, hypothèses…"
                 class="flex-1 w-full resize-none rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-300 focus:border-indigo-300 min-h-40"
-                @blur="onNoteBlur(trace.trace_key)"
+                @blur="onAnnotationSave(trace.trace_key)"
               />
+              <div class="flex gap-2">
+                <div class="flex-1">
+                  <label class="text-xs text-gray-400 mb-0.5 block">Cause</label>
+                  <select
+                    v-model="localCauses[trace.trace_key]"
+                    class="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                    @change="onAnnotationSave(trace.trace_key)"
+                  >
+                    <option :value="null">—</option>
+                    <option value="ok">ok</option>
+                    <option value="troncature">troncature</option>
+                    <option value="bug_llm">bug_llm</option>
+                  </select>
+                </div>
+                <div class="flex-1">
+                  <label class="text-xs text-gray-400 mb-0.5 block">Sévérité</label>
+                  <select
+                    v-model="localSeverites[trace.trace_key]"
+                    class="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                    @change="onAnnotationSave(trace.trace_key)"
+                  >
+                    <option :value="null">—</option>
+                    <option value="mineure">mineure</option>
+                    <option value="majeure">majeure</option>
+                    <option value="critique">critique</option>
+                  </select>
+                </div>
+              </div>
               <span v-if="savedKeys.includes(trace.trace_key)"
                     class="text-xs text-green-600">✓ enregistré</span>
             </div>
@@ -212,18 +247,24 @@ function toggle(key: string) {
     if (!(key in localNotes)) {
       const t = store.traces.find(t => t.trace_key === key)
       localNotes[key] = t?.note ?? ''
+      localCauses[key] = t?.cause ?? null
+      localSeverites[key] = t?.severite ?? null
     }
   }
 }
 
 // ── Notes locales + auto-save ────────────────────────────────────────────────
 
-const localNotes = reactive<Record<string, string>>({})
-const savedKeys  = ref<string[]>([])
+const localNotes     = reactive<Record<string, string>>({})
+const localCauses    = reactive<Record<string, string | null>>({})
+const localSeverites = reactive<Record<string, string | null>>({})
+const savedKeys      = ref<string[]>([])
 
-async function onNoteBlur(trace_key: string) {
-  const note = localNotes[trace_key] ?? ''
-  await store.saveNote(trace_key, note)
+async function onAnnotationSave(trace_key: string) {
+  const note     = localNotes[trace_key] ?? ''
+  const cause    = localCauses[trace_key] ?? null
+  const severite = localSeverites[trace_key] ?? null
+  await store.saveNote(trace_key, note, cause, severite)
   savedKeys.value.push(trace_key)
   setTimeout(() => {
     const idx = savedKeys.value.indexOf(trace_key)

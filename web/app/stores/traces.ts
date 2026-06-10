@@ -24,6 +24,8 @@ export interface TraceOut {
   parsed_facts: TraceParsedFacts
   parse_failed: boolean
   note: string | null
+  cause: string | null
+  severite: string | null
 }
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -43,14 +45,22 @@ export const useTracesStore = defineStore('traces', () => {
     }
   }
 
-  async function saveNote(trace_key: string, note: string) {
+  async function saveNote(trace_key: string, note: string, cause: string | null = null, severite: string | null = null) {
     await $fetch(`${config.public.apiBase}/traces/${encodeURIComponent(trace_key)}/note`, {
       method: 'PUT',
-      body: { note },
+      body: { note, cause, severite },
     })
     const idx = traces.value.findIndex(t => t.trace_key === trace_key)
-    if (idx !== -1) traces.value[idx].note = note || null
+    if (idx !== -1) {
+      traces.value[idx].note = note || null
+      traces.value[idx].cause = cause
+      traces.value[idx].severite = severite
+    }
   }
 
-  return { traces, loading, fetchTraces, saveNote }
+  function exportUrl(): string {
+    return `${config.public.apiBase}/traces/export`
+  }
+
+  return { traces, loading, fetchTraces, saveNote, exportUrl }
 })
