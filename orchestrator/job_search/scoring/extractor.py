@@ -7,10 +7,12 @@ Jamais recalculé sauf si l'offre change.
 import json
 import os
 import warnings
+from datetime import datetime, timezone
 
 import ollama
 from dotenv import load_dotenv
 
+from orchestrator.job_search.scoring.tracing import TRACE_PATH, LLMTrace, _write_trace
 from orchestrator.job_search.sources.base import (
     ExtractedFacts,
     JobOffer,
@@ -122,6 +124,7 @@ def extract_facts(
         + "Extract facts now:"
     )
 
+    _last_raw = ""
     for attempt in range(retries + 1):
         try:
             resp = client.chat(
@@ -132,6 +135,7 @@ def extract_facts(
                 ],
                 options={"temperature": 0.1},
             )
+            _last_raw = resp.message.content
             raw = resp.message.content.strip()
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
@@ -173,16 +177,40 @@ def extract_facts(
                 RoleLevel(role_raw) if role_raw in _ROLE_VALID else RoleLevel.ic
             )
 
-            return ExtractedFacts(
+            facts = ExtractedFacts(
                 seniority_required=seniority,
                 techs_required=techs,
                 domain=domain,
                 role_level=role_level,
             )
+            _write_trace(LLMTrace(
+                offer_id=offer.source_id,
+                model=model,
+                temperature=0.1,
+                prompt_system=_SYSTEM_PROMPT,
+                prompt_user=user_prompt,
+                raw_response=_last_raw,
+                parsed_facts=facts.model_dump(),
+                parse_failed=False,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            ), TRACE_PATH)
+            return facts
         except Exception as exc:
             if attempt == retries:
                 warnings.warn(
                     f"[extractor] parse failed on offer '{offer.source_id}': {exc}"
                 )
 
-    return _fallback()
+    fallback = _fallback()
+    _write_trace(LLMTrace(
+        offer_id=offer.source_id,
+        model=model,
+        temperature=0.1,
+        prompt_system=_SYSTEM_PROMPT,
+        prompt_user=user_prompt,
+        raw_response=_last_raw,
+        parsed_facts=fallback.model_dump(),
+        parse_failed=True,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    ), TRACE_PATH)
+    return fallback

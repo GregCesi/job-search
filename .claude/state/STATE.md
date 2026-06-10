@@ -1,13 +1,13 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier 2 LIVRÉ (L1→L18) — profil v2, extraction enrichie, atteignabilité refondue, catégorisation 4 cases, migration SQLite, cockpit adapté. Post-livrable : score atteignabilité affiché, filtre + tri par catégorie ajoutés.
-- Prochaine action : chantier 3 (affichage riche par piles colorées, calibration sur nouvelles offres) OU session tests L17
+- Dernière action : Chantier traces LLM LIVRÉ (L0→L5) — instrumentation extract_facts, schéma LLMTrace, helper _write_trace, replay_traces.py, 20 traces écrites dans data/traces/extract_facts.jsonl
+- Prochaine action : lire les 20 traces à la triple grille (réappropriation / Wyss entrée / Husain sortie) en chat — repérer les patterns d'erreur avant toute correction
 - Bloquant : aucun
 
 ## Phase en cours
-- Chantier 2 profil + catégorisation : LIVRÉ ✓ (2026-06-03, L1→L16 + L18, L17 différé)
-- Prochain chantier : chantier 3 (affichage piles colorées, UX candidature)
+- Chantier traces LLM : LIVRÉ ✓ (2026-06-09, L0→L5)
+- Prochain chantier : error analysis traces (chat), puis chantier 3 (piles colorées, UX candidature) OU correction des défauts repérés (fallback silencieux, [:1500], texte mid-prompt)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)

@@ -28,3 +28,5 @@ chroma/
 # OS
 .DS_Store
 .history/
+
+data/traces/
