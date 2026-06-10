@@ -134,7 +134,6 @@
               <span class="font-medium text-gray-700">{{ offer.extracted_facts.domain }}</span>
               · {{ offer.extracted_facts.seniority_required }}
               · {{ offer.extracted_facts.techs_required.join(', ') || '—' }}
-              <span v-if="offer.extracted_facts.parse_failed" class="ml-1 text-amber-600">⚠ parse_failed</span>
             </div>
           </section>
 

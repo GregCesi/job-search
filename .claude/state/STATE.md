@@ -1,13 +1,13 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier traces LLM LIVRÉ (L0→L5) — instrumentation extract_facts, schéma LLMTrace, helper _write_trace, replay_traces.py, 20 traces écrites dans data/traces/extract_facts.jsonl
-- Prochaine action : lire les 20 traces à la triple grille (réappropriation / Wyss entrée / Husain sortie) en chat — repérer les patterns d'erreur avant toute correction
+- Dernière action : Chantier traces viewer LIVRÉ ✓ (2026-06-10, L1→L11) — page /traces, route GET /traces, table trace_notes, PUT note, retrait badge parse_failed
+- Prochaine action : lancer l'error analysis des traces dans /traces (triple grille : réappropriation / Wyss entrée / Husain sortie) — repérer les patterns de défauts avant correction
 - Bloquant : aucun
 
 ## Phase en cours
-- Chantier traces LLM : LIVRÉ ✓ (2026-06-09, L0→L5)
-- Prochain chantier : error analysis traces (chat), puis chantier 3 (piles colorées, UX candidature) OU correction des défauts repérés (fallback silencieux, [:1500], texte mid-prompt)
+- Chantier traces viewer : LIVRÉ ✓ (2026-06-10, L1→L11)
+- Prochain chantier : correction des défauts d'extraction repérés (few-shot mid-prompt, dégradations silencieuses, troncature [:1500]) OU chantier 3 (piles colorées, UX candidature)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)

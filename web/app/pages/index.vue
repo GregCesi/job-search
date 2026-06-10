@@ -26,6 +26,12 @@
         <span class="text-xs text-gray-400">
           {{ store.offers.length }} offre{{ store.offers.length !== 1 ? 's' : '' }}
         </span>
+        <NuxtLink
+          to="/traces"
+          class="text-xs text-indigo-600 hover:underline font-medium"
+        >
+          Traces LLM
+        </NuxtLink>
         <a
           :href="`${config.public.apiBase}/export/calibration`"
           target="_blank"

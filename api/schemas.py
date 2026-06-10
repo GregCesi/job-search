@@ -71,3 +71,34 @@ class ReviewOut(BaseModel):
     global_score: int | None
     seen_at_review: bool
     created_at: str
+
+
+# ── Traces viewer ────────────────────────────────────────────────────────────
+
+class TraceParsedFacts(BaseModel):
+    """Reflet de parsed_facts tel quel — NON jugé, NON normalisé."""
+    seniority_required: str | None = None
+    techs_required: list = []           # str ou objets {name, importance}, bruts
+    domain: str | None = None
+    role_level: str | None = None
+    parse_failed: bool = False
+
+
+class TraceOut(BaseModel):
+    trace_key: str                      # f"{offer_id}::{timestamp}"
+    offer_id: str
+    offer_title: str | None = None      # enrichi depuis offers (L3)
+    offer_company: str | None = None
+    model: str
+    temperature: float
+    timestamp: str
+    prompt_system: str
+    prompt_user: str
+    raw_response: str
+    parsed_facts: TraceParsedFacts
+    parse_failed: bool
+    note: str | None = None             # joint depuis trace_notes (L4)
+
+
+class TraceNoteIn(BaseModel):
+    note: str                           # vide = effacement

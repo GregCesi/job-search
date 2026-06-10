@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .export import router as export_router
 from .offers import router as offers_router
+from .traces import router as traces_router
 
 app = FastAPI(title="job-search-api", version="0.1.0")
 
@@ -18,6 +19,7 @@ app.add_middleware(
 
 app.include_router(offers_router)
 app.include_router(export_router)
+app.include_router(traces_router)
 
 
 @app.get("/health")
