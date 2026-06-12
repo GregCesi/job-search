@@ -14,6 +14,7 @@ export interface OfferRow {
   category: string | null            // parfait | reve | atteignable | hors
   score_in_category: number | null
   verdict: string | null
+  hors_perimetre_reason: string | null  // "no_tech" | "mgmt_role" | null
   seen: boolean
   fetched_at: string
 }
@@ -65,6 +66,7 @@ export interface Filters {
   desirability_max?: number
   attainability_min?: number
   category?: string
+  hors_perimetre?: boolean
   remote?: boolean
   source?: string
   verdict?: string
@@ -74,13 +76,14 @@ export interface Filters {
   order: 'asc' | 'desc'
 }
 
-export type ActiveView = 'a_traiter' | 'atteignables' | 'favoris' | 'tout'
+export type ActiveView = 'a_traiter' | 'atteignables' | 'favoris' | 'hors_perimetre' | 'tout'
 
 const VIEW_PRESETS: Record<ActiveView, Partial<Filters>> = {
-  a_traiter:    { seen: false,                                           sort: 'category',     order: 'desc' },
-  atteignables: { desirability_min: 50, attainability_min: 40,           sort: 'desirability', order: 'desc' },
-  favoris:      { verdict: 'favori',                                     sort: 'desirability', order: 'desc' },
-  tout:         {                                                         sort: 'desirability', order: 'desc' },
+  a_traiter:      { seen: false, hors_perimetre: false,                    sort: 'category',     order: 'desc' },
+  atteignables:   { desirability_min: 50, attainability_min: 40,           sort: 'desirability', order: 'desc' },
+  favoris:        { verdict: 'favori',                                     sort: 'desirability', order: 'desc' },
+  hors_perimetre: { hors_perimetre: true,                                  sort: 'fetched_at',   order: 'desc' },
+  tout:           {                                                         sort: 'desirability', order: 'desc' },
 }
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -106,6 +109,7 @@ export const useOffersStore = defineStore('offers', () => {
       if (filters.value.desirability_max !== undefined) params.desirability_max = filters.value.desirability_max
       if (filters.value.attainability_min !== undefined) params.attainability_min = filters.value.attainability_min
       if (filters.value.category !== undefined) params.category = filters.value.category
+      if (filters.value.hors_perimetre !== undefined) params.hors_perimetre = filters.value.hors_perimetre
       if (filters.value.remote !== undefined) params.remote = filters.value.remote
       if (filters.value.source !== undefined) params.source = filters.value.source
       if (filters.value.verdict !== undefined) params.verdict = filters.value.verdict

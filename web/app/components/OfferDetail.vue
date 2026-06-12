@@ -67,8 +67,54 @@
             </div>
           </section>
 
-          <!-- Scoring double-axe -->
-          <section>
+          <!-- Hors-périmètre banner -->
+          <section v-if="offer.hors_perimetre_reason">
+            <div :class="offer.hors_perimetre_reason === 'no_tech' ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-200'"
+                 class="rounded-lg border px-4 py-3">
+              <p class="text-sm font-medium" :class="offer.hors_perimetre_reason === 'no_tech' ? 'text-orange-700' : 'text-slate-600'">
+                {{ offer.hors_perimetre_reason === 'no_tech' ? '⊘ Aucune techno exigée' : '⊘ Rôle managérial' }}
+              </p>
+              <p class="text-xs mt-1" :class="offer.hors_perimetre_reason === 'no_tech' ? 'text-orange-500' : 'text-slate-400'">
+                {{ offer.hors_perimetre_reason === 'no_tech'
+                  ? 'Offre sans techno requise — possible bug d\'extraction. À inspecter.'
+                  : 'Poste manager — pas de valeur d\'apprentissage technique.' }}
+              </p>
+              <div class="flex gap-2 mt-3">
+                <button
+                  :class="[
+                    'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                    offer.verdict === 'hors_perimetre_ok'
+                      ? 'bg-green-50 border-green-300 text-green-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
+                  ]"
+                  @click="toggleVerdict('hors_perimetre_ok')"
+                >
+                  ✓ Confirmé
+                </button>
+                <button
+                  :class="[
+                    'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                    offer.verdict === 'hors_perimetre_faux_pos'
+                      ? 'bg-red-50 border-red-300 text-red-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
+                  ]"
+                  @click="toggleVerdict('hors_perimetre_faux_pos')"
+                >
+                  ✗ Faux positif
+                </button>
+                <button
+                  v-if="offer.verdict === 'hors_perimetre_ok' || offer.verdict === 'hors_perimetre_faux_pos'"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:bg-gray-50 transition-all"
+                  @click="store.clearVerdict(offer.id)"
+                >
+                  Retirer
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Scoring double-axe (masqué si hors-périmètre) -->
+          <section v-if="!offer.hors_perimetre_reason">
             <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Scoring</h3>
             <div class="grid grid-cols-2 gap-3">
               <!-- Désirabilité -->

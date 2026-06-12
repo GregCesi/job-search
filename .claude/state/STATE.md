@@ -1,13 +1,13 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier traces viewer LIVRÉ ✓ (2026-06-10, L1→L11) — page /traces, route GET /traces, table trace_notes, PUT note, retrait badge parse_failed
-- Prochaine action : lancer l'error analysis des traces dans /traces (triple grille : réappropriation / Wyss entrée / Husain sortie) — repérer les patterns de défauts avant correction
+- Dernière action : Chantier hors-périmètre LIVRÉ ✓ (2026-06-12, L0→L8) — bucket dérivé `no_tech`/`mgmt_role`, gate avant scoring, onglet cockpit, verdicts ok/faux-positif
+- Prochaine action : inspection des 5 offres `no_tech` via l'onglet hors-périmètre (faux positifs d'extraction ?) + correction des défauts d'extraction repérés aux traces
 - Bloquant : aucun
 
 ## Phase en cours
-- Chantier traces viewer : LIVRÉ ✓ (2026-06-10, L1→L11)
-- Prochain chantier : correction des défauts d'extraction repérés (few-shot mid-prompt, dégradations silencieuses, troncature [:1500]) OU chantier 3 (piles colorées, UX candidature)
+- Chantier hors-périmètre : LIVRÉ ✓ (2026-06-12, L0→L8, 9 offres gatées : 5 no_tech, 4 mgmt_role)
+- Prochain chantier : correction des défauts d'extraction (few-shot mid-prompt, dégradations silencieuses, troncature [:1500]) OU chantier 3 (piles colorées, UX candidature)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
@@ -19,3 +19,5 @@
 - Refonte scoring double-axe : LIVRÉE ✓ (2026-06-02, L1→L13, 68 offres scorées)
 - Rituel calibration : LIVRÉ ✓ (2026-06-03, C-1→C-4, L1→L12)
 - Chantier 2 profil + catégorisation : LIVRÉ ✓ (2026-06-03, L1→L16+L18)
+- Chantier traces viewer : LIVRÉ ✓ (2026-06-10, L1→L11)
+- Chantier hors-périmètre : LIVRÉ ✓ (2026-06-12, L0→L8, 9 offres gatées)

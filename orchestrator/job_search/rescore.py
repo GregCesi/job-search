@@ -15,6 +15,7 @@ def main() -> None:
     parser.add_argument("--profile", default="profiles/gregoire.yaml")
     parser.add_argument("--dry-run", action="store_true", help="Affiche sans écrire en base")
     parser.add_argument("--force", action="store_true", help="Recalcule toutes les offres (y compris déjà scorées)")
+    parser.add_argument("--re-extract", action="store_true", help="Force ré-extraction LLM (ignore les facts en cache)")
     args = parser.parse_args()
 
     from dotenv import load_dotenv
@@ -25,6 +26,7 @@ def main() -> None:
     from orchestrator.job_search.scoring.categorize import score_offer
     from orchestrator.job_search.scoring.desirability import compute_desirability
     from orchestrator.job_search.scoring.extractor import extract_facts
+    from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
     from orchestrator.job_search.scoring.filters import apply_hard_filters
     from orchestrator.job_search.sources.base import JobOffer
     from orchestrator.job_search.storage.db import get_connection, init_db
@@ -95,7 +97,7 @@ def main() -> None:
 
         # Réutilise les faits déjà extraits si disponibles — 0 LLM (architecture.md §4)
         facts = None
-        if r["extracted_facts_json"]:
+        if not args.re_extract and r["extracted_facts_json"]:
             try:
                 from orchestrator.job_search.sources.base import ExtractedFacts
                 facts = ExtractedFacts.model_validate_json(r["extracted_facts_json"])
@@ -106,6 +108,17 @@ def main() -> None:
             facts = extract_facts(offer, model=model, host=host)
 
         offer = offer.model_copy(update={"extracted_facts": facts})
+
+        # Gate hors-périmètre : court-circuite le scoring (0 LLM, §4)
+        hp_reason = derive_hors_perimetre(facts)
+        if hp_reason is not None:
+            flag = " ⚠ parse_failed" if facts.parse_failed else ""
+            print(f"           → hors_perimetre: {hp_reason.value}{flag}")
+            if not args.dry_run:
+                save_offer(conn, offer, None, None, hors_perimetre_reason=hp_reason.value)
+            n_ok += 1
+            continue
+
         d = compute_desirability(facts, profile.search_criteria, profile)
         a = compute_attainability(facts, profile)
         s = score_offer(d.score, a.score)

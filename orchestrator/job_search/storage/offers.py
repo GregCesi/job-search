@@ -43,6 +43,7 @@ def save_offer(
     scored: ScoredOffer | None = None,
     filtered_out: bool = False,
     filter_reason: str | None = None,
+    hors_perimetre_reason: str | None = None,
 ) -> None:
     """Upsert offer with scores. Filtered offers are saved without scores."""
     facts_json = (
@@ -73,9 +74,9 @@ def save_offer(
              extracted_facts_json, desirability, desirability_detail,
              attainability, attainability_detail,
              category, score_in_category, attain_tech, attain_role, blocked_by,
-             filtered_out, filter_reason)
+             filtered_out, filter_reason, hors_perimetre_reason)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json = excluded.extracted_facts_json,
             desirability         = excluded.desirability,
@@ -89,7 +90,8 @@ def save_offer(
             blocked_by           = excluded.blocked_by,
             description          = excluded.description,
             filtered_out         = excluded.filtered_out,
-            filter_reason        = excluded.filter_reason
+            filter_reason        = excluded.filter_reason,
+            hors_perimetre_reason = excluded.hors_perimetre_reason
         """,
         (
             offer.source, offer.source_id, offer.fingerprint,
@@ -111,6 +113,7 @@ def save_offer(
             attainability.blocked_by if attainability is not None else None,
             int(filtered_out),
             filter_reason,
+            hors_perimetre_reason,
         ),
     )
     conn.commit()

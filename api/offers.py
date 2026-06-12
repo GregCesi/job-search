@@ -39,6 +39,7 @@ def list_offers(
     seen: bool | None = Query(None),
     filtered_out: bool | None = Query(None, description="None=exclut les filtrées, True=seulement les filtrées, False=non filtrées"),
     category: str | None = Query(None, description="parfait | reve | atteignable | hors"),
+    hors_perimetre: bool | None = Query(None, description="True=seulement hors-périmètre, False=exclut hors-périmètre, None=tout"),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
     sort: str = Query("desirability", pattern="^(desirability|fetched_at|title|company|category)$"),
     order: Literal["asc", "desc"] = Query("desc"),
@@ -78,6 +79,10 @@ def list_offers(
     if category is not None:
         conditions.append("o.category = ?")
         params.append(category)
+    if hors_perimetre is True:
+        conditions.append("o.hors_perimetre_reason IS NOT NULL")
+    elif hors_perimetre is False:
+        conditions.append("o.hors_perimetre_reason IS NULL")
     if q is not None:
         conditions.append("(LOWER(o.title) LIKE ? OR LOWER(o.company) LIKE ?)")
         like = f"%{q.lower()}%"
@@ -100,6 +105,7 @@ def list_offers(
         SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
                o.desirability, o.attainability, o.category, o.score_in_category,
                o.seen, o.fetched_at, o.filtered_out, o.filter_reason,
+               o.hors_perimetre_reason,
                v.status AS verdict
         FROM offers o
         LEFT JOIN verdicts v ON v.offer_id = o.id
@@ -125,6 +131,7 @@ def list_offers(
             category=r["category"],
             score_in_category=r["score_in_category"],
             verdict=r["verdict"],
+            hors_perimetre_reason=r["hors_perimetre_reason"],
             seen=bool(r["seen"]),
             fetched_at=r["fetched_at"] or "",
             filtered_out=bool(r["filtered_out"]),
@@ -174,6 +181,7 @@ def get_offer(offer_id: int) -> OfferDetail:
         category=row["category"],
         score_in_category=row["score_in_category"],
         verdict=row["verdict"],
+        hors_perimetre_reason=row["hors_perimetre_reason"],
         seen=True,
         fetched_at=row["fetched_at"] or "",
         filtered_out=bool(row["filtered_out"]),

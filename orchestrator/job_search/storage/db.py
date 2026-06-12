@@ -91,6 +91,8 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("attain_tech",          "REAL"),
         ("attain_role",          "REAL"),
         ("blocked_by",           "TEXT"),
+        # chantier hors-périmètre — dérivé, recalculé à chaque rescore
+        ("hors_perimetre_reason", "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:

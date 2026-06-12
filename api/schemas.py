@@ -15,6 +15,7 @@ class OfferRow(BaseModel):
     category: str | None = None        # parfait | reve | atteignable | hors
     score_in_category: float | None = None
     verdict: str | None
+    hors_perimetre_reason: str | None = None
     seen: bool
     fetched_at: str
     filtered_out: bool = False
@@ -47,7 +48,7 @@ class OfferDetail(OfferRow):
 
 
 class VerdictIn(BaseModel):
-    status: Literal["favori", "rejeté", "candidaté", "masqué"]
+    status: Literal["favori", "rejeté", "candidaté", "masqué", "hors_perimetre_ok", "hors_perimetre_faux_pos"]
 
 
 class CriterionSchema(BaseModel):
