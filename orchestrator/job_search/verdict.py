@@ -16,10 +16,18 @@ _VALID_STATUSES = {"favori", "rejeté", "candidaté"}
 def _list_recent(conn) -> list:
     return conn.execute(
         """
-        SELECT id, title, company, desirability, attainability
+        SELECT id, title, company, category
         FROM offers
-        WHERE desirability IS NOT NULL
-        ORDER BY desirability DESC, fetched_at DESC
+        WHERE category IS NOT NULL
+        ORDER BY
+            CASE category
+                WHEN 'parfait'     THEN 1
+                WHEN 'reve'        THEN 2
+                WHEN 'atteignable' THEN 3
+                WHEN 'hors'        THEN 4
+                ELSE 5
+            END ASC,
+            fetched_at DESC
         LIMIT 30
         """
     ).fetchall()
@@ -64,12 +72,11 @@ def main() -> None:
         print("Aucune offre scorée en base. Lance d'abord : python -m job_search.run")
         return
 
-    print(f"\n{'ID':>4}  {'Desir':>6}  {'Reach':<12}  Titre")
+    print(f"\n{'ID':>4}  {'Catégorie':<12}  Titre")
     print("─" * 70)
     for o in offers:
-        d = f"{o['desirability']:.1f}" if o["desirability"] is not None else "  —"
-        a = o["attainability"] or "?"
-        print(f"{o['id']:>4}  {d:>6}  {a:<12}  {o['title'][:45]}  ({o['company'] or '?'})")
+        cat = o["category"] or "?"
+        print(f"{o['id']:>4}  {cat:<12}  {o['title'][:45]}  ({o['company'] or '?'})")
 
     print()
     try:

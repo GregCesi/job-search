@@ -35,10 +35,6 @@ def init_db(conn: sqlite3.Connection) -> None:
             description          TEXT,
             seen                 INTEGER NOT NULL DEFAULT 0,
             extracted_facts_json TEXT,
-            desirability         REAL,
-            desirability_detail  TEXT,
-            attainability        TEXT,
-            attainability_detail TEXT,
             UNIQUE(source, source_id)
         );
 
@@ -79,20 +75,16 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("rome_code",            "TEXT"),
         ("rome_label",           "TEXT"),
         ("extracted_facts_json", "TEXT"),
-        ("desirability",         "REAL"),
-        ("desirability_detail",  "TEXT"),
-        ("attainability",        "REAL"),       # chantier 2 : float 0-100 (était ReachLevel string)
-        ("attainability_detail", "TEXT"),
         ("filtered_out",         "INTEGER NOT NULL DEFAULT 0"),
         ("filter_reason",        "TEXT"),
-        # chantier 2 Phase 5 — catégorisation + axes détaillés
         ("category",             "TEXT"),
-        ("score_in_category",    "REAL"),
-        ("attain_tech",          "REAL"),
-        ("attain_role",          "REAL"),
-        ("blocked_by",           "TEXT"),
         # chantier hors-périmètre — dérivé, recalculé à chaque rescore
         ("hors_perimetre_reason", "TEXT"),
+        # chantier review humaine — colonnes d'interaction (comme seen)
+        ("categorie_suggeree",  "TEXT"),
+        ("categorie_corrigee",  "TEXT"),
+        ("remarque",            "TEXT"),
+        ("reviewed_at",         "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:
@@ -100,6 +92,15 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
 
     # Suppression des anciens champs de scoring Zone A
     for col in ("score", "criteria_json"):
+        if col in existing:
+            conn.execute(f"ALTER TABLE offers DROP COLUMN {col}")
+
+    # Chantier review humaine — drop scoring /10-/100 (L5)
+    for col in (
+        "desirability", "desirability_detail",
+        "attainability", "attainability_detail",
+        "score_in_category", "attain_tech", "attain_role", "blocked_by",
+    ):
         if col in existing:
             conn.execute(f"ALTER TABLE offers DROP COLUMN {col}")
 

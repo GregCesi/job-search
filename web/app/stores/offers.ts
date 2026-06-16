@@ -9,46 +9,31 @@ export interface OfferRow {
   location: string | null
   remote: boolean
   contract_type: string | null
-  desirability: number | null
-  attainability: number | null       // score 0-100 (chantier 2)
   category: string | null            // parfait | reve | atteignable | hors
-  score_in_category: number | null
   verdict: string | null
-  hors_perimetre_reason: string | null  // "no_tech" | "mgmt_role" | null
+  hors_perimetre_reason: string | null
   seen: boolean
   fetched_at: string
+  // review humaine
+  categorie_suggeree: string | null
+  categorie_corrigee: string | null
+  categorie_finale: string | null    // dérivé API
+  etat_review: string | null         // non_relue | validee | corrigee
+  remarque: string | null
+  reviewed_at: string | null
+}
+
+export interface TechInfo {
+  name: string
+  importance: string | null  // core | required | nice_to_have
 }
 
 export interface ExtractedFacts {
   seniority_required: string
-  techs_required: string[]
+  techs_required: TechInfo[]
   domain: string
+  role_level: string | null  // ic | lead | manager
   parse_failed: boolean
-}
-
-export interface AttainabilityDetail {
-  attain_tech: number
-  attain_role: number
-  blocked_by: string | null
-  techs_matched: string[]
-  techs_missing: string[]
-}
-
-export interface Criterion {
-  nom: string
-  note: number
-  justif: string
-  axe: string
-}
-
-export interface ReviewOut {
-  offer_id: string
-  ratings_json: Record<string, { note: number | null; justif: string | null }>
-  ai_snapshot_json: Criterion[]
-  global_audit_text: string | null
-  global_score: number | null
-  seen_at_review: boolean
-  created_at: string
 }
 
 export interface OfferDetail extends OfferRow {
@@ -56,17 +41,12 @@ export interface OfferDetail extends OfferRow {
   url: string | null
   source: string
   extracted_facts: ExtractedFacts | null
-  desirability_detail: Record<string, unknown> | null
-  attainability_detail: AttainabilityDetail | null
-  criteria: Criterion[]
 }
 
 export interface Filters {
-  desirability_min?: number
-  desirability_max?: number
-  attainability_min?: number
   category?: string
   hors_perimetre?: boolean
+  etat_review?: string
   remote?: boolean
   source?: string
   verdict?: string
@@ -76,14 +56,14 @@ export interface Filters {
   order: 'asc' | 'desc'
 }
 
-export type ActiveView = 'a_traiter' | 'atteignables' | 'favoris' | 'hors_perimetre' | 'tout'
+export type ActiveView = 'a_traiter' | 'a_relire' | 'favoris' | 'hors_perimetre' | 'tout'
 
-const VIEW_PRESETS: Record<ActiveView, Partial<Filters>> = {
-  a_traiter:      { seen: false, hors_perimetre: false,                    sort: 'category',     order: 'desc' },
-  atteignables:   { desirability_min: 50, attainability_min: 40,           sort: 'desirability', order: 'desc' },
-  favoris:        { verdict: 'favori',                                     sort: 'desirability', order: 'desc' },
-  hors_perimetre: { hors_perimetre: true,                                  sort: 'fetched_at',   order: 'desc' },
-  tout:           {                                                         sort: 'desirability', order: 'desc' },
+const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> & { sort: string; order: 'asc' | 'desc' }> = {
+  a_traiter:      { etat_review: 'non_relue', hors_perimetre: false, sort: 'category',   order: 'desc' },
+  a_relire:       { hors_perimetre: false,                           sort: 'category',   order: 'desc' },
+  favoris:        { verdict: 'favori',                               sort: 'fetched_at', order: 'desc' },
+  hors_perimetre: { hors_perimetre: true,                            sort: 'fetched_at', order: 'desc' },
+  tout:           {                                                   sort: 'category',   order: 'desc' },
 }
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -93,7 +73,6 @@ export const useOffersStore = defineStore('offers', () => {
 
   const offers = ref<OfferRow[]>([])
   const openedOffer = ref<OfferDetail | null>(null)
-  const openedReview = ref<ReviewOut | null>(null)
   const activeView = ref<ActiveView>('a_traiter')
   const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter })
   const loading = ref(false)
@@ -105,11 +84,9 @@ export const useOffersStore = defineStore('offers', () => {
         sort: filters.value.sort,
         order: filters.value.order,
       }
-      if (filters.value.desirability_min !== undefined) params.desirability_min = filters.value.desirability_min
-      if (filters.value.desirability_max !== undefined) params.desirability_max = filters.value.desirability_max
-      if (filters.value.attainability_min !== undefined) params.attainability_min = filters.value.attainability_min
       if (filters.value.category !== undefined) params.category = filters.value.category
       if (filters.value.hors_perimetre !== undefined) params.hors_perimetre = filters.value.hors_perimetre
+      if (filters.value.etat_review !== undefined) params.etat_review = filters.value.etat_review
       if (filters.value.remote !== undefined) params.remote = filters.value.remote
       if (filters.value.source !== undefined) params.source = filters.value.source
       if (filters.value.verdict !== undefined) params.verdict = filters.value.verdict
@@ -124,30 +101,34 @@ export const useOffersStore = defineStore('offers', () => {
   }
 
   async function openDetail(id: number) {
-    const [data] = await Promise.all([
-      $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id}`),
-    ])
+    const data = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id}`)
     openedOffer.value = data
-    openedReview.value = await $fetch<ReviewOut>(
-      `${config.public.apiBase}/offers/${id}/review`
-    ).catch(() => null)
     const idx = offers.value.findIndex(o => o.id === id)
-    if (idx !== -1) offers.value[idx].seen = true
+    if (idx !== -1) offers.value[idx]!.seen = true
   }
 
-  async function saveReview(
+  async function submitCategoryReview(
     id: number,
-    ratingsJson: Record<string, { note: number | null; justif: string }>,
-    globalAuditText: string | null,
-    globalScore: number | null,
+    categorie_corrigee: string | null,
+    remarque: string | null,
   ) {
-    await $fetch(`${config.public.apiBase}/offers/${id}/review`, {
+    await $fetch(`${config.public.apiBase}/offers/${id}/category-review`, {
       method: 'PUT',
-      body: { ratings_json: ratingsJson, global_audit_text: globalAuditText, global_score: globalScore },
+      body: { categorie_corrigee, remarque },
     })
-    openedReview.value = await $fetch<ReviewOut>(
-      `${config.public.apiBase}/offers/${id}/review`
-    )
+    // Refresh detail + list row
+    const data = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id}`)
+    openedOffer.value = data
+    const idx = offers.value.findIndex(o => o.id === id)
+    if (idx !== -1) {
+      const row = offers.value[idx]!
+      row.etat_review = data.etat_review
+      row.categorie_finale = data.categorie_finale
+      row.categorie_corrigee = data.categorie_corrigee
+      row.categorie_suggeree = data.categorie_suggeree
+      row.reviewed_at = data.reviewed_at
+      row.remarque = data.remarque
+    }
   }
 
   async function setVerdict(id: number, status: string) {
@@ -157,7 +138,7 @@ export const useOffersStore = defineStore('offers', () => {
     })
     const idx = offers.value.findIndex(o => o.id === id)
     if (idx !== -1) {
-      offers.value[idx].verdict = status
+      offers.value[idx]!.verdict = status
       if (status === 'masqué' && activeView.value !== 'tout') {
         offers.value.splice(idx, 1)
         openedOffer.value = null
@@ -170,28 +151,27 @@ export const useOffersStore = defineStore('offers', () => {
   async function clearVerdict(id: number) {
     await $fetch(`${config.public.apiBase}/offers/${id}/verdict`, { method: 'DELETE' })
     const idx = offers.value.findIndex(o => o.id === id)
-    if (idx !== -1) offers.value[idx].verdict = null
+    if (idx !== -1) offers.value[idx]!.verdict = null
     if (openedOffer.value?.id === id) openedOffer.value.verdict = null
   }
 
   function setView(view: ActiveView) {
     activeView.value = view
-    filters.value = { sort: 'desirability', order: 'desc', ...VIEW_PRESETS[view] }
+    filters.value = { ...VIEW_PRESETS[view] }
     fetchOffers()
   }
 
   return {
     offers,
     openedOffer,
-    openedReview,
     activeView,
     filters,
     loading,
     fetchOffers,
     openDetail,
+    submitCategoryReview,
     setVerdict,
     clearVerdict,
     setView,
-    saveReview,
   }
 })

@@ -8,12 +8,10 @@ from fastapi import APIRouter, HTTPException, Query
 
 from .db import get_conn
 from .schemas import (
-    AttainabilityDetailSchema,
-    CriterionSchema,
+    CategoryReviewIn,
     ExtractedFactsSchema,
     OfferDetail,
     OfferRow,
-    ReviewIn,
     ReviewOut,
     VerdictIn,
 )
@@ -21,7 +19,28 @@ from .schemas import (
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-_SORT_COLS = {"desirability", "fetched_at", "title", "company", "category"}
+_SORT_COLS = {"fetched_at", "title", "company", "category"}
+
+
+def _derive_review_fields(row) -> dict:
+    """Dérive categorie_finale + etat_review à la volée (jamais persistés)."""
+    suggeree = row["categorie_suggeree"]
+    corrigee = row["categorie_corrigee"]
+    reviewed_at = row["reviewed_at"]
+    if reviewed_at is None:
+        etat = "non_relue"
+    elif corrigee is not None:
+        etat = "corrigee"
+    else:
+        etat = "validee"
+    return {
+        "categorie_suggeree": suggeree,
+        "categorie_corrigee": corrigee,
+        "categorie_finale": corrigee if corrigee is not None else suggeree,
+        "etat_review": etat,
+        "remarque": row["remarque"],
+        "reviewed_at": reviewed_at,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -30,9 +49,6 @@ _SORT_COLS = {"desirability", "fetched_at", "title", "company", "category"}
 
 @router.get("/offers", response_model=list[OfferRow])
 def list_offers(
-    desirability_min: float | None = Query(None),
-    desirability_max: float | None = Query(None),
-    attainability_min: float | None = Query(None),
     remote: bool | None = Query(None),
     source: str | None = Query(None),
     verdict: str | None = Query(None),
@@ -40,8 +56,9 @@ def list_offers(
     filtered_out: bool | None = Query(None, description="None=exclut les filtrées, True=seulement les filtrées, False=non filtrées"),
     category: str | None = Query(None, description="parfait | reve | atteignable | hors"),
     hors_perimetre: bool | None = Query(None, description="True=seulement hors-périmètre, False=exclut hors-périmètre, None=tout"),
+    etat_review: str | None = Query(None, description="non_relue | validee | corrigee"),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
-    sort: str = Query("desirability", pattern="^(desirability|fetched_at|title|company|category)$"),
+    sort: str = Query("category", pattern="^(fetched_at|title|company|category)$"),
     order: Literal["asc", "desc"] = Query("desc"),
 ) -> list[OfferRow]:
     conditions: list[str] = []
@@ -55,15 +72,6 @@ def list_offers(
     else:
         conditions.append("o.filtered_out = 0")
 
-    if desirability_min is not None:
-        conditions.append("o.desirability >= ?")
-        params.append(desirability_min)
-    if desirability_max is not None:
-        conditions.append("o.desirability <= ?")
-        params.append(desirability_max)
-    if attainability_min is not None:
-        conditions.append("o.attainability >= ?")
-        params.append(attainability_min)
     if remote is not None:
         conditions.append("o.remote = ?")
         params.append(1 if remote else 0)
@@ -83,6 +91,12 @@ def list_offers(
         conditions.append("o.hors_perimetre_reason IS NOT NULL")
     elif hors_perimetre is False:
         conditions.append("o.hors_perimetre_reason IS NULL")
+    if etat_review == "non_relue":
+        conditions.append("o.reviewed_at IS NULL")
+    elif etat_review == "validee":
+        conditions.append("o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL")
+    elif etat_review == "corrigee":
+        conditions.append("o.categorie_corrigee IS NOT NULL")
     if q is not None:
         conditions.append("(LOWER(o.title) LIKE ? OR LOWER(o.company) LIKE ?)")
         like = f"%{q.lower()}%"
@@ -97,15 +111,15 @@ def list_offers(
                 WHEN 'atteignable' THEN 3
                 WHEN 'hors'        THEN 4
                 ELSE 5
-            END ASC, o.score_in_category DESC NULLS LAST"""
+            END ASC"""
     else:
-        sort_col = sort if sort in _SORT_COLS else "desirability"
+        sort_col = sort if sort in _SORT_COLS else "category"
         order_clause = f"o.{sort_col} {order.upper()} NULLS LAST"
     sql = f"""
         SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
-               o.desirability, o.attainability, o.category, o.score_in_category,
-               o.seen, o.fetched_at, o.filtered_out, o.filter_reason,
+               o.category, o.seen, o.fetched_at, o.filtered_out, o.filter_reason,
                o.hors_perimetre_reason,
+               o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
                v.status AS verdict
         FROM offers o
         LEFT JOIN verdicts v ON v.offer_id = o.id
@@ -126,14 +140,12 @@ def list_offers(
             location=r["location"],
             remote=bool(r["remote"]),
             contract_type=r["contract_type"],
-            desirability=r["desirability"],
-            attainability=r["attainability"],
             category=r["category"],
-            score_in_category=r["score_in_category"],
             verdict=r["verdict"],
             hors_perimetre_reason=r["hors_perimetre_reason"],
             seen=bool(r["seen"]),
             fetched_at=r["fetched_at"] or "",
+            **_derive_review_fields(r),
             filtered_out=bool(r["filtered_out"]),
             filter_reason=r["filter_reason"],
         )
@@ -166,9 +178,6 @@ def get_offer(offer_id: int) -> OfferDetail:
     finally:
         conn.close()
 
-    desirability_detail = _parse_json(row["desirability_detail"], offer_id, "desirability_detail")
-    attainability_detail = _parse_attainability(row["attainability_detail"], offer_id)
-
     return OfferDetail(
         id=row["id"],
         title=row["title"],
@@ -176,23 +185,18 @@ def get_offer(offer_id: int) -> OfferDetail:
         location=row["location"],
         remote=bool(row["remote"]),
         contract_type=row["contract_type"],
-        desirability=row["desirability"],
-        attainability=row["attainability"],
         category=row["category"],
-        score_in_category=row["score_in_category"],
         verdict=row["verdict"],
         hors_perimetre_reason=row["hors_perimetre_reason"],
         seen=True,
         fetched_at=row["fetched_at"] or "",
         filtered_out=bool(row["filtered_out"]),
         filter_reason=row["filter_reason"],
+        **_derive_review_fields(row),
         description=row["description"],
         url=row["url"],
         source=row["source"],
         extracted_facts=_parse_facts(row["extracted_facts_json"], offer_id),
-        desirability_detail=desirability_detail,
-        attainability_detail=attainability_detail,
-        criteria=_build_criteria(desirability_detail, attainability_detail),
     )
 
 
@@ -200,94 +204,25 @@ def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:
     if not raw:
         return None
     try:
+        from .schemas import TechSchema
         data = json.loads(raw)
-        techs = data.get("techs_required", [])
-        # Compat v1 (list[str]) et v2 (list[{name, importance}])
-        names = [t["name"] if isinstance(t, dict) else t for t in techs]
+        techs_raw = data.get("techs_required", [])
+        techs = [
+            TechSchema(name=t["name"], importance=t.get("importance"))
+            if isinstance(t, dict)
+            else TechSchema(name=t)
+            for t in techs_raw
+        ]
         return ExtractedFactsSchema(
             seniority_required=data.get("seniority_required", ""),
-            techs_required=names,
+            techs_required=techs,
             domain=data.get("domain", ""),
+            role_level=data.get("role_level"),
             parse_failed=data.get("parse_failed", False),
         )
     except Exception as exc:
         log.warning("extracted_facts_json parse failed for offer %s: %s", offer_id, exc)
         return None
-
-
-def _parse_json(raw: str | None, offer_id: int, field: str) -> dict | None:
-    if not raw:
-        return None
-    try:
-        return json.loads(raw)
-    except Exception as exc:
-        log.warning("%s parse failed for offer %s: %s", field, offer_id, exc)
-        return None
-
-
-def _parse_attainability(raw: str | None, offer_id: int) -> AttainabilityDetailSchema | None:
-    if not raw:
-        return None
-    try:
-        return AttainabilityDetailSchema(**json.loads(raw))
-    except Exception as exc:
-        log.warning("attainability_detail parse failed for offer %s: %s", offer_id, exc)
-        return None
-
-
-def _build_criteria(
-    desirability_detail: dict | None,
-    attainability_detail: AttainabilityDetailSchema | None,
-) -> list[CriterionSchema]:
-    """Normalise les champs de scoring vers une liste {nom, note 0-10, justif, axe}.
-    Structure [{nom, note, justif, axe}] inchangée — ai_snapshot_json reste parsable (L14).
-    """
-    criteria: list[CriterionSchema] = []
-
-    if desirability_detail:
-        domain = desirability_detail.get("domain")
-        if domain:
-            gradient = float(domain.get("gradient", domain.get("score", 0)))
-            value = domain.get("value", "?")
-            desire = desirability_detail.get("desire", {})
-            factor = desire.get("factor", 1.0)
-            criteria.append(CriterionSchema(
-                nom="domain",
-                note=round(gradient * factor * 10, 1),
-                justif=f"{value} (gradient {gradient:.2f} × envie {factor:.2f})",
-                axe="desirability",
-            ))
-
-    if attainability_detail:
-        # attain_role → critère "role"
-        role_note = round(attainability_detail.attain_role / 10, 1)
-        blocked = attainability_detail.blocked_by
-        criteria.append(CriterionSchema(
-            nom="role",
-            note=role_note,
-            justif=f"attain_role={attainability_detail.attain_role:.0f}"
-                   + (" ← bloque" if blocked == "role" else ""),
-            axe="attainability",
-        ))
-
-        # attain_tech → critère "tech_coverage"
-        tech_note = round(attainability_detail.attain_tech / 10, 1)
-        matched = attainability_detail.techs_matched
-        missing = attainability_detail.techs_missing
-        justif_parts: list[str] = []
-        if matched:
-            justif_parts.append(f"✓ {', '.join(matched)}")
-        if missing:
-            justif_parts.append(f"✗ {', '.join(missing)}")
-        criteria.append(CriterionSchema(
-            nom="tech_coverage",
-            note=tech_note,
-            justif=" — ".join(justif_parts) or "aucune techno requise"
-                   + (" ← bloque" if blocked == "tech" else ""),
-            axe="attainability",
-        ))
-
-    return criteria
 
 
 # ---------------------------------------------------------------------------
@@ -323,56 +258,52 @@ def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
 
 
 # ---------------------------------------------------------------------------
-# PUT /offers/{id}/review   — upsert human review + snapshot IA (L7/L9)
-# GET /offers/{id}/review   — hydratation (L8)
+# PUT /offers/{id}/category-review  — review de catégorie (chantier review humaine L3)
 # ---------------------------------------------------------------------------
 
-@router.put("/offers/{offer_id}/review", status_code=204)
-def upsert_review(offer_id: int, body: ReviewIn) -> None:
+_VALID_CATEGORIES = {"parfait", "reve", "atteignable", "hors", "hors_perimetre"}
+
+
+@router.put("/offers/{offer_id}/category-review", status_code=204)
+def upsert_category_review(offer_id: int, body: CategoryReviewIn) -> None:
+    if body.categorie_corrigee is not None and body.categorie_corrigee not in _VALID_CATEGORIES:
+        raise HTTPException(status_code=422, detail=f"categorie_corrigee must be one of {_VALID_CATEGORIES}")
+
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT seen, desirability_detail, attainability_detail FROM offers WHERE id = ?",
+            "SELECT id, category, hors_perimetre_reason FROM offers WHERE id = ?",
             (offer_id,),
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="offer not found")
 
-        desr_detail = _parse_json(row["desirability_detail"], offer_id, "desirability_detail")
-        att_detail = _parse_attainability(row["attainability_detail"], offer_id)
-        criteria = _build_criteria(desr_detail, att_detail)
-        ai_snapshot = [c.model_dump() for c in criteria]
-        seen_at_review = bool(row["seen"])
-        now = datetime.now(timezone.utc).isoformat()
+        # Snapshot de la suggestion : category si présent, sinon hors_perimetre
+        if row["hors_perimetre_reason"] is not None:
+            suggeree = "hors_perimetre"
+        else:
+            suggeree = row["category"]
 
+        now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """
-            INSERT INTO human_reviews
-                (offer_id, ratings_json, ai_snapshot_json,
-                 global_audit_text, global_score, seen_at_review, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(offer_id) DO UPDATE SET
-                ratings_json      = excluded.ratings_json,
-                ai_snapshot_json  = excluded.ai_snapshot_json,
-                global_audit_text = excluded.global_audit_text,
-                global_score      = excluded.global_score,
-                seen_at_review    = excluded.seen_at_review,
-                created_at        = excluded.created_at
+            UPDATE offers
+            SET categorie_suggeree = ?,
+                categorie_corrigee = ?,
+                remarque           = ?,
+                reviewed_at        = ?
+            WHERE id = ?
             """,
-            (
-                str(offer_id),
-                json.dumps(body.ratings_json),
-                json.dumps(ai_snapshot),
-                body.global_audit_text,
-                body.global_score,
-                int(seen_at_review),
-                now,
-            ),
+            (suggeree, body.categorie_corrigee, body.remarque, now, offer_id),
         )
         conn.commit()
     finally:
         conn.close()
 
+
+# ---------------------------------------------------------------------------
+# GET /offers/{id}/review   — lecture review calibration (legacy, lecture seule)
+# ---------------------------------------------------------------------------
 
 @router.get("/offers/{offer_id}/review", response_model=ReviewOut)
 def get_review(offer_id: int) -> ReviewOut:

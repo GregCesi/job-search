@@ -25,9 +25,11 @@ def main() -> None:
     from orchestrator.job_search.matching.embedder import Embedder
     from orchestrator.job_search.matching.profile import load_profile
     from orchestrator.job_search.scoring.attainability import compute_attainability
+    from orchestrator.job_search.scoring.categorize import categorize
     from orchestrator.job_search.scoring.desirability import compute_desirability
     from orchestrator.job_search.scoring.extractor import extract_facts
     from orchestrator.job_search.scoring.filters import apply_hard_filters
+    from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
     from orchestrator.job_search.sources.france_travail import FranceTravailSource
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.dedup import filter_new
@@ -69,7 +71,7 @@ def main() -> None:
 
         filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria)
         if filtered_out:
-            save_offer(conn, offer, None, None, filtered_out=True, filter_reason=filter_reason)
+            save_offer(conn, offer, filtered_out=True, filter_reason=filter_reason)
             print(f"         → filtré : {filter_reason}")
             continue
 
@@ -78,15 +80,21 @@ def main() -> None:
         facts = extract_facts(offer, model=model, host=host)
         offer = offer.model_copy(update={"extracted_facts": facts})
 
+        # Gate hors-périmètre : court-circuite la catégorisation (0 LLM, §4)
+        hp_reason = derive_hors_perimetre(facts)
+        if hp_reason is not None:
+            flag = " ⚠ parse_failed" if facts.parse_failed else ""
+            save_offer(conn, offer, hors_perimetre_reason=hp_reason.value)
+            print(f"         → hors_perimetre: {hp_reason.value}{flag}")
+            continue
+
         d = compute_desirability(facts, profile.search_criteria, profile)
         a = compute_attainability(facts, profile)
-        save_offer(conn, offer, d, a)
+        cat = categorize(d.score, a.score)
+        save_offer(conn, offer, category=cat)
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
-        print(
-            f"         → désirabilité={d.score:.1f}  atteignabilité={a.level.value}"
-            f"  techs✓={a.techs_matched}  techs✗={a.techs_missing}{flag}"
-        )
+        print(f"         → [{cat.value}]{flag}")
 
     # 7. Purge offres non pertinentes
     purged = purge_irrelevant(conn)
@@ -95,7 +103,7 @@ def main() -> None:
 
     # 8. Digest
     since = run_at - timedelta(hours=args.since_hours)
-    scored = get_offers_since(conn, since, min_desirability=0.0)
+    scored = get_offers_since(conn, since)
     digest = generate_digest(scored, run_at=run_at)
     print()
     print(digest)

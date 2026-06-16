@@ -10,31 +10,33 @@ class OfferRow(BaseModel):
     location: str | None
     remote: bool
     contract_type: str | None
-    desirability: float | None
-    attainability: float | None        # score 0-100 (chantier 2 — était ReachLevel string)
     category: str | None = None        # parfait | reve | atteignable | hors
-    score_in_category: float | None = None
     verdict: str | None
     hors_perimetre_reason: str | None = None
     seen: bool
     fetched_at: str
     filtered_out: bool = False
     filter_reason: str | None = None
+    # chantier review humaine
+    categorie_suggeree: str | None = None
+    categorie_corrigee: str | None = None
+    categorie_finale: str | None = None    # dérivé : corrigee ?? suggeree (jamais persisté)
+    etat_review: str | None = None         # dérivé : non_relue | validee | corrigee
+    remarque: str | None = None
+    reviewed_at: str | None = None
+
+
+class TechSchema(BaseModel):
+    name: str
+    importance: str | None = None  # core | required | nice_to_have | None (v1 compat)
 
 
 class ExtractedFactsSchema(BaseModel):
     seniority_required: str
-    techs_required: list[str]
+    techs_required: list[TechSchema]
     domain: str
+    role_level: str | None = None  # ic | lead | manager
     parse_failed: bool = False
-
-
-class AttainabilityDetailSchema(BaseModel):
-    attain_tech: float
-    attain_role: float
-    blocked_by: str | None
-    techs_matched: list[str]
-    techs_missing: list[str]
 
 
 class OfferDetail(OfferRow):
@@ -42,26 +44,16 @@ class OfferDetail(OfferRow):
     url: str | None
     source: str
     extracted_facts: ExtractedFactsSchema | None
-    desirability_detail: dict | None
-    attainability_detail: AttainabilityDetailSchema | None
-    criteria: list[CriterionSchema]
 
 
 class VerdictIn(BaseModel):
     status: Literal["favori", "rejeté", "candidaté", "masqué", "hors_perimetre_ok", "hors_perimetre_faux_pos"]
 
 
-class CriterionSchema(BaseModel):
-    nom: str
-    note: float        # 0-10
-    justif: str
-    axe: str           # "desirability" | "attainability"
-
-
-class ReviewIn(BaseModel):
-    ratings_json: dict              # {nom_critère: {note: int|null, justif: str|null}}
-    global_audit_text: str | None = None
-    global_score: int | None = None
+class CategoryReviewIn(BaseModel):
+    """Review de catégorie — chantier review humaine."""
+    categorie_corrigee: str | None = None   # None = validation de la suggestion
+    remarque: str | None = None
 
 
 class ReviewOut(BaseModel):

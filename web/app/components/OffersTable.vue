@@ -34,9 +34,11 @@
           ]"
           @click="$emit('select', offer)"
         >
-          <!-- Seen dot -->
+          <!-- Review state dot -->
           <td class="px-3 py-3">
-            <span v-if="!offer.seen" class="block w-2 h-2 rounded-full bg-indigo-400" title="Non vu" />
+            <span v-if="offer.etat_review === 'non_relue'" class="block w-2 h-2 rounded-full bg-indigo-400" title="Non relue" />
+            <span v-else-if="offer.etat_review === 'validee'" class="block w-2 h-2 rounded-full bg-green-400" title="Validée" />
+            <span v-else-if="offer.etat_review === 'corrigee'" class="block w-2 h-2 rounded-full bg-amber-400" title="Corrigée" />
           </td>
 
           <!-- Title -->
@@ -60,7 +62,7 @@
             <span v-else class="text-gray-500">{{ offer.location ?? '—' }}</span>
           </td>
 
-          <!-- Désirabilité + Catégorie / Hors-périmètre -->
+          <!-- Catégorie (finale ou hors-périmètre) -->
           <td class="px-3 py-3 whitespace-nowrap">
             <div v-if="offer.hors_perimetre_reason" class="flex items-center gap-1.5">
               <span :class="reasonClass(offer.hors_perimetre_reason)"
@@ -69,11 +71,12 @@
               </span>
             </div>
             <div v-else class="flex items-center gap-1.5">
-              <ScoreBadge :score="offer.desirability" />
-              <span class="text-gray-300 text-xs">·</span>
-              <ScoreBadge :score="offer.attainability" />
-              <span v-if="offer.category" :class="categoryClass(offer.category)"
+              <span v-if="offer.categorie_finale" :class="categoryClass(offer.categorie_finale)"
                     class="text-xs px-1.5 py-0.5 rounded font-medium">
+                {{ categoryLabel(offer.categorie_finale) }}
+              </span>
+              <span v-else-if="offer.category" :class="categoryClass(offer.category)"
+                    class="text-xs px-1.5 py-0.5 rounded font-medium opacity-60">
                 {{ categoryLabel(offer.category) }}
               </span>
             </div>
@@ -102,7 +105,8 @@
 <script setup lang="ts">
 import { useOffersStore } from '~/stores/offers'
 
-defineEmits<{ select: [offer: ReturnType<typeof useOffersStore>['offers']['value'][number]] }>()
+import type { OfferRow } from '~/stores/offers'
+defineEmits<{ select: [offer: OfferRow] }>()
 defineProps<{ selectedId?: number }>()
 
 const store = useOffersStore()
@@ -112,22 +116,24 @@ const COLS = [
   { key: 'company',      label: 'Entreprise',  sortable: false },
   { key: 'contract_type',label: 'Contrat',     sortable: false },
   { key: 'location',     label: 'Lieu',        sortable: false },
-  { key: 'desirability', label: 'Désir / Reach', sortable: true  },
+  { key: 'category',     label: 'Catégorie',   sortable: true  },
   { key: 'fetched_at',   label: 'Récupéré',    sortable: true  },
   { key: 'verdict',      label: 'Verdict',     sortable: false },
 ]
 
 function categoryLabel(c: string) {
-  if (c === 'parfait')     return '★ parfait'
-  if (c === 'reve')        return '◈ rêve'
-  if (c === 'atteignable') return '✓ atteignable'
+  if (c === 'parfait')        return '★ parfait'
+  if (c === 'reve')           return '◈ rêve'
+  if (c === 'atteignable')    return '✓ atteignable'
+  if (c === 'hors_perimetre') return '⊘ hors-périmètre'
   return '✗ hors'
 }
 
 function categoryClass(c: string) {
-  if (c === 'parfait')     return 'bg-green-50 text-green-700'
-  if (c === 'reve')        return 'bg-indigo-50 text-indigo-700'
-  if (c === 'atteignable') return 'bg-amber-50 text-amber-700'
+  if (c === 'parfait')        return 'bg-green-50 text-green-700'
+  if (c === 'reve')           return 'bg-indigo-50 text-indigo-700'
+  if (c === 'atteignable')    return 'bg-amber-50 text-amber-700'
+  if (c === 'hors_perimetre') return 'bg-slate-100 text-slate-500'
   return 'bg-gray-100 text-gray-400'
 }
 

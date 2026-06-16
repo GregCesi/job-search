@@ -1,5 +1,5 @@
 """
-L11 — Relance du scoring sur les offres sans désirabilité/atteignabilité.
+Relance de la catégorisation sur les offres sans catégorie.
 
 Usage:
     python -m orchestrator.job_search.rescore
@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Re-score offers missing double-axis scores")
+    parser = argparse.ArgumentParser(description="Re-categorize offers missing category")
     parser.add_argument("--profile", default="profiles/gregoire.yaml")
     parser.add_argument("--dry-run", action="store_true", help="Affiche sans écrire en base")
     parser.add_argument("--force", action="store_true", help="Recalcule toutes les offres (y compris déjà scorées)")
@@ -23,7 +23,7 @@ def main() -> None:
 
     from orchestrator.job_search.matching.profile import load_profile
     from orchestrator.job_search.scoring.attainability import compute_attainability
-    from orchestrator.job_search.scoring.categorize import score_offer
+    from orchestrator.job_search.scoring.categorize import categorize
     from orchestrator.job_search.scoring.desirability import compute_desirability
     from orchestrator.job_search.scoring.extractor import extract_facts
     from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
@@ -42,7 +42,7 @@ def main() -> None:
     conn = get_connection()
     init_db(conn)
 
-    desirability_cond = "" if args.force else "AND desirability IS NULL"
+    category_cond = "" if args.force else "AND category IS NULL"
     rows = conn.execute(
         f"""
         SELECT source, source_id, fingerprint, title, description,
@@ -51,7 +51,8 @@ def main() -> None:
                rome_code, rome_label, url, fetched_at, extracted_facts_json
         FROM offers
         WHERE (filtered_out = 0 OR filtered_out IS NULL)
-          {desirability_cond}
+          AND hors_perimetre_reason IS NULL
+          {category_cond}
         ORDER BY fetched_at DESC
         """
     ).fetchall()
@@ -91,7 +92,7 @@ def main() -> None:
         if filtered_out:
             print(f"           → filtré : {filter_reason}")
             if not args.dry_run:
-                save_offer(conn, offer, None, None, filtered_out=True, filter_reason=filter_reason)
+                save_offer(conn, offer, filtered_out=True, filter_reason=filter_reason)
             n_ok += 1
             continue
 
@@ -109,28 +110,25 @@ def main() -> None:
 
         offer = offer.model_copy(update={"extracted_facts": facts})
 
-        # Gate hors-périmètre : court-circuite le scoring (0 LLM, §4)
+        # Gate hors-périmètre : court-circuite la catégorisation (0 LLM, §4)
         hp_reason = derive_hors_perimetre(facts)
         if hp_reason is not None:
             flag = " ⚠ parse_failed" if facts.parse_failed else ""
             print(f"           → hors_perimetre: {hp_reason.value}{flag}")
             if not args.dry_run:
-                save_offer(conn, offer, None, None, hors_perimetre_reason=hp_reason.value)
+                save_offer(conn, offer, hors_perimetre_reason=hp_reason.value)
             n_ok += 1
             continue
 
         d = compute_desirability(facts, profile.search_criteria, profile)
         a = compute_attainability(facts, profile)
-        s = score_offer(d.score, a.score)
+        cat = categorize(d.score, a.score)
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
-        print(
-            f"           → d={d.score:.1f}  a={a.score:.1f}  [{s.category.value}]"
-            f"  blocked={a.blocked_by}{flag}"
-        )
+        print(f"           → [{cat.value}]{flag}")
 
         if not args.dry_run:
-            save_offer(conn, offer, d, a, scored=s)
+            save_offer(conn, offer, category=cat)
             n_ok += 1
         else:
             n_ok += 1

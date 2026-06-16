@@ -71,7 +71,7 @@ onMounted(() => store.fetchOffers())
 
 const VIEWS: { key: ActiveView; label: string }[] = [
   { key: 'a_traiter',      label: 'À traiter'       },
-  { key: 'atteignables',   label: 'Atteignables'    },
+  { key: 'a_relire',       label: 'Toutes relues'   },
   { key: 'favoris',        label: 'Favoris'         },
   { key: 'hors_perimetre', label: 'Hors-périmètre'  },
   { key: 'tout',           label: 'Tout'            },

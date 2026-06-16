@@ -17,10 +17,10 @@ def _offer_text(offer: JobOffer) -> str:
 
 
 def _profile_text(profile: Profile) -> str:
-    techs = ", ".join(f"{t} ({m.value})" for t, m in profile.techs.items())
+    techs = ", ".join(f"{t} (level={s.level}, desire={s.desire})" for t, s in profile.skills.items())
     return (
-        f"Role: AI Engineer ({profile.seniority.value} level)\n"
-        f"Techs: {techs}\n"
+        f"Role: AI Engineer ({profile.role_ceiling.value} level)\n"
+        f"Skills: {techs}\n"
         f"Domains: {', '.join(profile.search_criteria.domains)}\n"
         f"Locations: {', '.join(profile.search_criteria.locations)}"
     )
