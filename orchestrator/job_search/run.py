@@ -16,6 +16,7 @@ def main() -> None:
     parser.add_argument("--profile", default="profiles/gregoire.yaml")
     parser.add_argument("--max", type=int, default=150, dest="max_results")
     parser.add_argument("--since-hours", type=int, default=24)
+    parser.add_argument("--no-remotive", action="store_true", help="Disable Remotive source")
     args = parser.parse_args()
 
     from dotenv import load_dotenv
@@ -30,7 +31,9 @@ def main() -> None:
     from orchestrator.job_search.scoring.extractor import extract_facts
     from orchestrator.job_search.scoring.filters import apply_hard_filters
     from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
+    from orchestrator.job_search.sources.base import JobOffer, Source
     from orchestrator.job_search.sources.france_travail import FranceTravailSource
+    from orchestrator.job_search.sources.remotive import RemotiveSource
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.dedup import filter_new
     from orchestrator.job_search.storage.offers import get_offers_since, save_offer
@@ -56,10 +59,18 @@ def main() -> None:
     print(f"[run] profil {'ré-' if re_embedded else 'non ré-'}embeddé")
 
     # 4. Fetch
-    print(f"[run] fetch France Travail (max={args.max_results})…", flush=True)
-    source = FranceTravailSource(max_results=args.max_results)
-    all_offers = source.fetch()
-    print(f"[run] {len(all_offers)} offres récupérées")
+    sources: list[Source] = [FranceTravailSource(max_results=args.max_results)]
+    if not args.no_remotive:
+        sources.append(RemotiveSource())
+
+    all_offers: list[JobOffer] = []
+    for src in sources:
+        label = type(src).__name__
+        print(f"[run] fetch {label}…", flush=True)
+        batch = src.fetch()
+        print(f"[run] {label}: {len(batch)} offres")
+        all_offers.extend(batch)
+    print(f"[run] {len(all_offers)} offres récupérées (total)")
 
     # 5. Dédup
     new_offers = filter_new(conn, all_offers)
