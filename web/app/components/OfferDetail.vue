@@ -139,17 +139,31 @@
                 <span v-if="offer.extracted_facts.role_level"><span class="text-gray-400">Rôle</span> <span class="font-medium text-gray-700">{{ offer.extracted_facts.role_level }}</span></span>
                 <span><span class="text-gray-400">Séniorité</span> <span class="font-medium text-gray-700">{{ offer.extracted_facts.seniority_required }}</span></span>
               </div>
-              <!-- Tech badges -->
-              <div v-if="offer.extracted_facts.techs_required.length > 0" class="flex flex-wrap gap-1.5 mt-1">
-                <span
-                  v-for="tech in offer.extracted_facts.techs_required" :key="tech.name"
-                  :class="techBadgeClass(tech.importance)"
-                  class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                  :title="tech.importance ?? 'importance inconnue'"
-                >
-                  {{ tech.name }}
-                </span>
-              </div>
+              <!-- Tech badges — split by profile ownership -->
+              <template v-if="offer.extracted_facts.techs_required.length > 0">
+                <div v-if="ownedTechs.length" class="flex flex-wrap items-center gap-1.5 mt-1">
+                  <span class="text-[10px] text-gray-400 mr-0.5">Possédées</span>
+                  <span
+                    v-for="tech in ownedTechs" :key="tech.name"
+                    :class="techBadgeClass(tech.importance)"
+                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                    :title="tech.importance ?? 'importance inconnue'"
+                  >
+                    {{ tech.name }}
+                  </span>
+                </div>
+                <div v-if="missingTechs.length" class="flex flex-wrap items-center gap-1.5 mt-1">
+                  <span class="text-[10px] text-gray-400 mr-0.5">Manquantes</span>
+                  <span
+                    v-for="tech in missingTechs" :key="tech.name"
+                    :class="techBadgeClass(tech.importance)"
+                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ring-1 ring-red-300"
+                    :title="tech.importance ?? 'importance inconnue'"
+                  >
+                    {{ tech.name }}
+                  </span>
+                </div>
+              </template>
               <p v-else class="text-xs text-orange-500 italic">Aucune techno exigée</p>
             </div>
           </section>
@@ -173,6 +187,18 @@ const props = defineProps<{ offer: OfferDetail }>()
 defineEmits<{ close: [] }>()
 
 const store = useOffersStore()
+
+// ── Tech split by profile ────────────────────────────────────────────────
+const ownedTechs = computed(() =>
+  props.offer.extracted_facts?.techs_required.filter(
+    t => store.profileSkills.has(t.name.toLowerCase()),
+  ) ?? [],
+)
+const missingTechs = computed(() =>
+  props.offer.extracted_facts?.techs_required.filter(
+    t => !store.profileSkills.has(t.name.toLowerCase()),
+  ) ?? [],
+)
 
 // ── Review state ─────────────────────────────────────────────────────────
 const CATEGORIES = [

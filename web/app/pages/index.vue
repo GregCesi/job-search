@@ -67,7 +67,10 @@ import type { OfferRow, ActiveView } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const store = useOffersStore()
-onMounted(() => store.fetchOffers())
+onMounted(() => {
+  store.fetchOffers()
+  store.fetchProfileSkills()
+})
 
 const VIEWS: { key: ActiveView; label: string }[] = [
   { key: 'a_traiter',      label: 'À traiter'       },

@@ -76,6 +76,12 @@ export const useOffersStore = defineStore('offers', () => {
   const activeView = ref<ActiveView>('a_traiter')
   const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter })
   const loading = ref(false)
+  const profileSkills = ref<Set<string>>(new Set())
+
+  async function fetchProfileSkills() {
+    const data = await $fetch<string[]>(`${config.public.apiBase}/profile/skills`)
+    profileSkills.value = new Set(data.map(s => s.toLowerCase()))
+  }
 
   async function fetchOffers() {
     loading.value = true
@@ -167,7 +173,9 @@ export const useOffersStore = defineStore('offers', () => {
     activeView,
     filters,
     loading,
+    profileSkills,
     fetchOffers,
+    fetchProfileSkills,
     openDetail,
     submitCategoryReview,
     setVerdict,
