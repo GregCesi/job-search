@@ -32,10 +32,26 @@
           <span>{{ offer.contract_type ?? '—' }}</span>
           <span>{{ offer.fetched_at?.slice(0, 10) }}</span>
           <VerdictBadge :verdict="offer.verdict" />
-          <a v-if="offer.url" :href="offer.url" target="_blank" rel="noopener noreferrer"
-             class="ml-auto text-indigo-600 hover:underline font-medium">
-            Voir l'annonce ↗
-          </a>
+          <div class="ml-auto flex items-center gap-3">
+            <NuxtLink
+              v-if="store.hasTraces(offer.source_id)"
+              :to="'/traces#offer-' + offer.source_id"
+              class="text-indigo-600 hover:underline font-medium"
+            >
+              Voir la trace
+            </NuxtLink>
+            <span
+              v-else
+              class="text-gray-300 cursor-not-allowed"
+              title="Aucune trace pour cette offre"
+            >
+              Voir la trace
+            </span>
+            <a v-if="offer.url" :href="offer.url" target="_blank" rel="noopener noreferrer"
+               class="text-indigo-600 hover:underline font-medium">
+              Voir l'annonce ↗
+            </a>
+          </div>
         </div>
 
         <!-- Body -->

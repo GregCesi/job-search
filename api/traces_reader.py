@@ -55,6 +55,20 @@ def read_traces_raw() -> list[dict]:
     return traces
 
 
+def count_traces_by_offer() -> dict[str, int]:
+    """Compte les traces par offer_id (= source_id).
+
+    Parse le JSONL une fois via read_traces_raw(), groupe par offer_id.
+    Fichier absent ou vide → dict vide.
+    """
+    counts: dict[str, int] = {}
+    for raw in read_traces_raw():
+        oid = raw.get("offer_id")
+        if oid:
+            counts[oid] = counts.get(oid, 0) + 1
+    return counts
+
+
 def _fetch_offer_info(offer_ids: list[str]) -> dict[str, tuple[str | None, str | None]]:
     """Retourne {source_id: (title, company)} pour les ids demandés.
 

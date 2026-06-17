@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from .db import get_conn
 from .schemas import CAUSE_VALUES, SEVERITE_VALUES, TraceNoteIn, TraceOut
-from .traces_reader import build_traces_out, read_traces_raw
+from .traces_reader import build_traces_out, count_traces_by_offer, read_traces_raw
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,6 +84,12 @@ def _fetch_annotations(trace_keys: list[str]) -> dict[str, dict]:
         }
         for row in rows
     }
+
+
+@router.get("/traces/counts", response_model=dict[str, int])
+def get_traces_counts() -> dict[str, int]:
+    """Nombre de traces par offre (clé = source_id). Parse JSONL 1×, 0 LLM."""
+    return count_traces_by_offer()
 
 
 @router.get("/traces", response_model=list[TraceOut])

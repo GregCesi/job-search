@@ -180,6 +180,7 @@ def get_offer(offer_id: int) -> OfferDetail:
 
     return OfferDetail(
         id=row["id"],
+        source_id=row["source_id"],
         title=row["title"],
         company=row["company"],
         location=row["location"],

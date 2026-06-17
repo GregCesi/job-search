@@ -24,7 +24,7 @@
 
       <p v-if="store.loading" class="text-sm text-gray-400">Chargement des traces…</p>
 
-      <div v-for="group in groups" :key="group.offer_id" class="mb-8">
+      <div v-for="group in groups" :key="group.offer_id" :id="'offer-' + group.offer_id" class="mb-8">
 
         <!-- Group heading -->
         <div class="flex items-baseline gap-2 mb-2 px-1">
@@ -212,7 +212,29 @@ import { useTracesStore } from '~/stores/traces'
 import type { TraceOut } from '~/stores/traces'
 
 const store = useTracesStore()
-onMounted(() => store.fetchTraces())
+const route = useRoute()
+
+onMounted(async () => {
+  await store.fetchTraces()
+  const hash = route.hash
+  if (hash?.startsWith('#offer-')) {
+    const offerId = hash.slice(7) // '#offer-'.length
+    // Expand all traces of the targeted group
+    const group = groups.value.find(g => g.offer_id === offerId)
+    if (group) {
+      for (const t of group.traces) {
+        if (!expandedKeys.value.includes(t.trace_key)) {
+          expandedKeys.value.push(t.trace_key)
+          localNotes[t.trace_key] = t.note ?? ''
+          localCauses[t.trace_key] = t.cause ?? null
+          localSeverites[t.trace_key] = t.severite ?? null
+        }
+      }
+      await nextTick()
+      document.getElementById(`offer-${offerId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+})
 
 // ── Groupement par offer_id ──────────────────────────────────────────────────
 

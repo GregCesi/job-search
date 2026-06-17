@@ -1,8 +1,8 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Adapter Remotive + multi-source LIVRÉ ✓ (2026-06-16, L1→L3) — RemotiveSource créé (sources/remotive.py), run.py multi-source (boucle N sources + flag --no-remotive), smoke test OK (31 offres Remotive ingérées, dédup cross-source OK, DB peuplée).
-- Prochaine action : utilisation terrain (accumuler reviews + offres Remotive), puis futur chantier extraction/volume quand nécessaire
+- Dernière action : Chantier bouton trace LIVRÉ ✓ (2026-06-17, L1→L5) — validé terrain par l'utilisateur.
+- Prochaine action : commit, puis utilisation terrain
 - Bloquant : aucun
 
 ## Phase en cours
@@ -22,3 +22,4 @@
 - Chantier hors-périmètre : LIVRÉ ✓ (2026-06-12, L0→L8, 9 offres gatées)
 - Chantier review humaine : LIVRÉ ✓ (2026-06-15, L1→L12, scoring supprimé + review catégorie + facts/badges)
 - Adapter Remotive + multi-source : LIVRÉ ✓ (2026-06-16, L1→L3, 2e source pluggée)
+- Chantier bouton trace : LIVRÉ ✓ (2026-06-17, L1→L5, lien offre→traces avec ancrage)

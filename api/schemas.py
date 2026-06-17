@@ -40,6 +40,7 @@ class ExtractedFactsSchema(BaseModel):
 
 
 class OfferDetail(OfferRow):
+    source_id: str
     description: str | None
     url: str | None
     source: str

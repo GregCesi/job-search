@@ -37,6 +37,7 @@ export interface ExtractedFacts {
 }
 
 export interface OfferDetail extends OfferRow {
+  source_id: string
   description: string | null
   url: string | null
   source: string
@@ -77,10 +78,20 @@ export const useOffersStore = defineStore('offers', () => {
   const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter })
   const loading = ref(false)
   const profileSkills = ref<Set<string>>(new Set())
+  const traceCounts = ref<Record<string, number>>({})
 
   async function fetchProfileSkills() {
     const data = await $fetch<string[]>(`${config.public.apiBase}/profile/skills`)
     profileSkills.value = new Set(data.map(s => s.toLowerCase()))
+  }
+
+  async function fetchTraceCounts() {
+    const data = await $fetch<Record<string, number>>(`${config.public.apiBase}/traces/counts`)
+    traceCounts.value = data
+  }
+
+  function hasTraces(sourceId: string): boolean {
+    return (traceCounts.value[sourceId] ?? 0) > 0
   }
 
   async function fetchOffers() {
@@ -174,8 +185,11 @@ export const useOffersStore = defineStore('offers', () => {
     filters,
     loading,
     profileSkills,
+    traceCounts,
     fetchOffers,
     fetchProfileSkills,
+    fetchTraceCounts,
+    hasTraces,
     openDetail,
     submitCategoryReview,
     setVerdict,

@@ -70,6 +70,7 @@ const store = useOffersStore()
 onMounted(() => {
   store.fetchOffers()
   store.fetchProfileSkills()
+  store.fetchTraceCounts()
 })
 
 const VIEWS: { key: ActiveView; label: string }[] = [
