@@ -51,7 +51,8 @@ class JobOffer(BaseModel):
     source_id: str        # id natif stable côté source
     fingerprint: str      # hash(titre normalisé + entreprise + localisation) — crochet cross-source
     title: str
-    description: str
+    description: str                       # Markdown propre (dérivé) — lu par viewer + LLM
+    description_raw: str | None = None     # contenu source brut (HTML pour Remotive), source de vérité immuable
     company: str | None
     location: str | None  # libellé brut
     remote: bool          # full-remote détecté

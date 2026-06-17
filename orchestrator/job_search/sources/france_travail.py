@@ -130,6 +130,7 @@ class FranceTravailSource(Source):
             fingerprint=_fingerprint(title, company, location),
             title=title,
             description=raw.get("description", ""),
+            description_raw=raw.get("description", ""),
             company=company or None,
             location=location or None,
             remote=_detect_remote(raw),

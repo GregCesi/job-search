@@ -1,7 +1,7 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier bouton trace LIVRÉ ✓ (2026-06-17, L1→L5) — validé terrain par l'utilisateur.
+- Dernière action : Chantier HTML→Markdown LIVRÉ ✓ (2026-06-17, L0→L9) — descriptions Remotive nettoyées, rendu MD front validé terrain.
 - Prochaine action : commit, puis utilisation terrain
 - Bloquant : aucun
 
@@ -23,3 +23,4 @@
 - Chantier review humaine : LIVRÉ ✓ (2026-06-15, L1→L12, scoring supprimé + review catégorie + facts/badges)
 - Adapter Remotive + multi-source : LIVRÉ ✓ (2026-06-16, L1→L3, 2e source pluggée)
 - Chantier bouton trace : LIVRÉ ✓ (2026-06-17, L1→L5, lien offre→traces avec ancrage)
+- Chantier HTML→Markdown : LIVRÉ ✓ (2026-06-17, L0→L9, descriptions Remotive nettoyées, rendu MD front)

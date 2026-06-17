@@ -184,10 +184,10 @@
             </div>
           </section>
 
-          <!-- Description -->
+          <!-- Description (Markdown rendu) -->
           <section v-if="offer.description">
             <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Description</h3>
-            <p class="whitespace-pre-line leading-relaxed text-gray-600">{{ offer.description }}</p>
+            <div class="prose prose-sm prose-gray max-w-none leading-relaxed text-gray-600" v-html="renderedDescription" />
           </section>
         </div>
       </div>
@@ -196,6 +196,8 @@
 </template>
 
 <script setup lang="ts">
+import DOMPurify from 'dompurify'
+import { marked } from 'marked'
 import { useOffersStore } from '~/stores/offers'
 import type { OfferDetail } from '~/stores/offers'
 
@@ -203,6 +205,11 @@ const props = defineProps<{ offer: OfferDetail }>()
 defineEmits<{ close: [] }>()
 
 const store = useOffersStore()
+
+// ── Markdown rendering ──────────────────────────────────────────────────
+const renderedDescription = computed(() =>
+  props.offer.description ? DOMPurify.sanitize(marked(props.offer.description) as string) : '',
+)
 
 // ── Tech split by profile ────────────────────────────────────────────────
 const ownedTechs = computed(() =>

@@ -47,15 +47,16 @@ def save_offer(
             (source, source_id, fingerprint, title, company, location,
              remote, contract_type, nature_contract, alternance, full_time,
              company_size, experience_required, rome_code, rome_label,
-             url, fetched_at, description, seen,
+             url, fetched_at, description, description_raw, seen,
              extracted_facts_json, category,
              filtered_out, filter_reason, hors_perimetre_reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
                 ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json  = excluded.extracted_facts_json,
             category              = excluded.category,
             description           = excluded.description,
+            description_raw       = excluded.description_raw,
             filtered_out          = excluded.filtered_out,
             filter_reason         = excluded.filter_reason,
             hors_perimetre_reason = excluded.hors_perimetre_reason
@@ -68,6 +69,7 @@ def save_offer(
             offer.company_size, offer.experience_required,
             offer.rome_code, offer.rome_label,
             offer.url, offer.fetched_at.isoformat(), offer.description,
+            offer.description_raw,
             facts_json,
             category.value if category is not None else None,
             int(filtered_out),

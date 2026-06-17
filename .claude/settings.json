@@ -21,7 +21,8 @@
       "Bash(pip:*)",
       "Bash(uv:*)",
       "Bash(pytest:*)",
-      "Bash(ollama:*)"
+      "Bash(ollama:*)",
+      "Bash(sqlite3 data/job_search.sqlite \"SELECT source, count\\(*\\) FROM offers GROUP BY source\")"
     ],
     "deny": [
       "Bash(rm -rf:*)",

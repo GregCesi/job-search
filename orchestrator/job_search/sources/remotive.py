@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import requests
 
+from orchestrator.job_search.sources._clean import html_to_markdown
 from orchestrator.job_search.sources.base import JobOffer, Source
 
 
@@ -44,12 +45,14 @@ class RemotiveSource(Source):
                 title = item.get("title", "")
                 company = item.get("company_name", "")
                 location = item.get("candidate_required_location", "")
+                raw_html = item.get("description", "")
                 offers.append(JobOffer(
                     source="remotive",
                     source_id=str(item["id"]),
                     fingerprint=_fingerprint(title, company, location),
                     title=title,
-                    description=item.get("description", ""),
+                    description=html_to_markdown(raw_html),
+                    description_raw=raw_html,
                     company=company or None,
                     location=location or None,
                     remote=True,
