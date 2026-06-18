@@ -9,6 +9,7 @@ from enum import Enum
 from pydantic import BaseModel
 
 from orchestrator.job_search.matching.profile import MasteryLevel, Profile
+from orchestrator.job_search.scoring.aliases import AliasTable, canonicalize
 from orchestrator.job_search.sources.base import ExtractedFacts, SeniorityLevel, TechRequirement
 
 _SENIORITY_ORDER: dict[SeniorityLevel, int] = {
@@ -20,29 +21,6 @@ _SENIORITY_ORDER: dict[SeniorityLevel, int] = {
 
 # Niveaux de maîtrise considérés comme "connu" pour le matching
 _KNOWN = {MasteryLevel.working, MasteryLevel.confirmed}
-
-# Alias de technos équivalentes (équivalences évidentes seulement — architecture.md §4).
-# postgres → sql, sqlite → sql, etc. Pas de jugement de niveau (chantier 2).
-_TECH_ALIASES: dict[str, str] = {
-    # Famille SQL → "sql"
-    "postgresql": "sql",
-    "postgres":   "sql",
-    "mysql":      "sql",
-    "mariadb":    "sql",
-    "mssql":      "sql",
-    "bigquery":   "sql",
-    "snowflake":  "sql",
-    "supabase":   "sql",
-    # SQLite variante
-    "sqlite3":    "sqlite",
-    # LangChain écosystème
-    "langsmith":  "langchain",
-}
-
-
-def _canonical(tech: str) -> str:
-    """Normalise une techno vers son alias canonique si équivalence évidente."""
-    return _TECH_ALIASES.get(tech.lower(), tech.lower())
 
 
 # ---------------------------------------------------------------------------
@@ -57,18 +35,46 @@ _IMPORTANCE_WEIGHTS: dict[str, float] = {
 }
 
 
+def _canonical_profile_skills(
+    profile: Profile, table: AliasTable,
+) -> dict[str, int]:
+    """Index canonicalisé des skills du profil : {canonical_form: level}."""
+    result: dict[str, int] = {}
+    for name, entry in profile.skills.items():
+        c = canonicalize(name, table)
+        if c is not None:  # pas un exclu
+            result[c] = entry.level
+    return result
+
+
+def _canonical_profile_desires(
+    profile: Profile, table: AliasTable,
+) -> dict[str, int]:
+    """Index canonicalisé des desires du profil : {canonical_form: desire}."""
+    result: dict[str, int] = {}
+    for name, entry in profile.skills.items():
+        c = canonicalize(name, table)
+        if c is not None:
+            result[c] = entry.desire
+    return result
+
+
 def _compute_attain_tech(
     techs_required: list[TechRequirement],
     profile: Profile,
+    table: AliasTable,
 ) -> tuple[float, list[str], list[str]]:
     """
     Moyenne pondérée des niveaux profil sur les technos de l'offre.
     attain_tech = Σ(level_i × weight_i) / Σ(weight_i) × 10  → 0-100.
     Techno absente du profil : level=0 (neutre, pas de pénalité explicite mais dilue).
+    Techno exclue (canonicalize → None) : retirée du calcul (ni matchée ni manquante).
     Retourne (score, techs_matched, techs_missing).
     """
     if not techs_required:
         return 100.0, [], []
+
+    canonical_levels = _canonical_profile_skills(profile, table)
 
     weighted_sum = 0.0
     total_weight = 0.0
@@ -76,9 +82,13 @@ def _compute_attain_tech(
     missing: list[str] = []
 
     for tech in techs_required:
-        canonical = _canonical(tech.name)
+        canonical = canonicalize(tech.name, table)
+        if canonical is None:
+            # Exclu (bruit/non-tech) — retiré du calcul
+            continue
+
         weight = _IMPORTANCE_WEIGHTS.get(tech.importance, 1.0)
-        level = profile.tech_level(canonical)
+        level = canonical_levels.get(canonical)
 
         if level is not None:
             matched.append(tech.name)
@@ -88,6 +98,9 @@ def _compute_attain_tech(
             # level=0 implicite — contribue 0 au numérateur, weight au dénominateur
 
         total_weight += weight
+
+    if total_weight == 0:
+        return 100.0, [], []
 
     attain_tech = (weighted_sum / total_weight) * 10
     return round(attain_tech, 1), matched, missing
@@ -122,12 +135,12 @@ class Attainability(BaseModel):
     blocked_by: str | None                # "tech" | "role" | None — quel axe gouverne
 
 
-def compute_attainability(facts: ExtractedFacts, profile: Profile) -> Attainability:
+def compute_attainability(facts: ExtractedFacts, profile: Profile, table: AliasTable) -> Attainability:
     """
     Atteignabilité refondue : min(attain_tech, attain_role). 0 LLM (architecture.md §4).
     Non-compensation : un bon axe ne rachète jamais un axe disqualifiant.
     """
-    attain_tech, matched, missing = _compute_attain_tech(facts.techs_required, profile)
+    attain_tech, matched, missing = _compute_attain_tech(facts.techs_required, profile, table)
     attain_role = _compute_attain_role(facts.role_level.value, profile)
 
     score = round(min(attain_tech, attain_role), 1)

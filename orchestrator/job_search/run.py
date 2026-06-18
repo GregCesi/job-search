@@ -25,6 +25,7 @@ def main() -> None:
     from orchestrator.job_search.digest.formatter import generate_digest
     from orchestrator.job_search.matching.embedder import Embedder
     from orchestrator.job_search.matching.profile import load_profile
+    from orchestrator.job_search.scoring.aliases import load_alias_table
     from orchestrator.job_search.scoring.attainability import compute_attainability
     from orchestrator.job_search.scoring.categorize import categorize
     from orchestrator.job_search.scoring.desirability import compute_desirability
@@ -45,8 +46,9 @@ def main() -> None:
     run_at = datetime.now(timezone.utc)
     print(f"[run] démarrage {run_at.strftime('%Y-%m-%d %H:%M')} UTC", flush=True)
 
-    # 1. Profil
+    # 1. Profil + alias
     profile, profile_hash = load_profile(args.profile)
+    alias_table = load_alias_table("profiles/alias.yaml")
     print(f"[run] profil : {profile.profile_id} role_ceiling={profile.role_ceiling.value} (hash={profile_hash[:8]}…)")
 
     # 2. DB
@@ -99,8 +101,8 @@ def main() -> None:
             print(f"         → hors_perimetre: {hp_reason.value}{flag}")
             continue
 
-        d = compute_desirability(facts, profile.search_criteria, profile)
-        a = compute_attainability(facts, profile)
+        d = compute_desirability(facts, profile.search_criteria, profile, alias_table)
+        a = compute_attainability(facts, profile, alias_table)
         cat = categorize(d.score, a.score)
         save_offer(conn, offer, category=cat)
 

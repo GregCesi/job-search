@@ -10,7 +10,8 @@ Phase 2 : domain passe de binaire à gradué par distance au cœur-cible.
 from pydantic import BaseModel
 
 from orchestrator.job_search.matching.profile import Profile, SearchCriteria
-from orchestrator.job_search.scoring.attainability import _canonical
+from orchestrator.job_search.scoring.aliases import AliasTable, canonicalize
+from orchestrator.job_search.scoring.attainability import _canonical_profile_desires
 from orchestrator.job_search.sources.base import ExtractedFacts
 
 # Gradient de distance au domaine cible (profil Grégoire : AI Engineering).
@@ -37,18 +38,23 @@ class Desirability(BaseModel):
 _DESIRE_FLOOR = 0.5
 
 
-def _desire_factor(facts: ExtractedFacts, profile: Profile) -> float:
+def _desire_factor(facts: ExtractedFacts, profile: Profile, table: AliasTable) -> float:
     """
     Facteur d'envie-techno ∈ [_DESIRE_FLOOR, 1.0].
     Inconnu neutre : si aucune techno de l'offre n'est dans le profil → 1.0.
     desire=0 sur toutes les connues → _DESIRE_FLOOR (score de domaine divisé par 2 max).
     desire=10 sur toutes → 1.0 (pas de modification).
+    Techs exclues (canonicalize → None) ignorées.
     """
-    desires = [
-        profile.tech_desire(_canonical(t.name))
-        for t in facts.techs_required
-        if profile.tech_desire(_canonical(t.name)) is not None
-    ]
+    canonical_desires = _canonical_profile_desires(profile, table)
+    desires: list[int] = []
+    for t in facts.techs_required:
+        c = canonicalize(t.name, table)
+        if c is None:
+            continue  # exclu
+        desire = canonical_desires.get(c)
+        if desire is not None:
+            desires.append(desire)
     if not desires:
         return 1.0  # inconnu = neutre
     mean_desire = sum(desires) / len(desires) / 10.0  # → [0, 1]
@@ -67,6 +73,7 @@ def compute_desirability(
     facts: ExtractedFacts,
     criteria: SearchCriteria,
     profile: Profile | None = None,
+    table: AliasTable | None = None,
 ) -> Desirability:
     """
     Calcule la désirabilité d'une offre.
@@ -75,7 +82,7 @@ def compute_desirability(
     profile=None : modulation désactivée (desire_factor=1.0).
     """
     d = _domain_score(facts.domain)
-    factor = _desire_factor(facts, profile) if profile is not None else 1.0
+    factor = _desire_factor(facts, profile, table) if (profile is not None and table is not None) else 1.0
     score = round(d * factor * 100, 1)
 
     return Desirability(

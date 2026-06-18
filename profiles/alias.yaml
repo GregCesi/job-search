@@ -1,0 +1,86 @@
+# alias.yaml — canonicalisation des technologies (job-search)
+#
+# RÔLE : table de normalisation appliquée AU SCORING (jamais à l'ingestion).
+#        La trace LLM garde la sortie brute. Ce fichier ne sert qu'à aligner
+#        le vocabulaire offre <-> profil au moment de l'intersection.
+#
+# RÈGLES :
+#   - `aliases` : variante -> forme canonique. Une tech non listée ici
+#     s'auto-canonicalise (elle est sa propre forme) et sort en `unmatched`
+#     pour revue humaine. On n'efface JAMAIS une tech inconnue, on la marque.
+#   - `exclude` : strings retirées du CALCUL de score (bruit / non-techs).
+#     Elles restent visibles dans la trace, elles sont juste ignorées au scoring.
+#   - Décision actée : pas de relation d'implication ici (rails!=ruby,
+#     quasar!=vue, react native!=react). Les frameworks restent distincts.
+#   - Décision actée : VMware -> tout écrasé sur `vmware` (granularité produit
+#     non nécessaire pour le matching).
+#   - Décision actée : technos molles (ai, ml, nlp, llm, machine_learning...)
+#     NON traitées ici. Elles passent brutes -> `unmatched` -> chantier futur.
+
+aliases:
+
+  # --- Langages ---
+  "c#":          [csharp]
+  "c++":         [cpp, cplusplus]
+  go:            [golang]
+  javascript:    [js]
+  vue:           [vuejs]
+
+  # --- Bases de données ---
+  postgresql:    [postgres]
+  "sql server":  [sql_server, sqlserver]
+  mongodb:       [mongo]
+  neo4j:         [ne4j]            # typo générée par le LLM
+
+  # --- Frameworks / libs IA ---
+  llamaindex:    [llama_index]
+
+  # --- .NET ---
+  ".net":        [net]
+  "asp.net":     [aspnet]
+
+  # --- ORM / libs ---
+  doctrine:      [doctrine_orm]
+  opencv:        [open_cv]
+
+  # --- DevOps / CI ---
+  "ci/cd":       [ci_cd]
+  "gitlab ci":   [gitlab_ci]
+
+  # --- Réseau / sécurité ---
+  "palo alto":   [paloalto]
+
+  # --- Microsoft / identité ---
+  "azure ad":    [microsoft_entrada_id]   # Microsoft Entra ID = ex-Azure AD
+
+  # --- Outils assistants IA ---
+  copilot:       ["microsoft copilot"]
+
+  # --- Virtualisation (tout écrasé sur vmware — décision actée) ---
+  vmware:        ["vmware esxi", esx, vsphere, esxi]
+
+  # --- Vision-language ---
+  "vision-language models": [vision-language, vision-language_models, vision_language_models]
+
+  # --- IDE ---
+  "visual studio": [visual_studio]
+
+  # --- Shell (bash et powershell restent distincts — shells différents) ---
+  shell:         [shellscript, sh]
+
+
+exclude:
+  # Bruit / non-sens / hallucinations LLM probables
+  - none
+  - solutions
+  - development
+  - "happy horse"
+  - devbooster        # à vérifier : nom d'outil interne ou hallucination ?
+
+  # Langues (pas des technologies)
+  - german
+
+  # Familles trop générales pour être matchées (pas des outils précis)
+  - os
+  - microsoft
+  - cloud

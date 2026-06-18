@@ -1,8 +1,8 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier HTML→Markdown LIVRÉ ✓ (2026-06-17, L0→L9) — descriptions Remotive nettoyées, rendu MD front validé terrain.
-- Prochaine action : commit, puis utilisation terrain
+- Dernière action : Chantier canonicalisation LIVRÉ ✓ (2026-06-18, L0→L8). alias.yaml externe, canonicalize() deux côtés, _TECH_ALIASES supprimé, rapport unmatched opérationnel, 108 offres rescorées.
+- Prochaine action : Chantier divergence front — OfferDetail.vue + index.vue font leur propre matching brut sans canonicalisation → badges techs faux sur variantes. Réflexion → PROSIT → kickoff.
 - Bloquant : aucun
 
 ## Phase en cours
@@ -24,3 +24,4 @@
 - Adapter Remotive + multi-source : LIVRÉ ✓ (2026-06-16, L1→L3, 2e source pluggée)
 - Chantier bouton trace : LIVRÉ ✓ (2026-06-17, L1→L5, lien offre→traces avec ancrage)
 - Chantier HTML→Markdown : LIVRÉ ✓ (2026-06-17, L0→L9, descriptions Remotive nettoyées, rendu MD front)
+- Chantier canonicalisation techs : LIVRÉ ✓ (2026-06-18, L0→L8, alias.yaml externe, canonicalize() deux côtés, rapport unmatched, 108 offres rescorées)

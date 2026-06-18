@@ -7,7 +7,9 @@ Usage:
 """
 import argparse
 import os
+from collections import Counter
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 def main() -> None:
@@ -22,6 +24,7 @@ def main() -> None:
     load_dotenv()
 
     from orchestrator.job_search.matching.profile import load_profile
+    from orchestrator.job_search.scoring.aliases import canonicalize, load_alias_table
     from orchestrator.job_search.scoring.attainability import compute_attainability
     from orchestrator.job_search.scoring.categorize import categorize
     from orchestrator.job_search.scoring.desirability import compute_desirability
@@ -37,6 +40,7 @@ def main() -> None:
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
     profile, profile_hash = load_profile(args.profile)
+    alias_table = load_alias_table("profiles/alias.yaml")
     print(f"[rescore] profil : {profile.profile_id} ({profile.role_ceiling.value})")
 
     conn = get_connection()
@@ -61,7 +65,15 @@ def main() -> None:
     if args.dry_run:
         print("[rescore] --dry-run : aucune écriture")
 
+    # Clés profil canonicalisées (pour exclure du rapport unmatched)
+    canonical_profile_keys = {
+        canonicalize(k, alias_table)
+        for k in profile.skills
+    } - {None}
+
     n_ok = n_fail = 0
+    unmatched_counter: Counter[str] = Counter()
+
     for i, r in enumerate(rows, 1):
         offer = JobOffer(
             source=r["source"],
@@ -110,6 +122,12 @@ def main() -> None:
 
         offer = offer.model_copy(update={"extracted_facts": facts})
 
+        # Accumule les techs inconnues (ni alias, ni exclu, ni profil) pour le rapport
+        for t in facts.techs_required:
+            c = canonicalize(t.name, alias_table)
+            if c is not None and c not in alias_table._index and c not in canonical_profile_keys:
+                unmatched_counter[c] += 1
+
         # Gate hors-périmètre : court-circuite la catégorisation (0 LLM, §4)
         hp_reason = derive_hors_perimetre(facts)
         if hp_reason is not None:
@@ -120,8 +138,8 @@ def main() -> None:
             n_ok += 1
             continue
 
-        d = compute_desirability(facts, profile.search_criteria, profile)
-        a = compute_attainability(facts, profile)
+        d = compute_desirability(facts, profile.search_criteria, profile, alias_table)
+        a = compute_attainability(facts, profile, alias_table)
         cat = categorize(d.score, a.score)
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
@@ -135,6 +153,13 @@ def main() -> None:
 
         if facts.parse_failed:
             n_fail += 1
+
+    # Rapport unmatched — techs inconnues triées par fréquence
+    unmatched_path = Path("data/unmatched_techs.txt")
+    unmatched_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f"{tech:<30s} {count}" for tech, count in unmatched_counter.most_common()]
+    unmatched_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    print(f"[rescore] {len(lines)} techs inconnues → {unmatched_path}")
 
     if not args.dry_run:
         purged = purge_irrelevant(conn)
