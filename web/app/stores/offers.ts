@@ -42,6 +42,8 @@ export interface OfferDetail extends OfferRow {
   url: string | null
   source: string
   extracted_facts: ExtractedFacts | null
+  techs_matched: string[]
+  techs_missing: string[]
 }
 
 export interface Filters {
@@ -77,13 +79,7 @@ export const useOffersStore = defineStore('offers', () => {
   const activeView = ref<ActiveView>('a_traiter')
   const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter })
   const loading = ref(false)
-  const profileSkills = ref<Set<string>>(new Set())
   const traceCounts = ref<Record<string, number>>({})
-
-  async function fetchProfileSkills() {
-    const data = await $fetch<string[]>(`${config.public.apiBase}/profile/skills`)
-    profileSkills.value = new Set(data.map(s => s.toLowerCase()))
-  }
 
   async function fetchTraceCounts() {
     const data = await $fetch<Record<string, number>>(`${config.public.apiBase}/traces/counts`)
@@ -184,10 +180,8 @@ export const useOffersStore = defineStore('offers', () => {
     activeView,
     filters,
     loading,
-    profileSkills,
     traceCounts,
     fetchOffers,
-    fetchProfileSkills,
     fetchTraceCounts,
     hasTraces,
     openDetail,

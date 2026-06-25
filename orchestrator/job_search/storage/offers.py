@@ -32,14 +32,20 @@ def save_offer(
     filtered_out: bool = False,
     filter_reason: str | None = None,
     hors_perimetre_reason: str | None = None,
+    techs_matched: list[str] | None = None,
+    techs_missing: list[str] | None = None,
 ) -> None:
     """Upsert offer. Filtered/hors-périmètre offers saved without category."""
+    import json
+
     facts_json = (
         offer.extracted_facts.model_dump_json()
         if offer.extracted_facts is not None
         else None
     )
     full_time_int = None if offer.full_time is None else int(offer.full_time)
+    matched_json = json.dumps(techs_matched) if techs_matched is not None else None
+    missing_json = json.dumps(techs_missing) if techs_missing is not None else None
 
     conn.execute(
         """
@@ -49,9 +55,10 @@ def save_offer(
              company_size, experience_required, rome_code, rome_label,
              url, fetched_at, description, description_raw, seen,
              extracted_facts_json, category,
-             filtered_out, filter_reason, hors_perimetre_reason)
+             filtered_out, filter_reason, hors_perimetre_reason,
+             techs_matched_json, techs_missing_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-                ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json  = excluded.extracted_facts_json,
             category              = excluded.category,
@@ -59,7 +66,9 @@ def save_offer(
             description_raw       = excluded.description_raw,
             filtered_out          = excluded.filtered_out,
             filter_reason         = excluded.filter_reason,
-            hors_perimetre_reason = excluded.hors_perimetre_reason
+            hors_perimetre_reason = excluded.hors_perimetre_reason,
+            techs_matched_json    = excluded.techs_matched_json,
+            techs_missing_json    = excluded.techs_missing_json
         """,
         (
             offer.source, offer.source_id, offer.fingerprint,
@@ -75,6 +84,8 @@ def save_offer(
             int(filtered_out),
             filter_reason,
             hors_perimetre_reason,
+            matched_json,
+            missing_json,
         ),
     )
     conn.commit()

@@ -146,7 +146,8 @@ def main() -> None:
         print(f"           → [{cat.value}]{flag}")
 
         if not args.dry_run:
-            save_offer(conn, offer, category=cat)
+            save_offer(conn, offer, category=cat,
+                       techs_matched=a.techs_matched, techs_missing=a.techs_missing)
             n_ok += 1
         else:
             n_ok += 1

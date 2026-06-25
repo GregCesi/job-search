@@ -87,6 +87,9 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("reviewed_at",         "TEXT"),
         # chantier HTML→Markdown — brut source conservé, description = dérivé MD
         ("description_raw",     "TEXT"),
+        # chantier divergence front — matching techs persisté au (re)score
+        ("techs_matched_json",  "TEXT"),
+        ("techs_missing_json",  "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:

@@ -1,8 +1,8 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier canonicalisation LIVRÉ ✓ (2026-06-18, L0→L8). alias.yaml externe, canonicalize() deux côtés, _TECH_ALIASES supprimé, rapport unmatched opérationnel, 108 offres rescorées.
-- Prochaine action : Chantier divergence front — OfferDetail.vue + index.vue font leur propre matching brut sans canonicalisation → badges techs faux sur variantes. Réflexion → PROSIT → kickoff.
+- Dernière action : Chantier divergence front LIVRÉ ✓ (2026-06-25, L0→L7). Back seule source de vérité du matching techs : techs_matched/missing persistés au (re)score, exposés API read-only, matching JS front supprimé, profil retiré du navigateur. 108 offres repeuplées.
+- Prochaine action : Aucune — observer la cohérence cockpit↔scoring en usage.
 - Bloquant : aucun
 
 ## Phase en cours
@@ -25,3 +25,4 @@
 - Chantier bouton trace : LIVRÉ ✓ (2026-06-17, L1→L5, lien offre→traces avec ancrage)
 - Chantier HTML→Markdown : LIVRÉ ✓ (2026-06-17, L0→L9, descriptions Remotive nettoyées, rendu MD front)
 - Chantier canonicalisation techs : LIVRÉ ✓ (2026-06-18, L0→L8, alias.yaml externe, canonicalize() deux côtés, rapport unmatched, 108 offres rescorées)
+- Chantier divergence front : LIVRÉ ✓ (2026-06-25, L0→L7, back source unique matching techs, profil retiré du front)

@@ -69,7 +69,6 @@ const config = useRuntimeConfig()
 const store = useOffersStore()
 onMounted(() => {
   store.fetchOffers()
-  store.fetchProfileSkills()
   store.fetchTraceCounts()
 })
 

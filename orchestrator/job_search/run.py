@@ -104,7 +104,8 @@ def main() -> None:
         d = compute_desirability(facts, profile.search_criteria, profile, alias_table)
         a = compute_attainability(facts, profile, alias_table)
         cat = categorize(d.score, a.score)
-        save_offer(conn, offer, category=cat)
+        save_offer(conn, offer, category=cat,
+                   techs_matched=a.techs_matched, techs_missing=a.techs_missing)
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
         print(f"         → [{cat.value}]{flag}")

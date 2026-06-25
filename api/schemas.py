@@ -45,6 +45,8 @@ class OfferDetail(OfferRow):
     url: str | None
     source: str
     extracted_facts: ExtractedFactsSchema | None
+    techs_matched: list[str] = []
+    techs_missing: list[str] = []
 
 
 class VerdictIn(BaseModel):

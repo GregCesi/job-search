@@ -198,6 +198,8 @@ def get_offer(offer_id: int) -> OfferDetail:
         url=row["url"],
         source=row["source"],
         extracted_facts=_parse_facts(row["extracted_facts_json"], offer_id),
+        techs_matched=json.loads(row["techs_matched_json"]) if row["techs_matched_json"] else [],
+        techs_missing=json.loads(row["techs_missing_json"]) if row["techs_missing_json"] else [],
     )
 
 

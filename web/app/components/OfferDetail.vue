@@ -211,17 +211,15 @@ const renderedDescription = computed(() =>
   props.offer.description ? DOMPurify.sanitize(marked(props.offer.description) as string) : '',
 )
 
-// ── Tech split by profile ────────────────────────────────────────────────
-const ownedTechs = computed(() =>
-  props.offer.extracted_facts?.techs_required.filter(
-    t => store.profileSkills.has(t.name.toLowerCase()),
-  ) ?? [],
-)
-const missingTechs = computed(() =>
-  props.offer.extracted_facts?.techs_required.filter(
-    t => !store.profileSkills.has(t.name.toLowerCase()),
-  ) ?? [],
-)
+// ── Tech split — source unique : back (techs_matched/techs_missing) ─────
+const ownedTechs = computed(() => {
+  const names = new Set(props.offer.techs_matched ?? [])
+  return (props.offer.extracted_facts?.techs_required ?? []).filter(t => names.has(t.name))
+})
+const missingTechs = computed(() => {
+  const names = new Set(props.offer.techs_missing ?? [])
+  return (props.offer.extracted_facts?.techs_required ?? []).filter(t => names.has(t.name))
+})
 
 // ── Review state ─────────────────────────────────────────────────────────
 const CATEGORIES = [
