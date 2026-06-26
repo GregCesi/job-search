@@ -1,10 +1,13 @@
 """Endpoints offres + verdicts."""
 import json
 import logging
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from .db import get_conn
 from .schemas import (
@@ -151,6 +154,42 @@ def list_offers(
         )
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# POST /offers/check-known  (dédup amont — read-only)
+# ---------------------------------------------------------------------------
+
+
+class _CheckKnownItem(BaseModel):
+    title: str
+    company: str
+    location: str
+
+
+@router.post("/offers/check-known")
+def check_known(items: list[_CheckKnownItem]) -> dict:
+    from orchestrator.job_search.sources.fingerprint import fingerprint
+
+    fps = [fingerprint(it.title, it.company, it.location) for it in items]
+
+    conn = get_conn()
+    try:
+        placeholders = ",".join("?" for _ in fps)
+        rows = conn.execute(
+            f"SELECT fingerprint FROM offers WHERE fingerprint IN ({placeholders})",
+            fps,
+        ).fetchall()
+    finally:
+        conn.close()
+
+    known = {r["fingerprint"] for r in rows}
+    new_indices = [i for i, fp in enumerate(fps) if fp not in known]
+    return {
+        "new_indices": new_indices,
+        "known_count": len(fps) - len(new_indices),
+        "new_count": len(new_indices),
+    }
 
 
 # ---------------------------------------------------------------------------

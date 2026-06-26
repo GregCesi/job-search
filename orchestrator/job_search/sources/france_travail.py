@@ -1,7 +1,5 @@
-import hashlib
 import os
 import time
-import unicodedata
 import warnings
 from datetime import datetime, timezone
 
@@ -9,6 +7,7 @@ import requests
 from dotenv import load_dotenv
 
 from orchestrator.job_search.sources.base import JobOffer, Source
+from orchestrator.job_search.sources.fingerprint import fingerprint as _fingerprint
 
 load_dotenv()
 
@@ -27,15 +26,6 @@ def _detect_remote(raw: dict) -> bool:
     ]).lower()
     return any(kw in text for kw in _REMOTE_KEYWORDS)
 
-
-def _normalize(s: str) -> str:
-    nfd = unicodedata.normalize("NFD", s.lower())
-    return "".join(c for c in nfd if unicodedata.category(c) != "Mn")
-
-
-def _fingerprint(title: str, company: str, location: str) -> str:
-    key = "|".join([_normalize(title), _normalize(company), _normalize(location)])
-    return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
 class FranceTravailSource(Source):

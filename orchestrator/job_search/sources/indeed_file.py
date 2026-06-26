@@ -7,25 +7,14 @@ brute, mappée vers JobOffer ici et nulle part ailleurs (architecture.md §1).
 0 appel réseau, 0 LLM (architecture.md §4).
 """
 
-import hashlib
 import json
-import unicodedata
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
 from orchestrator.job_search.sources._clean import html_to_markdown
 from orchestrator.job_search.sources.base import JobOffer, Source
-
-
-def _normalize(s: str) -> str:
-    nfd = unicodedata.normalize("NFD", s.lower())
-    return "".join(c for c in nfd if unicodedata.category(c) != "Mn")
-
-
-def _fingerprint(title: str, company: str, location: str) -> str:
-    key = "|".join([_normalize(title), _normalize(company), _normalize(location)])
-    return hashlib.sha256(key.encode()).hexdigest()[:16]
+from orchestrator.job_search.sources.fingerprint import fingerprint as _fingerprint
 
 
 class IndeedFileSource(Source):

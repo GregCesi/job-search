@@ -1,8 +1,8 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier source Indeed LIVRÉ ✓ (2026-06-26, L2→L9). IndeedFileSource adapter, intégration pipeline (`--no-indeed`), commande `/ingest-indeed`, 60 offres Indeed récupérées via MCP (2 JSONL).
-- Prochaine action : Aucune — observer l'ingestion Indeed en usage, surveiller le rate limit MCP.
+- Dernière action : Chantier dédup amont Indeed LIVRÉ ✓ (2026-06-26, L0→L2). fingerprint partagé (0 copie inline), endpoint POST /offers/check-known, skill /ingest-indeed v2 avec filtrage + throttle 2-3s + fallback gracieux.
+- Prochaine action : Aucune — tester le skill /ingest-indeed en conditions réelles pour valider la dédup amont et le throttle.
 - Bloquant : aucun
 
 ## Phase en cours
@@ -27,3 +27,4 @@
 - Chantier canonicalisation techs : LIVRÉ ✓ (2026-06-18, L0→L8, alias.yaml externe, canonicalize() deux côtés, rapport unmatched, 108 offres rescorées)
 - Chantier divergence front : LIVRÉ ✓ (2026-06-25, L0→L7, back source unique matching techs, profil retiré du front)
 - Chantier source Indeed : LIVRÉ ✓ (2026-06-26, L2→L9, adapter fichier + commande MCP, 60 offres Indeed)
+- Chantier dédup amont Indeed : LIVRÉ ✓ (2026-06-26, L0→L2, fingerprint partagé, endpoint check-known, skill v2 throttle+dédup)
