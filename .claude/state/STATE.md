@@ -1,8 +1,8 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier divergence front LIVRÉ ✓ (2026-06-25, L0→L7). Back seule source de vérité du matching techs : techs_matched/missing persistés au (re)score, exposés API read-only, matching JS front supprimé, profil retiré du navigateur. 108 offres repeuplées.
-- Prochaine action : Aucune — observer la cohérence cockpit↔scoring en usage.
+- Dernière action : Chantier source Indeed LIVRÉ ✓ (2026-06-26, L2→L9). IndeedFileSource adapter, intégration pipeline (`--no-indeed`), commande `/ingest-indeed`, 60 offres Indeed récupérées via MCP (2 JSONL).
+- Prochaine action : Aucune — observer l'ingestion Indeed en usage, surveiller le rate limit MCP.
 - Bloquant : aucun
 
 ## Phase en cours
@@ -26,3 +26,4 @@
 - Chantier HTML→Markdown : LIVRÉ ✓ (2026-06-17, L0→L9, descriptions Remotive nettoyées, rendu MD front)
 - Chantier canonicalisation techs : LIVRÉ ✓ (2026-06-18, L0→L8, alias.yaml externe, canonicalize() deux côtés, rapport unmatched, 108 offres rescorées)
 - Chantier divergence front : LIVRÉ ✓ (2026-06-25, L0→L7, back source unique matching techs, profil retiré du front)
+- Chantier source Indeed : LIVRÉ ✓ (2026-06-26, L2→L9, adapter fichier + commande MCP, 60 offres Indeed)
