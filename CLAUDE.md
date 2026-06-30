@@ -23,6 +23,7 @@ job-search/
 ## Docs .claude/
 - STATE.md (`.claude/state/STATE.md`) — état courant (lecture obligatoire au début de chaque session)
 - IMPLEMENTATION-*.md (`.claude/state/`) — plans d'exécution par chantier, état d'avancement
+- CODEMAP.md (`.claude/docs/CODEMAP.md`) — carte de retrieval du code (régénérable)
 - Rules (`.claude/rules/`) — règles de dev modulaires, lues automatiquement
 - Commands (`.claude/commands/`) — `/status`, `/handoff`
 
