@@ -1,8 +1,8 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier dédup amont Indeed LIVRÉ ✓ (2026-06-26, L0→L2). fingerprint partagé (0 copie inline), endpoint POST /offers/check-known, skill /ingest-indeed v2 avec filtrage + throttle 2-3s + fallback gracieux.
-- Prochaine action : Aucune — tester le skill /ingest-indeed en conditions réelles pour valider la dédup amont et le throttle.
+- Dernière action : Chantier export contextuel LIVRÉ ✓ (2026-06-30, L1→L6). Endpoint GET /export/offers (Markdown, filtres + champs à la carte via `include`), composant ExportPopover.vue (checkboxes + clipboard), intégré dans index.vue.
+- Prochaine action : Aucune — tester l'export en conditions réelles via le front.
 - Bloquant : aucun
 
 ## Phase en cours
@@ -28,3 +28,4 @@
 - Chantier divergence front : LIVRÉ ✓ (2026-06-25, L0→L7, back source unique matching techs, profil retiré du front)
 - Chantier source Indeed : LIVRÉ ✓ (2026-06-26, L2→L9, adapter fichier + commande MCP, 60 offres Indeed)
 - Chantier dédup amont Indeed : LIVRÉ ✓ (2026-06-26, L0→L2, fingerprint partagé, endpoint check-known, skill v2 throttle+dédup)
+- Chantier export contextuel : LIVRÉ ✓ (2026-06-30, L1→L6, endpoint export/offers + ExportPopover front)

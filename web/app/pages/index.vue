@@ -32,12 +32,13 @@
         >
           Traces LLM
         </NuxtLink>
+        <ExportPopover />
         <a
           :href="`${config.public.apiBase}/export/calibration`"
           target="_blank"
           class="text-xs text-indigo-600 hover:underline font-medium"
         >
-          Export calibration ↗
+          Calibration ↗
         </a>
       </div>
     </header>
