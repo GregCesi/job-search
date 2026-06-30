@@ -70,4 +70,11 @@ python -m orchestrator.job_search.view --offer-id 3
 python -m orchestrator.job_search.verdict
 python -m orchestrator.job_search.verdict --offer-id 3 --status favori
 # statuts : favori | rejeté | candidaté
+
+# Rescore (recatégorisation des offres)
+python -m orchestrator.job_search.rescore                   # offres sans catégorie uniquement
+python -m orchestrator.job_search.rescore --force            # recalcule toutes les offres
+python -m orchestrator.job_search.rescore --re-extract       # force ré-extraction LLM
+python -m orchestrator.job_search.rescore --dry-run          # affiche sans écrire en base
+python -m orchestrator.job_search.rescore --profile profiles/gregoire.yaml  # profil custom
 ```

@@ -68,6 +68,16 @@ aliases:
   # --- Shell (bash et powershell restent distincts — shells différents) ---
   shell:         [shellscript, sh]
 
+  # --- Notions "molles" (domaine, PAS implication vers techno dure) ---
+  # Décision actée : on canonicalise les VARIANTES d'une même notion entre elles.
+  # agents != langgraph, ml != python — aucune implication. Ces clés sont des
+  # entrées de profil à part entière (cf. gregoire.yaml), pas des proxies.
+  llm:           [llms]
+  agents:        [agents_ia, ai_agents]
+  ml:            [machine_learning, ml_frameworks]
+  nlp:           []
+  rag:           []
+
 
 exclude:
   # Bruit / non-sens / hallucinations LLM probables
