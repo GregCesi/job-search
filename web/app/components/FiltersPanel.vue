@@ -49,7 +49,7 @@
         class="border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
       >
         <option value="">Tous</option>
-        <option value="favori">Favori</option>
+        <option value="retenu">Retenu</option>
         <option value="candidaté">Candidaté</option>
         <option value="rejeté">Rejeté</option>
         <option value="masqué">Masqué</option>

@@ -28,7 +28,7 @@
 
         <!-- Meta bar -->
         <div class="flex items-center gap-3 px-6 py-3 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 flex-wrap">
-          <span :class="etatClass" class="px-2 py-0.5 rounded font-semibold">{{ etatLabel }}</span>
+          <span v-if="props.mode === 'operateur'" :class="etatClass" class="px-2 py-0.5 rounded font-semibold">{{ etatLabel }}</span>
           <span>{{ offer.contract_type ?? '—' }}</span>
           <span>{{ offer.fetched_at?.slice(0, 10) }}</span>
           <VerdictBadge :verdict="offer.verdict" />
@@ -57,8 +57,8 @@
         <!-- Body -->
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-6 text-sm text-gray-700">
 
-          <!-- Review de catégorie (L8) -->
-          <section>
+          <!-- Review de catégorie — opérateur uniquement -->
+          <section v-if="props.mode === 'operateur'">
             <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Catégorie</h3>
             <div class="flex flex-wrap gap-2">
               <button
@@ -109,7 +109,7 @@
             <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Verdict</h3>
             <div class="flex flex-wrap gap-2">
               <button
-                v-for="v in VERDICTS" :key="v.status"
+                v-for="v in displayedVerdicts" :key="v.status"
                 :class="[
                   'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
                   offer.verdict === v.status
@@ -201,7 +201,7 @@ import { marked } from 'marked'
 import { useOffersStore } from '~/stores/offers'
 import type { OfferDetail } from '~/stores/offers'
 
-const props = defineProps<{ offer: OfferDetail }>()
+const props = withDefaults(defineProps<{ offer: OfferDetail; mode?: 'candidat' | 'operateur' }>(), { mode: 'candidat' })
 defineEmits<{ close: [] }>()
 
 const store = useOffersStore()
@@ -278,11 +278,17 @@ async function handleReview() {
 
 // ── Verdicts ─────────────────────────────────────────────────────────────
 const VERDICTS = [
-  { status: 'favori',    label: '★ Favori',     activeClass: 'bg-blue-50 border-blue-300 text-blue-700' },
+  { status: 'retenu',    label: '★ Retenu',     activeClass: 'bg-blue-50 border-blue-300 text-blue-700' },
   { status: 'candidaté', label: '✓ Candidaté',  activeClass: 'bg-purple-50 border-purple-300 text-purple-700' },
   { status: 'rejeté',    label: '✗ Rejeté',     activeClass: 'bg-red-50 border-red-300 text-red-700' },
   { status: 'masqué',    label: '· Masqué',     activeClass: 'bg-gray-100 border-gray-400 text-gray-600' },
 ]
+
+const displayedVerdicts = computed(() =>
+  props.mode === 'candidat'
+    ? VERDICTS.filter(v => v.status === 'retenu')
+    : VERDICTS,
+)
 
 function toggleVerdict(status: string) {
   if (props.offer.verdict === status) {

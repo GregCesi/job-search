@@ -33,7 +33,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             url                  TEXT,
             fetched_at           TEXT,
             description          TEXT,
-            seen                 INTEGER NOT NULL DEFAULT 0,
+            seen_candidat        INTEGER NOT NULL DEFAULT 0,
             extracted_facts_json TEXT,
             UNIQUE(source, source_id)
         );
@@ -66,7 +66,7 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
 
     add_cols = [
         ("description",          "TEXT"),
-        ("seen",                 "INTEGER NOT NULL DEFAULT 0"),
+        ("seen_candidat",        "INTEGER NOT NULL DEFAULT 0"),
         ("nature_contract",      "TEXT"),
         ("alternance",           "INTEGER NOT NULL DEFAULT 0"),
         ("full_time",            "INTEGER"),
@@ -80,7 +80,7 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("category",             "TEXT"),
         # chantier hors-périmètre — dérivé, recalculé à chaque rescore
         ("hors_perimetre_reason", "TEXT"),
-        # chantier review humaine — colonnes d'interaction (comme seen)
+        # chantier review humaine — colonnes d'interaction (comme seen_candidat)
         ("categorie_suggeree",  "TEXT"),
         ("categorie_corrigee",  "TEXT"),
         ("remarque",            "TEXT"),
@@ -94,6 +94,10 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
     for col, col_type in add_cols:
         if col not in existing:
             conn.execute(f"ALTER TABLE offers ADD COLUMN {col} {col_type}")
+
+    # Renommage seen → seen_candidat (chantier vue candidat)
+    if "seen" in existing and "seen_candidat" not in existing:
+        conn.execute("ALTER TABLE offers RENAME COLUMN seen TO seen_candidat")
 
     # Suppression des anciens champs de scoring Zone A
     for col in ("score", "criteria_json"):

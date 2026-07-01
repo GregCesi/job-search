@@ -12,7 +12,7 @@ export interface OfferRow {
   category: string | null            // parfait | reve | atteignable | hors
   verdict: string | null
   hors_perimetre_reason: string | null
-  seen: boolean
+  seen_candidat: boolean
   fetched_at: string
   // review humaine
   categorie_suggeree: string | null
@@ -48,23 +48,35 @@ export interface OfferDetail extends OfferRow {
 
 export interface Filters {
   category?: string
+  exclude_category?: string
   hors_perimetre?: boolean
   etat_review?: string
   remote?: boolean
   source?: string
   verdict?: string
-  seen?: boolean
+  seen_candidat?: boolean
   q?: string
   sort: string
-  order: 'asc' | 'desc'
+  order: string
 }
 
-export type ActiveView = 'a_traiter' | 'a_relire' | 'favoris' | 'hors_perimetre' | 'tout'
+// Candidat (page /)
+export type CandidateView = 'cibles' | 'gaps' | 'filet' | 'retenues'
+// Opérateur (page /operateur)
+export type OperatorView = 'a_traiter' | 'a_relire' | 'retenues_op' | 'hors_perimetre' | 'tout'
 
-const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> & { sort: string; order: 'asc' | 'desc' }> = {
+export type ActiveView = CandidateView | OperatorView
+
+const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> & { sort: string; order: string }> = {
+  // Candidat
+  cibles:      { category: 'parfait',     hors_perimetre: false, sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  gaps:        { category: 'reve',        hors_perimetre: false, sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  filet:       { category: 'atteignable', hors_perimetre: false, sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  retenues:    { verdict: 'retenu', hors_perimetre: false, exclude_category: 'hors', sort: 'fetched_at', order: 'desc' },
+  // Opérateur
   a_traiter:      { etat_review: 'non_relue', hors_perimetre: false, sort: 'category',   order: 'desc' },
   a_relire:       { hors_perimetre: false,                           sort: 'category',   order: 'desc' },
-  favoris:        { verdict: 'favori',                               sort: 'fetched_at', order: 'desc' },
+  retenues_op:    { verdict: 'retenu',                               sort: 'fetched_at', order: 'desc' },
   hors_perimetre: { hors_perimetre: true,                            sort: 'fetched_at', order: 'desc' },
   tout:           {                                                   sort: 'category',   order: 'desc' },
 }
@@ -98,12 +110,13 @@ export const useOffersStore = defineStore('offers', () => {
         order: filters.value.order,
       }
       if (filters.value.category !== undefined) params.category = filters.value.category
+      if (filters.value.exclude_category !== undefined) params.exclude_category = filters.value.exclude_category
       if (filters.value.hors_perimetre !== undefined) params.hors_perimetre = filters.value.hors_perimetre
       if (filters.value.etat_review !== undefined) params.etat_review = filters.value.etat_review
       if (filters.value.remote !== undefined) params.remote = filters.value.remote
       if (filters.value.source !== undefined) params.source = filters.value.source
       if (filters.value.verdict !== undefined) params.verdict = filters.value.verdict
-      if (filters.value.seen !== undefined) params.seen = filters.value.seen
+      if (filters.value.seen_candidat !== undefined) params.seen_candidat = filters.value.seen_candidat
       if (filters.value.q) params.q = filters.value.q
 
       const data = await $fetch<OfferRow[]>(`${config.public.apiBase}/offers`, { params })
@@ -117,7 +130,7 @@ export const useOffersStore = defineStore('offers', () => {
     const data = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id}`)
     openedOffer.value = data
     const idx = offers.value.findIndex(o => o.id === id)
-    if (idx !== -1) offers.value[idx]!.seen = true
+    if (idx !== -1) offers.value[idx]!.seen_candidat = true
   }
 
   async function submitCategoryReview(

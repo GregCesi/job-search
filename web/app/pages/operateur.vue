@@ -3,9 +3,9 @@
 
     <!-- Top bar -->
     <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-6 sticky top-0 z-10 shadow-sm">
-      <span class="text-sm font-semibold text-gray-800 tracking-tight shrink-0">job-search</span>
+      <span class="text-sm font-semibold text-gray-800 tracking-tight shrink-0">job-search · opérateur</span>
 
-      <!-- View tabs (L7) -->
+      <!-- View tabs -->
       <nav class="flex gap-1">
         <button
           v-for="view in VIEWS" :key="view.key"
@@ -21,7 +21,7 @@
         </button>
       </nav>
 
-      <!-- Offer count + export calibration (L11) -->
+      <!-- Offer count + links -->
       <div class="ml-auto flex items-center gap-3">
         <span class="text-xs text-gray-400">
           {{ store.offers.length }} offre{{ store.offers.length !== 1 ? 's' : '' }}
@@ -33,24 +33,31 @@
           Traces LLM
         </NuxtLink>
         <ExportPopover />
-        <NuxtLink
-          to="/operateur"
-          class="text-xs text-gray-400 hover:text-gray-600 font-medium"
+        <a
+          :href="`${config.public.apiBase}/export/calibration`"
+          target="_blank"
+          class="text-xs text-indigo-600 hover:underline font-medium"
         >
-          Opérateur
-        </NuxtLink>
+          Calibration ↗
+        </a>
       </div>
     </header>
 
+    <!-- Filters — visible only in "tout" view -->
+    <div v-if="store.activeView === 'tout'" class="px-6 pt-4">
+      <FiltersPanel />
+    </div>
+
     <!-- Table -->
     <main class="flex-1 px-6 py-4">
-      <OffersTable :selected-id="store.openedOffer?.id" @select="handleSelect" />
+      <OffersTable :selected-id="store.openedOffer?.id" mode="operateur" @select="handleSelect" />
     </main>
 
-    <!-- Detail panel (L6 — content expanded in L9) -->
+    <!-- Detail panel -->
     <OfferDetail
       v-if="store.openedOffer"
       :offer="store.openedOffer"
+      mode="operateur"
       @close="store.openedOffer = null"
     />
   </div>
@@ -58,20 +65,21 @@
 
 <script setup lang="ts">
 import { useOffersStore } from '~/stores/offers'
-import type { OfferRow, CandidateView } from '~/stores/offers'
+import type { OfferRow, ActiveView } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const store = useOffersStore()
 onMounted(() => {
-  store.setView('cibles')
+  store.fetchOffers()
   store.fetchTraceCounts()
 })
 
-const VIEWS: { key: CandidateView; label: string }[] = [
-  { key: 'cibles',   label: 'Cibles'   },
-  { key: 'gaps',     label: 'Gaps'     },
-  { key: 'filet',    label: 'Filet'    },
-  { key: 'retenues', label: 'Retenues' },
+const VIEWS: { key: ActiveView; label: string }[] = [
+  { key: 'a_traiter',      label: 'À traiter'       },
+  { key: 'a_relire',       label: 'Toutes relues'   },
+  { key: 'retenues_op',    label: 'Retenues'        },
+  { key: 'hors_perimetre', label: 'Hors-périmètre'  },
+  { key: 'tout',           label: 'Tout'            },
 ]
 
 async function handleSelect(offer: OfferRow) {

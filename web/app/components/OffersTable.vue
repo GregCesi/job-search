@@ -9,7 +9,7 @@
     <table v-else class="min-w-full divide-y divide-gray-100 text-sm">
       <thead class="bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
         <tr>
-          <th class="w-6 px-3 py-3"></th>
+          <th v-if="props.mode === 'operateur'" class="w-6 px-3 py-3"></th>
           <th
             v-for="col in COLS" :key="col.key"
             :class="['px-3 py-3 text-left select-none', col.sortable ? 'cursor-pointer hover:text-gray-700' : '']"
@@ -27,15 +27,15 @@
           v-for="offer in store.offers" :key="offer.id"
           :class="[
             'cursor-pointer transition-colors',
-            offer.seen
+            offer.seen_candidat
               ? 'text-gray-400 hover:bg-gray-50'
               : 'text-gray-800 hover:bg-indigo-50',
             selectedId === offer.id ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-200' : '',
           ]"
           @click="$emit('select', offer)"
         >
-          <!-- Review state dot -->
-          <td class="px-3 py-3">
+          <!-- Review state dot — opérateur uniquement -->
+          <td v-if="props.mode === 'operateur'" class="px-3 py-3">
             <span v-if="offer.etat_review === 'non_relue'" class="block w-2 h-2 rounded-full bg-indigo-400" title="Non relue" />
             <span v-else-if="offer.etat_review === 'validee'" class="block w-2 h-2 rounded-full bg-green-400" title="Validée" />
             <span v-else-if="offer.etat_review === 'corrigee'" class="block w-2 h-2 rounded-full bg-amber-400" title="Corrigée" />
@@ -107,7 +107,7 @@ import { useOffersStore } from '~/stores/offers'
 
 import type { OfferRow } from '~/stores/offers'
 defineEmits<{ select: [offer: OfferRow] }>()
-defineProps<{ selectedId?: number }>()
+const props = withDefaults(defineProps<{ selectedId?: number; mode?: 'candidat' | 'operateur' }>(), { mode: 'candidat' })
 
 const store = useOffersStore()
 

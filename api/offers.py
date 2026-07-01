@@ -22,7 +22,7 @@ from .schemas import (
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-_SORT_COLS = {"fetched_at", "title", "company", "category"}
+_SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat"}
 
 
 def _derive_review_fields(row) -> dict:
@@ -55,14 +55,15 @@ def list_offers(
     remote: bool | None = Query(None),
     source: str | None = Query(None),
     verdict: str | None = Query(None),
-    seen: bool | None = Query(None),
+    seen_candidat: bool | None = Query(None),
     filtered_out: bool | None = Query(None, description="None=exclut les filtrées, True=seulement les filtrées, False=non filtrées"),
     category: str | None = Query(None, description="parfait | reve | atteignable | hors"),
+    exclude_category: str | None = Query(None, description="Exclut les offres de cette catégorie (ex: hors)"),
     hors_perimetre: bool | None = Query(None, description="True=seulement hors-périmètre, False=exclut hors-périmètre, None=tout"),
     etat_review: str | None = Query(None, description="non_relue | validee | corrigee"),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
-    sort: str = Query("category", pattern="^(fetched_at|title|company|category)$"),
-    order: Literal["asc", "desc"] = Query("desc"),
+    sort: str = Query("category"),
+    order: str = Query("desc"),
 ) -> list[OfferRow]:
     conditions: list[str] = []
     params: list = []
@@ -84,12 +85,15 @@ def list_offers(
     if verdict is not None:
         conditions.append("v.status = ?")
         params.append(verdict)
-    if seen is not None:
-        conditions.append("o.seen = ?")
-        params.append(1 if seen else 0)
+    if seen_candidat is not None:
+        conditions.append("o.seen_candidat = ?")
+        params.append(1 if seen_candidat else 0)
     if category is not None:
         conditions.append("o.category = ?")
         params.append(category)
+    if exclude_category is not None:
+        conditions.append("o.category != ?")
+        params.append(exclude_category)
     if hors_perimetre is True:
         conditions.append("o.hors_perimetre_reason IS NOT NULL")
     elif hors_perimetre is False:
@@ -106,21 +110,34 @@ def list_offers(
         params.extend([like, like])
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    if sort == "category":
-        order_clause = """
-            CASE o.category
-                WHEN 'parfait'     THEN 1
-                WHEN 'reve'        THEN 2
-                WHEN 'atteignable' THEN 3
-                WHEN 'hors'        THEN 4
-                ELSE 5
-            END ASC"""
-    else:
-        sort_col = sort if sort in _SORT_COLS else "category"
-        order_clause = f"o.{sort_col} {order.upper()} NULLS LAST"
+
+    # Tri composite : sort=col1,col2 + order=dir1,dir2
+    sort_parts = [s.strip() for s in sort.split(",")]
+    order_parts = [o.strip() for o in order.split(",")]
+    # Étendre order_parts si moins d'entrées que sort_parts
+    while len(order_parts) < len(sort_parts):
+        order_parts.append(order_parts[-1] if order_parts else "desc")
+
+    order_clauses: list[str] = []
+    for s, o in zip(sort_parts, order_parts):
+        d = o.upper() if o.upper() in ("ASC", "DESC") else "DESC"
+        if s == "category":
+            order_clauses.append(f"""
+                CASE o.category
+                    WHEN 'parfait'     THEN 1
+                    WHEN 'reve'        THEN 2
+                    WHEN 'atteignable' THEN 3
+                    WHEN 'hors'        THEN 4
+                    ELSE 5
+                END {d}""")
+        elif s in _SORT_COLS:
+            order_clauses.append(f"o.{s} {d} NULLS LAST")
+        else:
+            order_clauses.append(f"o.category DESC")
+    order_clause = ", ".join(order_clauses) if order_clauses else "o.category DESC"
     sql = f"""
         SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
-               o.category, o.seen, o.fetched_at, o.filtered_out, o.filter_reason,
+               o.category, o.seen_candidat, o.fetched_at, o.filtered_out, o.filter_reason,
                o.hors_perimetre_reason,
                o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
                v.status AS verdict
@@ -146,7 +163,7 @@ def list_offers(
             category=r["category"],
             verdict=r["verdict"],
             hors_perimetre_reason=r["hors_perimetre_reason"],
-            seen=bool(r["seen"]),
+            seen_candidat=bool(r["seen_candidat"]),
             fetched_at=r["fetched_at"] or "",
             **_derive_review_fields(r),
             filtered_out=bool(r["filtered_out"]),
@@ -193,7 +210,7 @@ def check_known(items: list[_CheckKnownItem]) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# GET /offers/{id}  (effet de bord : seen = 1)
+# GET /offers/{id}  (effet de bord : seen_candidat = 1)
 # ---------------------------------------------------------------------------
 
 @router.get("/offers/{offer_id}", response_model=OfferDetail)
@@ -212,7 +229,7 @@ def get_offer(offer_id: int) -> OfferDetail:
         if row is None:
             raise HTTPException(status_code=404, detail="offer not found")
 
-        conn.execute("UPDATE offers SET seen = 1 WHERE id = ?", (offer_id,))
+        conn.execute("UPDATE offers SET seen_candidat = 1 WHERE id = ?", (offer_id,))
         conn.commit()
     finally:
         conn.close()
@@ -228,7 +245,7 @@ def get_offer(offer_id: int) -> OfferDetail:
         category=row["category"],
         verdict=row["verdict"],
         hors_perimetre_reason=row["hors_perimetre_reason"],
-        seen=True,
+        seen_candidat=True,
         fetched_at=row["fetched_at"] or "",
         filtered_out=bool(row["filtered_out"]),
         filter_reason=row["filter_reason"],

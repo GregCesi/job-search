@@ -53,7 +53,7 @@ def save_offer(
             (source, source_id, fingerprint, title, company, location,
              remote, contract_type, nature_contract, alternance, full_time,
              company_size, experience_required, rome_code, rome_label,
-             url, fetched_at, description, description_raw, seen,
+             url, fetched_at, description, description_raw, seen_candidat,
              extracted_facts_json, category,
              filtered_out, filter_reason, hors_perimetre_reason,
              techs_matched_json, techs_missing_json)

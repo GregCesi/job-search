@@ -9,7 +9,7 @@
 const props = defineProps<{ verdict: string | null }>()
 
 const MAP: Record<string, { cls: string; label: string }> = {
-  favori:                 { cls: 'bg-blue-100 text-blue-800',     label: '★ favori' },
+  retenu:                 { cls: 'bg-blue-100 text-blue-800',     label: '★ retenu' },
   candidaté:              { cls: 'bg-purple-100 text-purple-800', label: '✓ candidaté' },
   rejeté:                 { cls: 'bg-red-100 text-red-700',       label: '✗ rejeté' },
   masqué:                 { cls: 'bg-gray-100 text-gray-500',     label: '· masqué' },

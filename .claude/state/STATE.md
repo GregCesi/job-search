@@ -1,8 +1,8 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier export contextuel LIVRÉ ✓ (2026-06-30, L1→L6). Endpoint GET /export/offers (Markdown, filtres + champs à la carte via `include`), composant ExportPopover.vue (checkboxes + clipboard), intégré dans index.vue.
-- Prochaine action : Aucune — tester l'export en conditions réelles via le front.
+- Dernière action : Chantier vue candidat LIVRÉ ✓ (2026-06-30, L0a→L12). 4 onglets candidat (Cibles/Gaps/Filet/Retenues), route `/operateur` avec existant, renommage favori→retenu, migration seen→seen_candidat, tri composite, isolation UI mode candidat/opérateur.
+- Prochaine action : Aucune — tester les deux routes en conditions réelles.
 - Bloquant : aucun
 
 ## Phase en cours
