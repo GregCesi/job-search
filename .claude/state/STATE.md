@@ -1,12 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier vue candidat LIVRÉ ✓ (2026-06-30, L0a→L12). 4 onglets candidat (Cibles/Gaps/Filet/Retenues), route `/operateur` avec existant, renommage favori→retenu, migration seen→seen_candidat, tri composite, isolation UI mode candidat/opérateur.
-- Prochaine action : Aucune — tester les deux routes en conditions réelles.
+- Dernière action : Chantier vue opérateur LIVRÉ ✓ (2026-07-06, L1→L10). 3 onglets (À traiter/HP/Tout), verdicts HP (confirmé/faux positif), tri colonnes entreprise+lieu, filtres enrichis (source/review/HP/verdict), apply immédiat.
+- Prochaine action : Tester la vue opérateur en conditions réelles.
 - Bloquant : aucun
 
 ## Phase en cours
-- Aucun chantier en cours
+- Chantier vue opérateur LIVRÉ ✓ (2026-07-06)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)

@@ -22,7 +22,7 @@ from .schemas import (
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-_SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat"}
+_SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat", "location"}
 
 
 def _derive_review_fields(row) -> dict:

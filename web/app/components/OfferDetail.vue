@@ -284,11 +284,16 @@ const VERDICTS = [
   { status: 'masqué',    label: '· Masqué',     activeClass: 'bg-gray-100 border-gray-400 text-gray-600' },
 ]
 
-const displayedVerdicts = computed(() =>
-  props.mode === 'candidat'
-    ? VERDICTS.filter(v => v.status === 'retenu')
-    : VERDICTS,
-)
+const HP_VERDICTS = [
+  { status: 'hors_perimetre_ok',       label: '✓ Confirmé HP',  activeClass: 'bg-green-50 border-green-300 text-green-700' },
+  { status: 'hors_perimetre_faux_pos', label: '✗ Faux positif', activeClass: 'bg-red-50 border-red-300 text-red-700' },
+]
+
+const displayedVerdicts = computed(() => {
+  if (props.mode === 'candidat') return VERDICTS.filter(v => v.status === 'retenu')
+  if (props.offer.hors_perimetre_reason) return HP_VERDICTS
+  return VERDICTS
+})
 
 function toggleVerdict(status: string) {
   if (props.offer.verdict === status) {

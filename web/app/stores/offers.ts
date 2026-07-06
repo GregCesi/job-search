@@ -63,7 +63,7 @@ export interface Filters {
 // Candidat (page /)
 export type CandidateView = 'cibles' | 'gaps' | 'filet' | 'retenues'
 // Opérateur (page /operateur)
-export type OperatorView = 'a_traiter' | 'a_relire' | 'retenues_op' | 'hors_perimetre' | 'tout'
+export type OperatorView = 'a_traiter' | 'hors_perimetre' | 'tout'
 
 export type ActiveView = CandidateView | OperatorView
 
@@ -75,8 +75,6 @@ const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> 
   retenues:    { verdict: 'retenu', hors_perimetre: false, exclude_category: 'hors', sort: 'fetched_at', order: 'desc' },
   // Opérateur
   a_traiter:      { etat_review: 'non_relue', hors_perimetre: false, sort: 'category',   order: 'desc' },
-  a_relire:       { hors_perimetre: false,                           sort: 'category',   order: 'desc' },
-  retenues_op:    { verdict: 'retenu',                               sort: 'fetched_at', order: 'desc' },
   hors_perimetre: { hors_perimetre: true,                            sort: 'fetched_at', order: 'desc' },
   tout:           {                                                   sort: 'category',   order: 'desc' },
 }
