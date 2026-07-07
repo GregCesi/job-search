@@ -47,6 +47,7 @@ class OfferDetail(OfferRow):
     extracted_facts: ExtractedFactsSchema | None
     techs_matched: list[str] = []
     techs_missing: list[str] = []
+    score_breakdown: str | None = None
 
 
 class VerdictIn(BaseModel):

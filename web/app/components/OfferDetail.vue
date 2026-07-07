@@ -76,6 +76,10 @@
                       class="ml-1 text-[10px] opacity-60">(suggestion)</span>
               </button>
             </div>
+            <!-- Score breakdown -->
+            <p v-if="offer.score_breakdown" class="text-xs text-gray-500 italic mt-2">
+              {{ offer.score_breakdown }}
+            </p>
             <!-- Remarque -->
             <textarea
               v-model="remarque"

@@ -20,6 +20,115 @@ from .schemas import (
 )
 
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Score breakdown — dérivé à la volée, jamais persisté (IMPLEMENTATION.md L1)
+# ---------------------------------------------------------------------------
+
+_scoring_ctx: dict | None = None
+
+
+def _load_scoring_context() -> dict:
+    """Charge profil + alias table une seule fois (cachés module-level)."""
+    global _scoring_ctx
+    if _scoring_ctx is not None:
+        return _scoring_ctx
+    try:
+        from orchestrator.job_search.matching.profile import load_profile
+        from orchestrator.job_search.scoring.aliases import load_alias_table
+
+        repo_root = Path(__file__).resolve().parent.parent
+        profile, _ = load_profile(repo_root / "profiles" / "gregoire.yaml")
+        table = load_alias_table(repo_root / "profiles" / "alias.yaml")
+        _scoring_ctx = {"profile": profile, "table": table}
+    except Exception as exc:
+        log.warning("scoring context unavailable: %s", exc)
+        _scoring_ctx = {"profile": None, "table": None}
+    return _scoring_ctx
+
+
+def _derive_score_breakdown(row) -> str | None:
+    """Ligne unique expliquant pourquoi l'offre est dans sa catégorie."""
+    raw = row["extracted_facts_json"]
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if data.get("parse_failed"):
+        return None
+
+    category = row["category"]
+    if not category or category not in ("parfait", "reve", "atteignable", "hors"):
+        return None
+
+    ctx = _load_scoring_context()
+    profile = ctx["profile"]
+    table = ctx["table"]
+    if profile is None or table is None:
+        return None
+
+    try:
+        from orchestrator.job_search.sources.base import ExtractedFacts
+        from orchestrator.job_search.scoring.desirability import compute_desirability
+        from orchestrator.job_search.scoring.attainability import compute_attainability
+
+        facts = ExtractedFacts.model_validate(data)
+        desir = compute_desirability(facts, profile.search_criteria, profile, table)
+        attain = compute_attainability(facts, profile, table)
+    except Exception as exc:
+        log.warning("score_breakdown failed for offer %s: %s", row["id"], exc)
+        return None
+
+    if category == "parfait":
+        return "Parfait — rien ne bloque."
+
+    # Blockers atteignabilité
+    attain_parts: list[str] = []
+    if attain.blocked_by == "role" or (attain.blocked_by is None and attain.attain_role < attain.attain_tech):
+        attain_parts.append(
+            f"poste {facts.role_level.value}, ta cible est {profile.role_ceiling.value}"
+        )
+    if attain.techs_missing:
+        # Top 3 missing, importance core/required seulement
+        from orchestrator.job_search.scoring.aliases import canonicalize
+        top_missing: list[str] = []
+        for t in facts.techs_required:
+            if t.name in attain.techs_missing and t.importance in ("core", "required"):
+                top_missing.append(f"{t.name} ({t.importance})")
+                if len(top_missing) >= 3:
+                    break
+        if top_missing:
+            attain_parts.append(f"manque {', '.join(top_missing)}")
+
+    # Blocker désirabilité
+    desir_parts: list[str] = []
+    domain_info = desir.detail.get("domain", {})
+    domain_val = domain_info.get("value", "")
+    domain_preferred = domain_info.get("preferred", [])
+    domain_gradient = domain_info.get("gradient", 0.0)
+    if domain_gradient < 0.5:
+        cible = ", ".join(domain_preferred) if domain_preferred else "?"
+        desir_parts.append(f"{domain_val}, hors cible {cible}")
+
+    if category == "reve":
+        # Désirable, PAS atteignable → blocker(s) atteignabilité
+        if attain_parts:
+            return f"Rêve — atteignabilité bloque : {' ; '.join(attain_parts)}"
+        return "Rêve — atteignabilité limite."
+
+    if category == "atteignable":
+        # Atteignable, PEU désirable → blocker désirabilité (domaine)
+        if desir_parts:
+            return f"Atteignable — désirabilité bloque : {' ; '.join(desir_parts)}"
+        return "Atteignable — désirabilité limite."
+
+    # hors — combiner les deux
+    parts = desir_parts + attain_parts
+    if parts:
+        return f"Hors — {' ; '.join(parts)}"
+    return "Hors — scoring insuffisant."
 router = APIRouter()
 
 _SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat", "location"}
@@ -256,6 +365,7 @@ def get_offer(offer_id: int) -> OfferDetail:
         extracted_facts=_parse_facts(row["extracted_facts_json"], offer_id),
         techs_matched=json.loads(row["techs_matched_json"]) if row["techs_matched_json"] else [],
         techs_missing=json.loads(row["techs_missing_json"]) if row["techs_missing_json"] else [],
+        score_breakdown=_derive_score_breakdown(row),
     )
 
 

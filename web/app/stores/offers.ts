@@ -44,6 +44,7 @@ export interface OfferDetail extends OfferRow {
   extracted_facts: ExtractedFacts | null
   techs_matched: string[]
   techs_missing: string[]
+  score_breakdown?: string | null
 }
 
 export interface Filters {

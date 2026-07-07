@@ -1,12 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier vue opérateur LIVRÉ ✓ (2026-07-06, L1→L10). 3 onglets (À traiter/HP/Tout), verdicts HP (confirmé/faux positif), tri colonnes entreprise+lieu, filtres enrichis (source/review/HP/verdict), apply immédiat.
-- Prochaine action : Tester la vue opérateur en conditions réelles.
+- Dernière action : Ligne de justification catégorie LIVRÉE ✓ (2026-07-07, L1→L5). `score_breakdown` dérivé à la volée (0 LLM), affiché en vue opérateur sous les boutons catégorie. 5 cas : parfait/rêve/atteignable/hors/null.
+- Prochaine action : Tester la ligne de justification en conditions réelles (API + front).
 - Bloquant : aucun
 
 ## Phase en cours
-- Chantier vue opérateur LIVRÉ ✓ (2026-07-06)
+- Ligne de justification catégorie LIVRÉE ✓ (2026-07-07)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
