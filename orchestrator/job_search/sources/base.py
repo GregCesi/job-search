@@ -30,6 +30,7 @@ class ExtractedFacts(BaseModel):
     techs_required: list[TechRequirement]   # y compris implicites ("RAG en prod" → "RAG")
     domain: str                              # domaine métier réel désambiguïsé
     role_level: RoleLevel = RoleLevel.ic    # rôle non-technique (ic/lead/manager)
+    langues_requises: list[str] = []       # langues exigées détectées par LLM (stocké, non branché sur le gate)
     parse_failed: bool = False              # flag si extraction LLM dégradée (architecture.md §3)
 
     @model_validator(mode="before")

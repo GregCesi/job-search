@@ -36,7 +36,8 @@ Reply with a single valid JSON object, nothing else:
     ...
   ],
   "domain": "<ai_engineering|data_engineering|data_science|backend|devops|fullstack|embedded|other>",
-  "role_level": "<ic|lead|manager>"
+  "role_level": "<ic|lead|manager>",
+  "langues_requises": ["<language>", ...]
 }
 
 Rules:
@@ -52,6 +53,9 @@ Rules:
     ic      = individual contributor — no team management
     lead    = tech lead / squad lead — technical leadership of a team, but may have no reports
     manager = people management — hiring, reviews, headcount responsibility
+- langues_requises: list of human languages explicitly required by the offer \
+(e.g. ["français", "anglais", "allemand"]). Use the French name of each language. \
+Empty list if no language requirement is stated.
 """
 
 _FEW_SHOT = """\
@@ -61,14 +65,14 @@ Description: Vous concevez des architectures RAG en production avec LangGraph et
 Stack cœur : Python, LangChain, LangGraph, PostgreSQL, Docker. \
 Maîtrise de Python et LangChain exigée. Git souhaité. Kubernetes serait un plus.
 Experience hint: Souhaitée
-→ {"seniority_required": "intermediate", "techs_required": [{"name": "python", "importance": "core"}, {"name": "rag", "importance": "core"}, {"name": "langchain", "importance": "core"}, {"name": "langgraph", "importance": "required"}, {"name": "fastapi", "importance": "required"}, {"name": "postgresql", "importance": "required"}, {"name": "docker", "importance": "required"}, {"name": "git", "importance": "required"}, {"name": "kubernetes", "importance": "nice_to_have"}], "domain": "ai_engineering", "role_level": "ic"}
+→ {"seniority_required": "intermediate", "techs_required": [{"name": "python", "importance": "core"}, {"name": "rag", "importance": "core"}, {"name": "langchain", "importance": "core"}, {"name": "langgraph", "importance": "required"}, {"name": "fastapi", "importance": "required"}, {"name": "postgresql", "importance": "required"}, {"name": "docker", "importance": "required"}, {"name": "git", "importance": "required"}, {"name": "kubernetes", "importance": "nice_to_have"}], "domain": "ai_engineering", "role_level": "ic", "langues_requises": []}
 
 Example 2 — Tech lead role:
 Title: Tech Lead Data / ML (H/F)
 Description: Vous pilotez une équipe de 5 data engineers. Référent technique sur notre stack Spark/Databricks. \
 Recrutement et montée en compétences de l'équipe. Expertise Python et Spark indispensable. SQL, Airflow requis. Kafka apprécié.
 Experience hint: Exigée
-→ {"seniority_required": "lead", "techs_required": [{"name": "python", "importance": "core"}, {"name": "spark", "importance": "core"}, {"name": "databricks", "importance": "required"}, {"name": "sql", "importance": "required"}, {"name": "airflow", "importance": "required"}, {"name": "kafka", "importance": "nice_to_have"}], "domain": "data_engineering", "role_level": "lead"}
+→ {"seniority_required": "lead", "techs_required": [{"name": "python", "importance": "core"}, {"name": "spark", "importance": "core"}, {"name": "databricks", "importance": "required"}, {"name": "sql", "importance": "required"}, {"name": "airflow", "importance": "required"}, {"name": "kafka", "importance": "nice_to_have"}], "domain": "data_engineering", "role_level": "lead", "langues_requises": ["français", "anglais"]}
 
 Example 3 — Backend IC, legacy stack:
 Title: Développeur Java Backend (H/F)
@@ -76,7 +80,7 @@ Description: Développement de microservices Java/Spring Boot, exposition REST, 
 Docker et CI/CD Jenkins sont utilisés. Angular côté client (équipe frontend dédiée, vous n'y touchez pas). \
 Kafka ou RabbitMQ serait un plus.
 Experience hint: Souhaitée
-→ {"seniority_required": "intermediate", "techs_required": [{"name": "java", "importance": "core"}, {"name": "spring", "importance": "core"}, {"name": "postgresql", "importance": "required"}, {"name": "docker", "importance": "required"}, {"name": "jenkins", "importance": "required"}, {"name": "kafka", "importance": "nice_to_have"}, {"name": "rabbitmq", "importance": "nice_to_have"}], "domain": "backend", "role_level": "ic"}
+→ {"seniority_required": "intermediate", "techs_required": [{"name": "java", "importance": "core"}, {"name": "spring", "importance": "core"}, {"name": "postgresql", "importance": "required"}, {"name": "docker", "importance": "required"}, {"name": "jenkins", "importance": "required"}, {"name": "kafka", "importance": "nice_to_have"}, {"name": "rabbitmq", "importance": "nice_to_have"}], "domain": "backend", "role_level": "ic", "langues_requises": []}
 """
 
 _SENIORITY_VALID = {s.value for s in SeniorityLevel}
@@ -189,11 +193,17 @@ def extract_facts(
                 role_level = RoleLevel.ic
                 _degraded = True
 
+            raw_langues = data.get("langues_requises", [])
+            langues_requises: list[str] = []
+            if isinstance(raw_langues, list):
+                langues_requises = [str(l).strip() for l in raw_langues if isinstance(l, str) and l.strip()]
+
             facts = ExtractedFacts(
                 seniority_required=seniority,
                 techs_required=techs,
                 domain=domain,
                 role_level=role_level,
+                langues_requises=langues_requises,
                 parse_failed=_degraded,
             )
             _write_trace(LLMTrace(

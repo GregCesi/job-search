@@ -90,6 +90,8 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         # chantier divergence front — matching techs persisté au (re)score
         ("techs_matched_json",  "TEXT"),
         ("techs_missing_json",  "TEXT"),
+        # lot G — gates éliminatoires : causes multiples (JSON list)
+        ("perimetre_causes",    "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:

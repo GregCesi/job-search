@@ -46,7 +46,10 @@ def main() -> None:
     conn = get_connection()
     init_db(conn)
 
-    category_cond = "" if args.force else "AND category IS NULL"
+    if args.force:
+        score_cond = ""  # toutes les offres (y compris déjà gatées/scorées)
+    else:
+        score_cond = "AND category IS NULL AND hors_perimetre_reason IS NULL"
     rows = conn.execute(
         f"""
         SELECT source, source_id, fingerprint, title, description,
@@ -55,8 +58,7 @@ def main() -> None:
                rome_code, rome_label, url, fetched_at, extracted_facts_json
         FROM offers
         WHERE (filtered_out = 0 OR filtered_out IS NULL)
-          AND hors_perimetre_reason IS NULL
-          {category_cond}
+          {score_cond}
         ORDER BY fetched_at DESC
         """
     ).fetchall()
@@ -128,18 +130,29 @@ def main() -> None:
             if c is not None and c not in alias_table._index and c not in canonical_profile_keys:
                 unmatched_counter[c] += 1
 
-        # Gate hors-périmètre : court-circuite la catégorisation (0 LLM, §4)
-        hp_reason = derive_hors_perimetre(facts)
-        if hp_reason is not None:
+        d = compute_desirability(facts, profile.search_criteria, profile, alias_table)
+        a = compute_attainability(facts, profile, alias_table)
+
+        # Gate hors-périmètre APRÈS d/a — scores conservés intacts (0 LLM, §4)
+        hp_causes = derive_hors_perimetre(
+            facts,
+            title=offer.title,
+            description=offer.description,
+            contract_type=offer.contract_type,
+            nature_contract=offer.nature_contract,
+            alternance=offer.alternance,
+        )
+        if hp_causes:
             flag = " ⚠ parse_failed" if facts.parse_failed else ""
-            print(f"           → hors_perimetre: {hp_reason.value}{flag}")
+            causes_str = [c.value for c in hp_causes]
+            print(f"           → hors_perimetre: {','.join(causes_str)}{flag}")
             if not args.dry_run:
-                save_offer(conn, offer, hors_perimetre_reason=hp_reason.value)
+                save_offer(conn, offer,
+                           perimetre_causes=causes_str,
+                           techs_matched=a.techs_matched, techs_missing=a.techs_missing)
             n_ok += 1
             continue
 
-        d = compute_desirability(facts, profile.search_criteria, profile, alias_table)
-        a = compute_attainability(facts, profile, alias_table)
         cat = categorize(d.score, a.score)
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
@@ -147,6 +160,7 @@ def main() -> None:
 
         if not args.dry_run:
             save_offer(conn, offer, category=cat,
+                       perimetre_causes=[],
                        techs_matched=a.techs_matched, techs_missing=a.techs_missing)
             n_ok += 1
         else:

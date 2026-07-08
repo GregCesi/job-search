@@ -32,6 +32,7 @@ def save_offer(
     filtered_out: bool = False,
     filter_reason: str | None = None,
     hors_perimetre_reason: str | None = None,
+    perimetre_causes: list[str] | None = None,
     techs_matched: list[str] | None = None,
     techs_missing: list[str] | None = None,
 ) -> None:
@@ -46,6 +47,11 @@ def save_offer(
     full_time_int = None if offer.full_time is None else int(offer.full_time)
     matched_json = json.dumps(techs_matched) if techs_matched is not None else None
     missing_json = json.dumps(techs_missing) if techs_missing is not None else None
+    causes_json = json.dumps(perimetre_causes) if perimetre_causes else None
+
+    # Sync hors_perimetre_reason depuis perimetre_causes si fourni
+    if perimetre_causes:
+        hors_perimetre_reason = perimetre_causes[0]
 
     conn.execute(
         """
@@ -56,9 +62,10 @@ def save_offer(
              url, fetched_at, description, description_raw, seen_candidat,
              extracted_facts_json, category,
              filtered_out, filter_reason, hors_perimetre_reason,
+             perimetre_causes,
              techs_matched_json, techs_missing_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-                ?, ?, ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json  = excluded.extracted_facts_json,
             category              = excluded.category,
@@ -67,6 +74,7 @@ def save_offer(
             filtered_out          = excluded.filtered_out,
             filter_reason         = excluded.filter_reason,
             hors_perimetre_reason = excluded.hors_perimetre_reason,
+            perimetre_causes      = excluded.perimetre_causes,
             techs_matched_json    = excluded.techs_matched_json,
             techs_missing_json    = excluded.techs_missing_json
         """,
@@ -84,6 +92,7 @@ def save_offer(
             int(filtered_out),
             filter_reason,
             hors_perimetre_reason,
+            causes_json,
             matched_json,
             missing_json,
         ),

@@ -97,16 +97,27 @@ def main() -> None:
         facts = extract_facts(offer, model=model, host=host)
         offer = offer.model_copy(update={"extracted_facts": facts})
 
-        # Gate hors-périmètre : court-circuite la catégorisation (0 LLM, §4)
-        hp_reason = derive_hors_perimetre(facts)
-        if hp_reason is not None:
-            flag = " ⚠ parse_failed" if facts.parse_failed else ""
-            save_offer(conn, offer, hors_perimetre_reason=hp_reason.value)
-            print(f"         → hors_perimetre: {hp_reason.value}{flag}")
-            continue
-
         d = compute_desirability(facts, profile.search_criteria, profile, alias_table)
         a = compute_attainability(facts, profile, alias_table)
+
+        # Gate hors-périmètre APRÈS d/a — scores conservés intacts (0 LLM, §4)
+        hp_causes = derive_hors_perimetre(
+            facts,
+            title=offer.title,
+            description=offer.description,
+            contract_type=offer.contract_type,
+            nature_contract=offer.nature_contract,
+            alternance=offer.alternance,
+        )
+        if hp_causes:
+            flag = " ⚠ parse_failed" if facts.parse_failed else ""
+            causes_str = [c.value for c in hp_causes]
+            save_offer(conn, offer,
+                       perimetre_causes=causes_str,
+                       techs_matched=a.techs_matched, techs_missing=a.techs_missing)
+            print(f"         → hors_perimetre: {','.join(causes_str)}{flag}")
+            continue
+
         cat = categorize(d.score, a.score)
         save_offer(conn, offer, category=cat,
                    techs_matched=a.techs_matched, techs_missing=a.techs_missing)
