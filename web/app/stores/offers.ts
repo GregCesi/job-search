@@ -12,6 +12,7 @@ export interface OfferRow {
   category: string | null            // parfait | reve | atteignable | hors
   verdict: string | null
   hors_perimetre_reason: string | null
+  perimetre_causes: string[]
   seen_candidat: boolean
   fetched_at: string
   // review humaine

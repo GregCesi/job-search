@@ -254,7 +254,7 @@ def list_offers(
     sql = f"""
         SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
                o.category, o.seen_candidat, o.fetched_at, o.filtered_out, o.filter_reason,
-               o.hors_perimetre_reason,
+               o.hors_perimetre_reason, o.perimetre_causes,
                o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
                v.status AS verdict
         FROM offers o
@@ -279,6 +279,7 @@ def list_offers(
             category=r["category"],
             verdict=r["verdict"],
             hors_perimetre_reason=r["hors_perimetre_reason"],
+            perimetre_causes=json.loads(r["perimetre_causes"]) if r["perimetre_causes"] else [],
             seen_candidat=bool(r["seen_candidat"]),
             fetched_at=r["fetched_at"] or "",
             **_derive_review_fields(r),
@@ -361,6 +362,7 @@ def get_offer(offer_id: int) -> OfferDetail:
         category=row["category"],
         verdict=row["verdict"],
         hors_perimetre_reason=row["hors_perimetre_reason"],
+        perimetre_causes=json.loads(row["perimetre_causes"]) if row["perimetre_causes"] else [],
         seen_candidat=True,
         fetched_at=row["fetched_at"] or "",
         filtered_out=bool(row["filtered_out"]),

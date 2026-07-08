@@ -135,17 +135,13 @@
           </section>
 
           <!-- Hors-périmètre banner -->
-          <section v-if="offer.hors_perimetre_reason">
-            <div :class="offer.hors_perimetre_reason === 'no_tech' ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-200'"
-                 class="rounded-lg border px-4 py-3">
-              <p class="text-sm font-medium" :class="offer.hors_perimetre_reason === 'no_tech' ? 'text-orange-700' : 'text-slate-600'">
-                {{ offer.hors_perimetre_reason === 'no_tech' ? '⊘ Aucune techno exigée' : '⊘ Rôle managérial' }}
-              </p>
-              <p class="text-xs mt-1" :class="offer.hors_perimetre_reason === 'no_tech' ? 'text-orange-500' : 'text-slate-400'">
-                {{ offer.hors_perimetre_reason === 'no_tech'
-                  ? 'Offre sans techno requise — possible bug d\'extraction. À inspecter.'
-                  : 'Poste manager — pas de valeur d\'apprentissage technique.' }}
-              </p>
+          <section v-if="hpCauses.length">
+            <div class="rounded-lg border px-4 py-3 space-y-2"
+                 :class="hpCauses.includes('no_tech') ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-200'">
+              <div v-for="cause in hpCauses" :key="cause" class="flex flex-col">
+                <p class="text-sm font-medium" :class="hpTitleClass(cause)">{{ hpTitle(cause) }}</p>
+                <p class="text-xs mt-0.5" :class="hpDescClass(cause)">{{ hpDesc(cause) }}</p>
+              </div>
             </div>
           </section>
 
@@ -186,6 +182,10 @@
               </template>
               <p v-else class="text-xs text-orange-500 italic">Aucune techno exigée</p>
             </div>
+            <!-- Score breakdown (toutes vues) -->
+            <p v-if="offer.score_breakdown" class="text-xs text-gray-500 italic mt-2">
+              {{ offer.score_breakdown }}
+            </p>
           </section>
 
           <!-- Description (Markdown rendu) -->
@@ -305,6 +305,43 @@ function toggleVerdict(status: string) {
   } else {
     store.setVerdict(props.offer.id, status)
   }
+}
+
+// ── Hors-périmètre helpers ───────────────────────────────────
+const hpCauses = computed(() => {
+  if (props.offer.perimetre_causes?.length) return props.offer.perimetre_causes
+  if (props.offer.hors_perimetre_reason) return [props.offer.hors_perimetre_reason]
+  return []
+})
+
+function hpTitle(cause: string) {
+  if (cause === 'no_tech')    return '⊘ Aucune techno exigée'
+  if (cause === 'mgmt_role')  return '⊘ Rôle managérial'
+  if (cause === 'langue')     return '⊘ Langue tierce exigée'
+  if (cause === 'contrat')    return '⊘ Stage / alternance / intérim'
+  return '⊘ Hors périmètre'
+}
+
+function hpDesc(cause: string) {
+  if (cause === 'no_tech')    return 'Offre sans techno requise — possible bug d\'extraction. À inspecter.'
+  if (cause === 'mgmt_role')  return 'Poste manager — pas de valeur d\'apprentissage technique.'
+  if (cause === 'langue')     return 'Langue tierce détectée (ni français, ni anglais).'
+  if (cause === 'contrat')    return 'Type de contrat non ciblé (stage, alternance, intérim).'
+  return 'Offre hors périmètre de recherche.'
+}
+
+function hpTitleClass(cause: string) {
+  if (cause === 'no_tech')   return 'text-orange-700'
+  if (cause === 'langue')    return 'text-violet-700'
+  if (cause === 'contrat')   return 'text-cyan-700'
+  return 'text-slate-600'
+}
+
+function hpDescClass(cause: string) {
+  if (cause === 'no_tech')   return 'text-orange-500'
+  if (cause === 'langue')    return 'text-violet-500'
+  if (cause === 'contrat')   return 'text-cyan-500'
+  return 'text-slate-400'
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

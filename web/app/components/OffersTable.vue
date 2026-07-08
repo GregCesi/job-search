@@ -64,7 +64,14 @@
 
           <!-- Catégorie (finale ou hors-périmètre) -->
           <td class="px-3 py-3 whitespace-nowrap">
-            <div v-if="offer.hors_perimetre_reason" class="flex items-center gap-1.5">
+            <div v-if="offer.perimetre_causes?.length" class="flex items-center gap-1">
+              <span v-for="cause in offer.perimetre_causes" :key="cause"
+                    :class="reasonClass(cause)"
+                    class="text-xs px-1.5 py-0.5 rounded font-medium">
+                {{ reasonLabel(cause) }}
+              </span>
+            </div>
+            <div v-else-if="offer.hors_perimetre_reason" class="flex items-center gap-1.5">
               <span :class="reasonClass(offer.hors_perimetre_reason)"
                     class="text-xs px-1.5 py-0.5 rounded font-medium">
                 {{ reasonLabel(offer.hors_perimetre_reason) }}
@@ -140,11 +147,15 @@ function categoryClass(c: string) {
 function reasonLabel(r: string) {
   if (r === 'no_tech')    return '⊘ sans techno'
   if (r === 'mgmt_role')  return '⊘ managérial'
+  if (r === 'langue')     return '⊘ langue tierce'
+  if (r === 'contrat')    return '⊘ stage/alternance'
   return '⊘ hors-périmètre'
 }
 
 function reasonClass(r: string) {
-  if (r === 'no_tech')   return 'bg-orange-50 text-orange-600'
+  if (r === 'no_tech')    return 'bg-orange-50 text-orange-600'
+  if (r === 'langue')     return 'bg-violet-50 text-violet-600'
+  if (r === 'contrat')    return 'bg-cyan-50 text-cyan-600'
   return 'bg-slate-100 text-slate-500'
 }
 

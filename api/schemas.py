@@ -13,6 +13,7 @@ class OfferRow(BaseModel):
     category: str | None = None        # parfait | reve | atteignable | hors
     verdict: str | None
     hors_perimetre_reason: str | None = None
+    perimetre_causes: list[str] = []
     seen_candidat: bool
     fetched_at: str
     filtered_out: bool = False
