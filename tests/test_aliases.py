@@ -15,31 +15,37 @@ TABLE = load_alias_table("profiles/alias.yaml")
 # --- Cas 1 : variante connue → forme canonique ---
 
 @pytest.mark.parametrize("raw, expected", [
-    ("csharp", "c#"),
-    ("CSharp", "c#"),              # case-insensitive
-    ("cpp", "c++"),
+    ("c#", "csharp"),
+    ("CSharp", "csharp"),          # case-insensitive
+    ("c++", "cpp"),
+    ("cplusplus", "cpp"),
     ("golang", "go"),
     ("js", "javascript"),
     ("postgres", "postgresql"),
-    ("sql_server", "sql server"),
+    ("sql server", "sql_server"),
+    ("sqlserver", "sql_server"),
     ("mongo", "mongodb"),
     ("ne4j", "neo4j"),             # typo LLM
     ("llama_index", "llamaindex"),
-    ("net", ".net"),
-    ("aspnet", "asp.net"),
+    (".net", "dotnet"),
+    ("net", "dotnet"),
+    ("asp.net", "aspnet"),
     ("doctrine_orm", "doctrine"),
     ("open_cv", "opencv"),
-    ("ci_cd", "ci/cd"),
-    ("gitlab_ci", "gitlab ci"),
-    ("paloalto", "palo alto"),
-    ("microsoft_entrada_id", "azure ad"),
+    ("ci/cd", "ci_cd"),
+    ("gitlab ci", "gitlab_ci"),
+    ("palo alto", "palo_alto"),
+    ("paloalto", "palo_alto"),
+    ("azure ad", "azure_ad"),
+    ("microsoft_entrada_id", "azure_ad"),
     ("microsoft copilot", "copilot"),
     ("vmware esxi", "vmware"),
     ("esx", "vmware"),
     ("vsphere", "vmware"),
     ("esxi", "vmware"),
-    ("vision-language", "vision-language models"),
-    ("visual_studio", "visual studio"),
+    ("vision-language", "vision_language_models"),
+    ("vision-language models", "vision_language_models"),
+    ("visual studio", "visual_studio"),
     ("shellscript", "shell"),
     ("sh", "shell"),
 ])
@@ -49,8 +55,8 @@ def test_known_variant(raw, expected):
 
 # Forme canonique se mappe à elle-même
 @pytest.mark.parametrize("canonical", [
-    "c#", "c++", "go", "javascript", "postgresql", "mongodb",
-    ".net", "asp.net", "opencv", "ci/cd", "vmware", "shell",
+    "csharp", "cpp", "go", "javascript", "postgresql", "mongodb",
+    "dotnet", "aspnet", "opencv", "ci_cd", "vmware", "shell",
 ])
 def test_canonical_identity(canonical):
     assert canonicalize(canonical, TABLE) == canonical
@@ -100,6 +106,13 @@ def test_convergence_postgresql_stays_postgresql():
     Le profil a 'sql' → c'est un autre concept (sql ≠ postgresql, décision d'alias.yaml)."""
     assert canonicalize("postgresql", TABLE) == "postgresql"
     assert canonicalize("postgres", TABLE) == "postgresql"
+
+
+# --- pl/sql passthrough (auto-canonicalise, pas dans alias.yaml) ---
+
+def test_plsql_passthrough():
+    """pl/sql n'est pas dans alias.yaml, auto-canonicalise en 'pl/sql'."""
+    assert canonicalize("pl/sql", TABLE) == "pl/sql"
 
 
 # --- Non-régression : les 13 anciens _TECH_ALIASES ---
