@@ -58,19 +58,23 @@
       </select>
     </div>
 
-    <!-- État review -->
+    <!-- État review (multi-select) -->
     <div class="flex flex-col gap-1">
       <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Review</label>
-      <select
-        v-model="local.etat_review"
-        class="border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        @change="apply"
-      >
-        <option value="">Tous</option>
-        <option value="non_relue">Non relue</option>
-        <option value="validee">Validée</option>
-        <option value="corrigee">Corrigée</option>
-      </select>
+      <div class="flex gap-3 items-center h-[30px]">
+        <label class="flex items-center gap-1 text-sm cursor-pointer">
+          <input type="checkbox" value="non_relue" v-model="local.etat_review" @change="apply" class="accent-indigo-500" />
+          Non relue
+        </label>
+        <label class="flex items-center gap-1 text-sm cursor-pointer">
+          <input type="checkbox" value="validee" v-model="local.etat_review" @change="apply" class="accent-green-500" />
+          Validée
+        </label>
+        <label class="flex items-center gap-1 text-sm cursor-pointer">
+          <input type="checkbox" value="corrigee" v-model="local.etat_review" @change="apply" class="accent-amber-500" />
+          Corrigée
+        </label>
+      </div>
     </div>
 
     <!-- Hors-périmètre -->
@@ -127,7 +131,7 @@ interface LocalFilters {
   category: string
   remote: boolean | undefined
   source: string
-  etat_review: string
+  etat_review: string[]
   hors_perimetre: boolean | undefined
   verdict: string
 }
@@ -137,7 +141,7 @@ const local = reactive<LocalFilters>({
   category: '',
   remote: undefined,
   source: '',
-  etat_review: '',
+  etat_review: [],
   hors_perimetre: undefined,
   verdict: '',
 })
@@ -147,7 +151,7 @@ function apply() {
   store.filters.category       = local.category || undefined
   store.filters.remote         = local.remote
   store.filters.source         = local.source || undefined
-  store.filters.etat_review    = local.etat_review || undefined
+  store.filters.etat_review    = local.etat_review.length ? local.etat_review.join(',') : undefined
   store.filters.hors_perimetre = local.hors_perimetre
   store.filters.verdict        = local.verdict || undefined
   store.fetchOffers()
@@ -158,7 +162,7 @@ function reset() {
   local.category       = ''
   local.remote         = undefined
   local.source         = ''
-  local.etat_review    = ''
+  local.etat_review    = []
   local.hors_perimetre = undefined
   local.verdict        = ''
   store.filters.q              = undefined

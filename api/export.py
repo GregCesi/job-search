@@ -66,12 +66,19 @@ def export_offers(
         conditions.append("o.hors_perimetre_reason IS NOT NULL")
     elif hors_perimetre is False:
         conditions.append("o.hors_perimetre_reason IS NULL")
-    if etat_review == "non_relue":
-        conditions.append("o.reviewed_at IS NULL")
-    elif etat_review == "validee":
-        conditions.append("o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL")
-    elif etat_review == "corrigee":
-        conditions.append("o.categorie_corrigee IS NOT NULL")
+    if etat_review is not None:
+        etats = [e.strip() for e in etat_review.split(",") if e.strip()]
+        if etats:
+            clauses = []
+            for e in etats:
+                if e == "non_relue":
+                    clauses.append("o.reviewed_at IS NULL")
+                elif e == "validee":
+                    clauses.append("(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL)")
+                elif e == "corrigee":
+                    clauses.append("o.categorie_corrigee IS NOT NULL")
+            if clauses:
+                conditions.append(f"({' OR '.join(clauses)})")
     if q is not None:
         conditions.append("(LOWER(o.title) LIKE ? OR LOWER(o.company) LIKE ?)")
         like = f"%{q.lower()}%"
