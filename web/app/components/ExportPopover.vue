@@ -53,6 +53,8 @@ const FIELDS = [
   { key: 'location',    label: 'Localisation' },
   { key: 'contract',    label: 'Contrat' },
   { key: 'url',         label: 'URL' },
+  { key: 'scores',      label: 'Scores (désir/attein)' },
+  { key: 'remarque',    label: 'Remarques' },
   { key: 'description', label: 'Description' },
 ]
 

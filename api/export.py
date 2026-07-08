@@ -14,12 +14,13 @@ from fastapi import APIRouter, Query
 from fastapi.responses import PlainTextResponse
 
 from .db import get_conn
+from .offers import _load_scoring_context
 from orchestrator.job_search.storage.reviews import HumanReview
 from orchestrator.job_search.calibration.disagreement import disagreement, DisagreementScore
 
 router = APIRouter()
 
-_VALID_INCLUDE = {"description", "techs", "role", "domain", "category", "location", "contract", "url", "company"}
+_VALID_INCLUDE = {"description", "techs", "role", "domain", "category", "location", "contract", "url", "company", "scores", "remarque"}
 _DEFAULT_INCLUDE = {"company", "category", "techs"}
 
 
@@ -105,6 +106,7 @@ def export_offers(
                o.category, o.url, o.description, o.source,
                o.extracted_facts_json, o.techs_matched_json, o.techs_missing_json,
                o.categorie_suggeree, o.categorie_corrigee, o.hors_perimetre_reason,
+               o.remarque,
                v.status AS verdict
         FROM offers o
         LEFT JOIN verdicts v ON v.offer_id = o.id
@@ -123,6 +125,11 @@ def export_offers(
 def _format_export_md(rows: list, fields: set[str]) -> str:
     lines: list[str] = [f"# Export — {len(rows)} offre(s)\n"]
 
+    # Pré-charger le contexte scoring si nécessaire
+    scoring_ctx = None
+    if "scores" in fields:
+        scoring_ctx = _load_scoring_context()
+
     for r in rows:
         # Heading: title toujours, company si demandée
         title = r["title"] or "(sans titre)"
@@ -135,6 +142,12 @@ def _format_export_md(rows: list, fields: set[str]) -> str:
         if "category" in fields:
             cat = r["categorie_corrigee"] or r["categorie_suggeree"] or r["category"] or "?"
             lines.append(f"- Catégorie : {cat}")
+
+        # Scores désirabilité / atteignabilité (dérivés à la volée)
+        if "scores" in fields:
+            scores_str = _compute_scores_line(r, scoring_ctx)
+            if scores_str:
+                lines.append(f"- Scores : {scores_str}")
 
         # Techs (depuis extracted_facts_json)
         if "techs" in fields:
@@ -156,6 +169,10 @@ def _format_export_md(rows: list, fields: set[str]) -> str:
         if "url" in fields and r["url"]:
             lines.append(f"- URL : {r['url']}")
 
+        # Remarque humaine
+        if "remarque" in fields and r["remarque"]:
+            lines.append(f"- Remarque : {r['remarque']}")
+
         # Description en bloc
         if "description" in fields and r["description"]:
             lines.append(f"\n{r['description']}")
@@ -163,6 +180,39 @@ def _format_export_md(rows: list, fields: set[str]) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def _compute_scores_line(row, scoring_ctx: dict | None) -> str | None:
+    """Dérive désirabilité + atteignabilité à la volée pour une offre."""
+    if scoring_ctx is None:
+        return None
+    profile = scoring_ctx.get("profile")
+    table = scoring_ctx.get("table")
+    if profile is None or table is None:
+        return None
+
+    raw = row["extracted_facts_json"]
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if data.get("parse_failed"):
+        return None
+
+    try:
+        from orchestrator.job_search.sources.base import ExtractedFacts
+        from orchestrator.job_search.scoring.desirability import compute_desirability
+        from orchestrator.job_search.scoring.attainability import compute_attainability
+
+        facts = ExtractedFacts.model_validate(data)
+        desir = compute_desirability(facts, profile.search_criteria, profile, table)
+        attain = compute_attainability(facts, profile, table)
+    except Exception:
+        return None
+
+    return f"désirabilité={desir.score:.0f}/100, atteignabilité={attain.score:.0f}/100"
 
 
 def _parse_facts_raw(raw: str | None) -> dict:
@@ -200,7 +250,7 @@ def export_calibration() -> str:
             """
             SELECT hr.offer_id, hr.ratings_json, hr.ai_snapshot_json,
                    hr.global_audit_text, hr.global_score, hr.seen_at_review, hr.created_at,
-                   o.title, o.company
+                   o.title, o.company, o.extracted_facts_json, o.remarque, o.category
             FROM human_reviews hr
             LEFT JOIN offers o ON CAST(hr.offer_id AS INTEGER) = o.id
             """
@@ -227,9 +277,15 @@ def export_calibration() -> str:
             "title": row["title"] or f"offre #{row['offer_id']}",
             "company": row["company"] or "?",
             "review": review,
+            "extracted_facts_json": row["extracted_facts_json"],
+            "remarque": row["remarque"],
+            "category": row["category"],
         }))
 
     scored.sort(key=lambda x: x[0].distance_total, reverse=True)
+
+    # Pré-charger le contexte scoring pour désirabilité/atteignabilité
+    scoring_ctx = _load_scoring_context()
 
     n_pages = max(1, math.ceil(len(scored) / _PAGE_SIZE))
     lines: list[str] = [
@@ -256,6 +312,16 @@ def export_calibration() -> str:
                 + f"  couverture={ds.n_criteria_rated} critère(s)"
                 + f"  date={review.created_at[:10]}"
             )
+
+            # Scores désirabilité / atteignabilité (dérivés à la volée)
+            scores_row = {"extracted_facts_json": meta["extracted_facts_json"], "id": None}
+            scores_str = _compute_scores_line(scores_row, scoring_ctx)
+            if scores_str:
+                lines.append(f"- {scores_str}")
+
+            # Remarque humaine
+            if meta.get("remarque"):
+                lines.append(f"- Remarque : {meta['remarque']}")
 
             # Détail par critère co-noté
             for nom, human_val in ratings.items():
