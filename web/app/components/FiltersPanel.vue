@@ -91,6 +91,22 @@
       </select>
     </div>
 
+    <!-- Cause HP -->
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Cause HP</label>
+      <select
+        v-model="local.hp_cause"
+        class="border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        @change="apply"
+      >
+        <option value="">Toutes</option>
+        <option value="no_tech">⊘ Sans techno</option>
+        <option value="mgmt_role">⊘ Managérial</option>
+        <option value="langue">⊘ Langue tierce</option>
+        <option value="contrat">⊘ Stage/alternance</option>
+      </select>
+    </div>
+
     <!-- Verdict -->
     <div class="flex flex-col gap-1">
       <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Verdict</label>
@@ -133,6 +149,7 @@ interface LocalFilters {
   source: string
   etat_review: string[]
   hors_perimetre: boolean | undefined
+  hp_cause: string
   verdict: string
 }
 
@@ -143,16 +160,22 @@ const local = reactive<LocalFilters>({
   source: '',
   etat_review: [],
   hors_perimetre: undefined,
+  hp_cause: '',
   verdict: '',
 })
 
 function apply() {
+  // Applique les filtres locaux PAR-DESSUS les presets de vue.
+  // Un champ local à sa valeur par défaut (vide/undefined) = pas de surcharge,
+  // on préserve la valeur du preset posée par setView().
   store.filters.q              = local.q || undefined
   store.filters.category       = local.category || undefined
   store.filters.remote         = local.remote
   store.filters.source         = local.source || undefined
   store.filters.etat_review    = local.etat_review.length ? local.etat_review.join(',') : undefined
-  store.filters.hors_perimetre = local.hors_perimetre
+  // hors_perimetre : ne pas écraser le preset si l'utilisateur n'a pas touché au select
+  if (local.hors_perimetre !== undefined) store.filters.hors_perimetre = local.hors_perimetre
+  store.filters.hp_cause       = local.hp_cause || undefined
   store.filters.verdict        = local.verdict || undefined
   store.fetchOffers()
 }
@@ -164,6 +187,7 @@ function reset() {
   local.source         = ''
   local.etat_review    = []
   local.hors_perimetre = undefined
+  local.hp_cause       = ''
   local.verdict        = ''
   store.filters.q              = undefined
   store.filters.category       = undefined
@@ -171,6 +195,7 @@ function reset() {
   store.filters.source         = undefined
   store.filters.etat_review    = undefined
   store.filters.hors_perimetre = undefined
+  store.filters.hp_cause       = undefined
   store.filters.verdict        = undefined
   store.fetchOffers()
 }

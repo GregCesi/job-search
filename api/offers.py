@@ -131,7 +131,7 @@ def _derive_score_breakdown(row) -> str | None:
     return "Hors — scoring insuffisant."
 router = APIRouter()
 
-_SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat", "location"}
+_SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat", "location", "hors_perimetre_reason"}
 
 
 def _derive_review_fields(row) -> dict:
@@ -169,6 +169,7 @@ def list_offers(
     category: str | None = Query(None, description="parfait | reve | atteignable | hors"),
     exclude_category: str | None = Query(None, description="Exclut les offres de cette catégorie (ex: hors)"),
     hors_perimetre: bool | None = Query(None, description="True=seulement hors-périmètre, False=exclut hors-périmètre, None=tout"),
+    hp_cause: str | None = Query(None, description="Filtre par cause HP : no_tech | mgmt_role | langue | contrat"),
     etat_review: str | None = Query(None, description="non_relue | validee | corrigee"),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
     sort: str = Query("category"),
@@ -207,6 +208,9 @@ def list_offers(
         conditions.append("o.hors_perimetre_reason IS NOT NULL")
     elif hors_perimetre is False:
         conditions.append("o.hors_perimetre_reason IS NULL")
+    if hp_cause is not None:
+        conditions.append("o.perimetre_causes LIKE ?")
+        params.append(f'%"{hp_cause}"%')
     if etat_review is not None:
         etats = [e.strip() for e in etat_review.split(",") if e.strip()]
         if etats:

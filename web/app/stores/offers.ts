@@ -52,6 +52,7 @@ export interface Filters {
   category?: string
   exclude_category?: string
   hors_perimetre?: boolean
+  hp_cause?: string
   etat_review?: string
   remote?: boolean
   source?: string
@@ -77,7 +78,7 @@ const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> 
   retenues:    { verdict: 'retenu', hors_perimetre: false, exclude_category: 'hors', sort: 'fetched_at', order: 'desc' },
   // Opérateur
   a_traiter:      { etat_review: 'non_relue', hors_perimetre: false, sort: 'category',   order: 'desc' },
-  hors_perimetre: { hors_perimetre: true,                            sort: 'fetched_at', order: 'desc' },
+  hors_perimetre: { hors_perimetre: true,                            sort: 'hors_perimetre_reason', order: 'asc' },
   tout:           {                                                   sort: 'category',   order: 'desc' },
 }
 
@@ -112,6 +113,7 @@ export const useOffersStore = defineStore('offers', () => {
       if (filters.value.category !== undefined) params.category = filters.value.category
       if (filters.value.exclude_category !== undefined) params.exclude_category = filters.value.exclude_category
       if (filters.value.hors_perimetre !== undefined) params.hors_perimetre = filters.value.hors_perimetre
+      if (filters.value.hp_cause !== undefined) params.hp_cause = filters.value.hp_cause
       if (filters.value.etat_review !== undefined) params.etat_review = filters.value.etat_review
       if (filters.value.remote !== undefined) params.remote = filters.value.remote
       if (filters.value.source !== undefined) params.source = filters.value.source

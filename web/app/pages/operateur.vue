@@ -43,8 +43,8 @@
       </div>
     </header>
 
-    <!-- Filters — visible only in "tout" view -->
-    <div v-if="store.activeView === 'tout'" class="px-6 pt-4">
+    <!-- Filters — visible in "tout" and "hors_perimetre" views -->
+    <div v-if="store.activeView === 'tout' || store.activeView === 'hors_perimetre'" class="px-6 pt-4">
       <FiltersPanel />
     </div>
 
