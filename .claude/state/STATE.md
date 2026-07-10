@@ -1,12 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Alignement endpoint export sur listing (L1→L4). Sort élargi (7 cols), sort composite, filtres `hp_cause`+`exclude_category` ajoutés back+front. Fix bug copier hors-périmètre.
-- Prochaine action : Vérifier manuellement (API + front) sur les onglets hors-périmètre, à traiter, tout, cibles.
+- Dernière action : Implémentation staleness + séparation avis IA/humain (L1→L9). Backend : `_derive_review_fields()` enrichi (`suggestion_actuelle`, `review_stale`, état `a_revoir`), filtre SQL `a_revoir` dans list_offers + export. Frontend : bloc "Avis IA" read-only, bloc "Mon avis" éditable, bandeau stale, preset `a_traiter` inclut `a_revoir`.
+- Prochaine action : Vérifier manuellement (API + front) — onglet "À traiter" montre les offres stale, bandeau visible, re-confirmation fonctionne.
 - Bloquant : aucun
 
 ## Phase en cours
-- Alignement export/listing en cours de vérification
+- Staleness + séparation avis IA/humain — en vérification manuelle
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)

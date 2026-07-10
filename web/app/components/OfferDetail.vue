@@ -57,9 +57,39 @@
         <!-- Body -->
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-6 text-sm text-gray-700">
 
-          <!-- Review de catégorie — opérateur uniquement -->
+          <!-- Avis IA (read-only) — opérateur uniquement -->
           <section v-if="props.mode === 'operateur'">
-            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Catégorie</h3>
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Avis IA</h3>
+            <div class="flex items-center gap-2">
+              <span
+                v-if="offer.suggestion_actuelle"
+                :class="categoryBadgeClass(offer.suggestion_actuelle)"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium border"
+              >
+                {{ categoryLabel(offer.suggestion_actuelle) }}
+              </span>
+              <span v-else class="text-xs text-gray-400 italic">Non scorée</span>
+            </div>
+            <p v-if="offer.score_breakdown" class="text-xs text-gray-500 italic mt-2">
+              {{ offer.score_breakdown }}
+            </p>
+          </section>
+
+          <!-- Bandeau stale — entre Avis IA et Mon avis -->
+          <div v-if="props.mode === 'operateur' && offer.review_stale"
+               class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+            <p class="font-semibold">
+              ⟳ Rescoré — l'IA suggérait
+              <span class="font-bold">{{ categoryLabel(offer.categorie_suggeree) }}</span>,
+              dit maintenant
+              <span class="font-bold">{{ categoryLabel(offer.suggestion_actuelle) }}</span>
+            </p>
+            <p v-if="offer.remarque" class="mt-1 italic text-amber-600">{{ offer.remarque }}</p>
+          </div>
+
+          <!-- Mon avis (éditable) — opérateur uniquement -->
+          <section v-if="props.mode === 'operateur'">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Mon avis</h3>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="cat in CATEGORIES" :key="cat.value"
@@ -72,14 +102,10 @@
                 @click="selectCategory(cat.value)"
               >
                 {{ cat.label }}
-                <span v-if="suggestedCategory === cat.value && offer.etat_review === 'non_relue'"
+                <span v-if="suggestedCategory === cat.value && (offer.etat_review === 'non_relue' || offer.etat_review === 'a_revoir')"
                       class="ml-1 text-[10px] opacity-60">(suggestion)</span>
               </button>
             </div>
-            <!-- Score breakdown -->
-            <p v-if="offer.score_breakdown" class="text-xs text-gray-500 italic mt-2">
-              {{ offer.score_breakdown }}
-            </p>
             <!-- Remarque -->
             <textarea
               v-model="remarque"
@@ -235,8 +261,7 @@ const CATEGORIES = [
 ]
 
 const suggestedCategory = computed(() => {
-  if (props.offer.hors_perimetre_reason) return 'hors_perimetre'
-  return props.offer.category
+  return props.offer.suggestion_actuelle ?? props.offer.category
 })
 
 const selectedCategory = ref<string | null>(null)
@@ -349,6 +374,7 @@ const etatLabel = computed(() => {
   const e = props.offer.etat_review
   if (e === 'validee') return '✓ Validée'
   if (e === 'corrigee') return '✎ Corrigée'
+  if (e === 'a_revoir') return '⟳ À revoir'
   return '○ Non relue'
 })
 
@@ -356,8 +382,30 @@ const etatClass = computed(() => {
   const e = props.offer.etat_review
   if (e === 'validee') return 'bg-green-50 text-green-700'
   if (e === 'corrigee') return 'bg-amber-50 text-amber-700'
+  if (e === 'a_revoir') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-300'
   return 'bg-gray-100 text-gray-400'
 })
+
+const CATEGORY_LABELS: Record<string, string> = {
+  parfait: '★ Parfait',
+  reve: '◈ Rêve',
+  atteignable: '✓ Atteignable',
+  hors: '✗ Hors',
+  hors_perimetre: '⊘ Hors-périmètre',
+}
+
+function categoryLabel(cat: string | null | undefined): string {
+  return cat ? (CATEGORY_LABELS[cat] ?? cat) : '?'
+}
+
+function categoryBadgeClass(cat: string | null | undefined): string {
+  if (cat === 'parfait') return 'bg-green-50 border-green-300 text-green-700'
+  if (cat === 'reve') return 'bg-indigo-50 border-indigo-300 text-indigo-700'
+  if (cat === 'atteignable') return 'bg-amber-50 border-amber-300 text-amber-700'
+  if (cat === 'hors') return 'bg-gray-100 border-gray-400 text-gray-600'
+  if (cat === 'hors_perimetre') return 'bg-slate-100 border-slate-400 text-slate-600'
+  return 'bg-gray-100 border-gray-200 text-gray-500'
+}
 
 function techBadgeClass(importance: string | null) {
   if (importance === 'core')         return 'bg-blue-100 text-blue-800'

@@ -135,16 +135,36 @@ _SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat", "lo
 
 
 def _derive_review_fields(row) -> dict:
-    """Dérive categorie_finale + etat_review à la volée (jamais persistés)."""
+    """Dérive categorie_finale + etat_review + staleness à la volée (jamais persistés)."""
     suggeree = row["categorie_suggeree"]
     corrigee = row["categorie_corrigee"]
     reviewed_at = row["reviewed_at"]
+
+    # suggestion_actuelle = ce que l'IA pense MAINTENANT
+    if row["hors_perimetre_reason"] is not None:
+        suggestion_actuelle = "hors_perimetre"
+    elif row["category"]:
+        suggestion_actuelle = row["category"]
+    else:
+        suggestion_actuelle = None
+
+    # review_stale = un rescore a eu lieu après la dernière review
+    rescored_at = row["rescored_at"]
+    review_stale = (
+        reviewed_at is not None
+        and rescored_at is not None
+        and rescored_at > reviewed_at
+    )
+
     if reviewed_at is None:
         etat = "non_relue"
+    elif review_stale:
+        etat = "a_revoir"
     elif corrigee is not None:
         etat = "corrigee"
     else:
         etat = "validee"
+
     return {
         "categorie_suggeree": suggeree,
         "categorie_corrigee": corrigee,
@@ -152,6 +172,8 @@ def _derive_review_fields(row) -> dict:
         "etat_review": etat,
         "remarque": row["remarque"],
         "reviewed_at": reviewed_at,
+        "review_stale": review_stale,
+        "suggestion_actuelle": suggestion_actuelle,
     }
 
 
@@ -219,9 +241,11 @@ def list_offers(
                 if e == "non_relue":
                     clauses.append("o.reviewed_at IS NULL")
                 elif e == "validee":
-                    clauses.append("(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL)")
+                    clauses.append("(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))")
                 elif e == "corrigee":
-                    clauses.append("o.categorie_corrigee IS NOT NULL")
+                    clauses.append("(o.categorie_corrigee IS NOT NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))")
+                elif e == "a_revoir":
+                    clauses.append("(o.reviewed_at IS NOT NULL AND o.rescored_at IS NOT NULL AND o.rescored_at > o.reviewed_at)")
             if clauses:
                 conditions.append(f"({' OR '.join(clauses)})")
     if q is not None:
@@ -260,6 +284,7 @@ def list_offers(
                o.category, o.seen_candidat, o.fetched_at, o.filtered_out, o.filter_reason,
                o.hors_perimetre_reason, o.perimetre_causes,
                o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
+               o.rescored_at,
                v.status AS verdict
         FROM offers o
         LEFT JOIN verdicts v ON v.offer_id = o.id

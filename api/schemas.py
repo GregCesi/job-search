@@ -22,9 +22,11 @@ class OfferRow(BaseModel):
     categorie_suggeree: str | None = None
     categorie_corrigee: str | None = None
     categorie_finale: str | None = None    # dérivé : corrigee ?? suggeree (jamais persisté)
-    etat_review: str | None = None         # dérivé : non_relue | validee | corrigee
+    etat_review: str | None = None         # dérivé : non_relue | validee | corrigee | a_revoir
     remarque: str | None = None
     reviewed_at: str | None = None
+    review_stale: bool = False
+    suggestion_actuelle: str | None = None
 
 
 class TechSchema(BaseModel):

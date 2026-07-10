@@ -19,9 +19,11 @@ export interface OfferRow {
   categorie_suggeree: string | null
   categorie_corrigee: string | null
   categorie_finale: string | null    // dérivé API
-  etat_review: string | null         // non_relue | validee | corrigee
+  etat_review: string | null         // non_relue | validee | corrigee | a_revoir
   remarque: string | null
   reviewed_at: string | null
+  review_stale: boolean
+  suggestion_actuelle: string | null
 }
 
 export interface TechInfo {
@@ -77,7 +79,7 @@ const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> 
   filet:       { category: 'atteignable', hors_perimetre: false, sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
   retenues:    { verdict: 'retenu', hors_perimetre: false, exclude_category: 'hors', sort: 'fetched_at', order: 'desc' },
   // Opérateur
-  a_traiter:      { etat_review: 'non_relue', hors_perimetre: false, sort: 'category',   order: 'desc' },
+  a_traiter:      { etat_review: 'non_relue,a_revoir', hors_perimetre: false, sort: 'category',   order: 'desc' },
   hors_perimetre: { hors_perimetre: true,                            sort: 'hors_perimetre_reason', order: 'asc' },
   tout:           {                                                   sort: 'category',   order: 'desc' },
 }
@@ -156,6 +158,8 @@ export const useOffersStore = defineStore('offers', () => {
       row.categorie_suggeree = data.categorie_suggeree
       row.reviewed_at = data.reviewed_at
       row.remarque = data.remarque
+      row.review_stale = data.review_stale
+      row.suggestion_actuelle = data.suggestion_actuelle
     }
   }
 

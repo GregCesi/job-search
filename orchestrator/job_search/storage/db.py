@@ -92,6 +92,8 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("techs_missing_json",  "TEXT"),
         # lot G — gates éliminatoires : causes multiples (JSON list)
         ("perimetre_causes",    "TEXT"),
+        # staleness : timestamp du dernier (re)score — comparé à reviewed_at
+        ("rescored_at",         "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:

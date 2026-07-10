@@ -83,9 +83,11 @@ def export_offers(
                 if e == "non_relue":
                     clauses.append("o.reviewed_at IS NULL")
                 elif e == "validee":
-                    clauses.append("(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL)")
+                    clauses.append("(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))")
                 elif e == "corrigee":
-                    clauses.append("o.categorie_corrigee IS NOT NULL")
+                    clauses.append("(o.categorie_corrigee IS NOT NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))")
+                elif e == "a_revoir":
+                    clauses.append("(o.reviewed_at IS NOT NULL AND o.rescored_at IS NOT NULL AND o.rescored_at > o.reviewed_at)")
             if clauses:
                 conditions.append(f"({' OR '.join(clauses)})")
     if q is not None:

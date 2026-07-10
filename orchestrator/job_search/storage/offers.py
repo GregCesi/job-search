@@ -1,6 +1,6 @@
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from orchestrator.job_search.scoring.categorize import Category
 from orchestrator.job_search.sources.base import JobOffer
@@ -53,6 +53,8 @@ def save_offer(
     if perimetre_causes:
         hors_perimetre_reason = perimetre_causes[0]
 
+    now = datetime.now(timezone.utc).isoformat()
+
     conn.execute(
         """
         INSERT INTO offers
@@ -63,9 +65,9 @@ def save_offer(
              extracted_facts_json, category,
              filtered_out, filter_reason, hors_perimetre_reason,
              perimetre_causes,
-             techs_matched_json, techs_missing_json)
+             techs_matched_json, techs_missing_json, rescored_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-                ?, ?, ?, ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json  = excluded.extracted_facts_json,
             category              = excluded.category,
@@ -76,7 +78,8 @@ def save_offer(
             hors_perimetre_reason = excluded.hors_perimetre_reason,
             perimetre_causes      = excluded.perimetre_causes,
             techs_matched_json    = excluded.techs_matched_json,
-            techs_missing_json    = excluded.techs_missing_json
+            techs_missing_json    = excluded.techs_missing_json,
+            rescored_at           = excluded.rescored_at
         """,
         (
             offer.source, offer.source_id, offer.fingerprint,
@@ -95,6 +98,7 @@ def save_offer(
             causes_json,
             matched_json,
             missing_json,
+            now,
         ),
     )
     conn.commit()
