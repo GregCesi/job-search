@@ -20,7 +20,7 @@ from orchestrator.job_search.calibration.disagreement import disagreement, Disag
 
 router = APIRouter()
 
-_VALID_INCLUDE = {"description", "techs", "role", "domain", "category", "location", "contract", "url", "company", "scores", "remarque"}
+_VALID_INCLUDE = {"description", "techs", "role", "domain", "category", "location", "contract", "url", "company", "scores", "remarque", "verdict"}
 _DEFAULT_INCLUDE = {"company", "category", "techs"}
 
 
@@ -37,8 +37,10 @@ def export_offers(
     hors_perimetre: bool | None = Query(None),
     etat_review: str | None = Query(None),
     q: str | None = Query(None),
-    sort: str = Query("category", pattern="^(fetched_at|title|company|category)$"),
-    order: Literal["asc", "desc"] = Query("desc"),
+    exclude_category: str | None = Query(None),
+    hp_cause: str | None = Query(None, description="Filtre par cause HP : no_tech | mgmt_role | langue | contrat"),
+    sort: str = Query("category"),
+    order: str = Query("desc"),
     include: str | None = Query(None, description="Champs à inclure (comma-separated). Défaut: company,category,techs"),
 ) -> str:
     # --- parse include ---
@@ -63,10 +65,16 @@ def export_offers(
     if category is not None:
         conditions.append("o.category = ?")
         params.append(category)
+    if exclude_category is not None:
+        conditions.append("o.category != ?")
+        params.append(exclude_category)
     if hors_perimetre is True:
         conditions.append("o.hors_perimetre_reason IS NOT NULL")
     elif hors_perimetre is False:
         conditions.append("o.hors_perimetre_reason IS NULL")
+    if hp_cause is not None:
+        conditions.append("o.perimetre_causes LIKE ?")
+        params.append(f'%"{hp_cause}"%')
     if etat_review is not None:
         etats = [e.strip() for e in etat_review.split(",") if e.strip()]
         if etats:
@@ -87,19 +95,30 @@ def export_offers(
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-    if sort == "category":
-        order_clause = """
-            CASE o.category
-                WHEN 'parfait'     THEN 1
-                WHEN 'reve'        THEN 2
-                WHEN 'atteignable' THEN 3
-                WHEN 'hors'        THEN 4
-                ELSE 5
-            END ASC"""
-    else:
-        _sort_cols = {"fetched_at", "title", "company", "category"}
-        sort_col = sort if sort in _sort_cols else "category"
-        order_clause = f"o.{sort_col} {order.upper()} NULLS LAST"
+    # Tri composite : sort=col1,col2 + order=dir1,dir2 (même logique que list_offers)
+    _sort_cols = {"fetched_at", "title", "company", "category", "seen_candidat", "location", "hors_perimetre_reason"}
+    sort_parts = [s.strip() for s in sort.split(",")]
+    order_parts = [o.strip() for o in order.split(",")]
+    while len(order_parts) < len(sort_parts):
+        order_parts.append(order_parts[-1] if order_parts else "desc")
+
+    order_clauses: list[str] = []
+    for s, o in zip(sort_parts, order_parts):
+        d = o.upper() if o.upper() in ("ASC", "DESC") else "DESC"
+        if s == "category":
+            order_clauses.append(f"""
+                CASE o.category
+                    WHEN 'parfait'     THEN 1
+                    WHEN 'reve'        THEN 2
+                    WHEN 'atteignable' THEN 3
+                    WHEN 'hors'        THEN 4
+                    ELSE 5
+                END {d}""")
+        elif s in _sort_cols:
+            order_clauses.append(f"o.{s} {d} NULLS LAST")
+        else:
+            order_clauses.append("o.category DESC")
+    order_clause = ", ".join(order_clauses) if order_clauses else "o.category DESC"
 
     sql = f"""
         SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
@@ -166,6 +185,8 @@ def _format_export_md(rows: list, fields: set[str]) -> str:
             lines.append(f"- Localisation : {r['location']}")
         if "contract" in fields and r["contract_type"]:
             lines.append(f"- Contrat : {r['contract_type']}")
+        if "verdict" in fields and r["verdict"]:
+            lines.append(f"- Verdict : {r['verdict']}")
         if "url" in fields and r["url"]:
             lines.append(f"- URL : {r['url']}")
 

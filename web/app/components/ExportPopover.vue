@@ -52,6 +52,7 @@ const FIELDS = [
   { key: 'role',        label: 'Role' },
   { key: 'location',    label: 'Localisation' },
   { key: 'contract',    label: 'Contrat' },
+  { key: 'verdict',     label: 'Verdict' },
   { key: 'url',         label: 'URL' },
   { key: 'scores',      label: 'Scores (désir/attein)' },
   { key: 'remarque',    label: 'Remarques' },
@@ -72,7 +73,9 @@ async function doCopy() {
     // Filtres actifs du store
     const f = store.filters
     if (f.category !== undefined) params.set('category', f.category)
+    if (f.exclude_category !== undefined) params.set('exclude_category', f.exclude_category)
     if (f.hors_perimetre !== undefined) params.set('hors_perimetre', String(f.hors_perimetre))
+    if (f.hp_cause !== undefined) params.set('hp_cause', f.hp_cause)
     if (f.etat_review !== undefined) params.set('etat_review', f.etat_review)
     if (f.remote !== undefined) params.set('remote', String(f.remote))
     if (f.source !== undefined) params.set('source', f.source)

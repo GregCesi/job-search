@@ -1,12 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Ligne de justification catégorie LIVRÉE ✓ (2026-07-07, L1→L5). `score_breakdown` dérivé à la volée (0 LLM), affiché en vue opérateur sous les boutons catégorie. 5 cas : parfait/rêve/atteignable/hors/null.
-- Prochaine action : Tester la ligne de justification en conditions réelles (API + front).
+- Dernière action : Alignement endpoint export sur listing (L1→L4). Sort élargi (7 cols), sort composite, filtres `hp_cause`+`exclude_category` ajoutés back+front. Fix bug copier hors-périmètre.
+- Prochaine action : Vérifier manuellement (API + front) sur les onglets hors-périmètre, à traiter, tout, cibles.
 - Bloquant : aucun
 
 ## Phase en cours
-- Ligne de justification catégorie LIVRÉE ✓ (2026-07-07)
+- Alignement export/listing en cours de vérification
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
