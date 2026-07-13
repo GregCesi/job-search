@@ -53,8 +53,8 @@ aliases:
   # --- Microsoft / identité ---
   azure_ad:      [azure ad, microsoft_entrada_id]   # Microsoft Entra ID = ex-Azure AD
 
-  # --- Outils assistants IA ---
-  copilot:       [microsoft copilot]
+  # --- Outils dev IA (assistants / LLM-as-tool) ---
+  outils_dev_ia: [claude, claudia, anthropic, gpt, chatgpt, gpt-4, openai, cursor, copilot, microsoft copilot]
 
   # --- Virtualisation (tout écrasé sur vmware — décision actée) ---
   vmware:        [vmware esxi, esx, vsphere, esxi]
@@ -72,7 +72,9 @@ aliases:
   # Décision actée : on canonicalise les VARIANTES d'une même notion entre elles.
   # agents != langgraph, ml != python — aucune implication. Ces clés sont des
   # entrées de profil à part entière (cf. gregoire.yaml), pas des proxies.
-  llm:           [llms]
+  # STOPGAP ai/ia → llm — amende la décision L17-18 (technos molles).
+  # Vrai fix = compétence dérivée Tier-2, backlog.
+  llm:           [llms, ai, ia, artificial_intelligence, intelligence_artificielle]
   agents:        [agents_ia, ai_agents]
   ml:            [machine_learning, ml_frameworks]
   nlp:           []

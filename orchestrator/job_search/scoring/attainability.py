@@ -69,6 +69,9 @@ def _compute_attain_tech(
     attain_tech = Σ(level_i × weight_i) / Σ(weight_i) × 10  → 0-100.
     Techno absente du profil : level=0 (neutre, pas de pénalité explicite mais dilue).
     Techno exclue (canonicalize → None) : retirée du calcul (ni matchée ni manquante).
+    Dédup sur canonical : si N tokens bruts convergent vers le même canonical,
+    la compétence ne compte qu'une fois (importance = max vue). Les N tokens bruts
+    restent tous dans matched/missing pour l'affichage.
     Retourne (score, techs_matched, techs_missing).
     """
     if not techs_required:
@@ -76,28 +79,39 @@ def _compute_attain_tech(
 
     canonical_levels = _canonical_profile_skills(profile, table)
 
-    weighted_sum = 0.0
-    total_weight = 0.0
+    # Phase 1 : grouper par canonical, garder max importance + tous les raws
+    seen: dict[str, tuple[float, bool, list[str]]] = {}  # canonical → (max_weight, has_level, raw_names)
     matched: list[str] = []
     missing: list[str] = []
 
     for tech in techs_required:
         canonical = canonicalize(tech.name, table)
         if canonical is None:
-            # Exclu (bruit/non-tech) — retiré du calcul
             continue
 
         weight = _IMPORTANCE_WEIGHTS.get(tech.importance, 1.0)
         level = canonical_levels.get(canonical)
+        has_level = level is not None
 
-        if level is not None:
+        if has_level:
             matched.append(tech.name)
-            weighted_sum += level * weight
         else:
             missing.append(tech.name)
-            # level=0 implicite — contribue 0 au numérateur, weight au dénominateur
 
+        if canonical in seen:
+            prev_weight, prev_has, prev_raws = seen[canonical]
+            seen[canonical] = (max(prev_weight, weight), prev_has or has_level, prev_raws)
+        else:
+            seen[canonical] = (weight, has_level, [])
+
+    # Phase 2 : scoring dédupliqué sur canonical
+    weighted_sum = 0.0
+    total_weight = 0.0
+
+    for canonical, (weight, has_level, _) in seen.items():
         total_weight += weight
+        if has_level:
+            weighted_sum += canonical_levels[canonical] * weight
 
     if total_weight == 0:
         return 100.0, [], []
