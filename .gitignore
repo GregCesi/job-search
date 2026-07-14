@@ -30,3 +30,7 @@ chroma/
 .history/
 
 data/traces/
+
+# Rapports one-shot
+rescore-p-report.md
+CARTE.md
