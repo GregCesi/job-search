@@ -19,7 +19,7 @@ from orchestrator.job_search.sources.base import ExtractedFacts
 # 1.0 = cœur-cible, 0.0 = hors-domaine.
 _DOMAIN_GRADIENT: dict[str, float] = {
     "ai_engineering":   1.0,   # cœur — AI/ML Engineer, LLM, agents, RAG
-    "data_science":     0.7,   # near-cœur — ML/stats, overlap fort
+    "data_science":     0.4,   # adjacent — ML/stats, overlap mais pas cœur-cible
     "data_engineering": 0.5,   # adjacent — Python pipelines, SQL, data infra
     "backend":          0.5,   # adjacent — FastAPI/Python back, APIs REST
     "fullstack":        0.25,  # éloigné — charge frontend non désirable
