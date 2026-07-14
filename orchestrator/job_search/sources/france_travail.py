@@ -13,7 +13,15 @@ load_dotenv()
 
 _TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token"
 _SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
-_STRASBOURG_INSEE = "67482"
+# Mapping zone profil → code INSEE commune (pour l'API France Travail).
+AREA_COMMUNES: dict[str, str] = {
+    "strasbourg_area": "67482",
+    "reims_area": "51454",
+    "nancy_area": "54395",
+    "paris_area": "75101",   # 1er arr. — 75056 rejeté par l'API, 75101+rayon couvre tout Paris
+    "lyon_area": "69123",
+    "toulouse_area": "31555",
+}
 
 _REMOTE_KEYWORDS = {"télétravail", "teletravail", "remote", "full remote", "full-remote"}
 
@@ -31,7 +39,7 @@ def _detect_remote(raw: dict) -> bool:
 class FranceTravailSource(Source):
     def __init__(
         self,
-        commune: str = _STRASBOURG_INSEE,
+        commune: str | None = None,
         radius_km: int = 30,
         max_results: int = 150,
         keywords: list[str] | None = None,
@@ -146,11 +154,11 @@ class FranceTravailSource(Source):
         per_kw = max(10, self.max_results // len(self.keywords))
 
         for kw in self.keywords:
-            batch = self._fetch_all({
-                "commune": self.commune,
-                "distance": self.radius_km,
-                "motsCles": kw,
-            }, limit=per_kw)
+            params: dict = {"motsCles": kw}
+            if self.commune:
+                params["commune"] = self.commune
+                params["distance"] = self.radius_km
+            batch = self._fetch_all(params, limit=per_kw)
             for raw in batch:
                 if raw["id"] not in seen_ids:
                     seen_ids.add(raw["id"])
