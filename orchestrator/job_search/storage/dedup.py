@@ -24,28 +24,3 @@ def filter_new(conn: sqlite3.Connection, offers: list[JobOffer]) -> list[JobOffe
         seen_fps.add(offer.fingerprint)
 
     return new
-
-
-def insert_stub(conn: sqlite3.Connection, offer: JobOffer) -> None:
-    """Persist a minimal row to mark the offer as seen (score filled later)."""
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO offers
-            (source, source_id, fingerprint, title, company, location,
-             remote, contract_type, url, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            offer.source,
-            offer.source_id,
-            offer.fingerprint,
-            offer.title,
-            offer.company,
-            offer.location,
-            int(offer.remote),
-            offer.contract_type,
-            offer.url,
-            offer.fetched_at.isoformat(),
-        ),
-    )
-    conn.commit()

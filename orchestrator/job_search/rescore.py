@@ -34,7 +34,6 @@ def main() -> None:
     from orchestrator.job_search.sources.base import JobOffer
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.offers import save_offer
-    from orchestrator.job_search.storage.purge import purge_irrelevant
 
     model = os.getenv("OLLAMA_MODEL", "llama3")
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -177,8 +176,7 @@ def main() -> None:
     print(f"[rescore] {len(lines)} techs inconnues → {unmatched_path}")
 
     if not args.dry_run:
-        purged = purge_irrelevant(conn)
-        print(f"\n[rescore] terminé — {n_ok} scorées, {n_fail} parse_failed, {purged} purgées")
+        print(f"\n[rescore] terminé — {n_ok} scorées, {n_fail} parse_failed")
     else:
         print(f"\n[rescore] dry-run terminé — {n_ok} analysées, {n_fail} parse_failed")
 

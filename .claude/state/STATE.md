@@ -1,12 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Implémentation staleness + séparation avis IA/humain (L1→L9). Backend : `_derive_review_fields()` enrichi (`suggestion_actuelle`, `review_stale`, état `a_revoir`), filtre SQL `a_revoir` dans list_offers + export. Frontend : bloc "Avis IA" read-only, bloc "Mon avis" éditable, bandeau stale, preset `a_traiter` inclut `a_revoir`.
-- Prochaine action : Vérifier manuellement (API + front) — onglet "À traiter" montre les offres stale, bandeau visible, re-confirmation fonctionne.
+- Dernière action : Remédiation code mort (ChromaDB, purge, view) — L1→L9 livrés. Supprimé embedder.py, purge.py, view.py, insert_stub(), data/chroma/, profile_cache.json. Nettoyé run.py et rescore.py. Retiré chromadb de requirements.txt. Nettoyé CODEMAP.md. 3 entrées dette dans DECISIONS.md.
+- Prochaine action : aucune — chantier terminé
 - Bloquant : aucun
 
 ## Phase en cours
-- Staleness + séparation avis IA/humain — en vérification manuelle
+- Remédiation code mort : LIVRÉE ✓ (2026-07-14, L1→L9)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
@@ -29,3 +29,4 @@
 - Chantier source Indeed : LIVRÉ ✓ (2026-06-26, L2→L9, adapter fichier + commande MCP, 60 offres Indeed)
 - Chantier dédup amont Indeed : LIVRÉ ✓ (2026-06-26, L0→L2, fingerprint partagé, endpoint check-known, skill v2 throttle+dédup)
 - Chantier export contextuel : LIVRÉ ✓ (2026-06-30, L1→L6, endpoint export/offers + ExportPopover front)
+- Remédiation code mort : LIVRÉE ✓ (2026-07-14, L1→L9, ChromaDB/purge/view supprimés, dette enregistrée)

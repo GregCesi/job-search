@@ -214,11 +214,9 @@ Trois briques autour d'une base partagée `data/job_search.sqlite` :
 
 ## Fichiers périphériques (cartographiés par nom/sig)
 
-- `orchestrator/job_search/view.py:42` — CLI viewer offres
 - `orchestrator/job_search/verdict.py:53` — CLI interaction verdict
 - `orchestrator/job_search/rescore.py:15` — CLI rescore (0 LLM)
 - `orchestrator/job_search/sources/_clean.py` — html_to_markdown()
-- `orchestrator/job_search/storage/purge.py:10` — purge offres
 - `orchestrator/job_search/storage/reviews.py` — helpers human_reviews
 - `orchestrator/job_search/calibration/disagreement.py:27` — score divergence humain vs IA
 - `orchestrator/job_search/scoring/tracing.py` — LLMTrace + writer
