@@ -19,6 +19,9 @@ _SENIORITY_ORDER: dict[SeniorityLevel, int] = {
     SeniorityLevel.lead: 3,
 }
 
+# Malus par cran de séniorité au-dessus du plafond profil (calibrable)
+SENIORITY_MALUS_PER_STEP = 20
+
 # Niveaux de maîtrise considérés comme "connu" pour le matching
 _KNOWN = {MasteryLevel.working, MasteryLevel.confirmed}
 
@@ -141,23 +144,45 @@ def _compute_attain_role(role_level: str, profile: Profile) -> float:
 
 
 class Attainability(BaseModel):
-    score: float                           # 0-100 = min(attain_tech, attain_role)
+    score: float                           # 0-100 = max(0, min(attain_tech, attain_role) − seniority_malus)
     attain_tech: float                     # moyenne pondérée par importance
     attain_role: float                     # portail gradué IC/lead/manager
+    seniority_malus: float = 0.0          # malus gradué séniorité (0/20/40)
     techs_matched: list[str]              # observable (conservé)
     techs_missing: list[str]              # observable (conservé)
     blocked_by: str | None                # "tech" | "role" | None — quel axe gouverne
 
 
+def _compute_seniority_malus(facts: ExtractedFacts, profile: Profile) -> float:
+    """
+    Malus gradué par cran de séniorité au-dessus du plafond profil.
+    Cap à senior : lead est un rôle (pénalisé par attain_role), pas une profondeur IC.
+    Absence de seniority_ceiling dans le profil → 0 (neutre).
+    """
+    if profile.seniority_ceiling is None:
+        return 0.0
+    # Cap offer rank at senior to avoid double-penalizing lead (already in attain_role)
+    offer_rank = min(
+        _SENIORITY_ORDER[facts.seniority_required],
+        _SENIORITY_ORDER[SeniorityLevel.senior],
+    )
+    ceiling_rank = _SENIORITY_ORDER[profile.seniority_ceiling]
+    gap = max(0, offer_rank - ceiling_rank)
+    return gap * SENIORITY_MALUS_PER_STEP
+
+
 def compute_attainability(facts: ExtractedFacts, profile: Profile, table: AliasTable) -> Attainability:
     """
-    Atteignabilité refondue : min(attain_tech, attain_role). 0 LLM (architecture.md §4).
+    Atteignabilité refondue : max(0, min(attain_tech, attain_role) − seniority_malus).
+    0 LLM (architecture.md §4).
     Non-compensation : un bon axe ne rachète jamais un axe disqualifiant.
     """
     attain_tech, matched, missing = _compute_attain_tech(facts.techs_required, profile, table)
     attain_role = _compute_attain_role(facts.role_level.value, profile)
+    seniority_malus = _compute_seniority_malus(facts, profile)
 
-    score = round(min(attain_tech, attain_role), 1)
+    base = min(attain_tech, attain_role)
+    score = round(max(0.0, base - seniority_malus), 1)
 
     if attain_tech <= attain_role:
         blocked_by = "tech" if attain_tech < attain_role else None
@@ -168,6 +193,7 @@ def compute_attainability(facts: ExtractedFacts, profile: Profile, table: AliasT
         score=score,
         attain_tech=attain_tech,
         attain_role=attain_role,
+        seniority_malus=seniority_malus,
         techs_matched=matched,
         techs_missing=missing,
         blocked_by=blocked_by,

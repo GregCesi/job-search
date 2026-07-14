@@ -6,6 +6,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
+from orchestrator.job_search.sources.base import SeniorityLevel
+
 
 class RoleCeiling(str, Enum):
     ic = "ic"
@@ -18,16 +20,25 @@ class SkillEntry(BaseModel):
     desire: int = Field(ge=0, le=10)  # envie de bosser dessus
 
 
+class Zone(BaseModel):
+    insee: list[str] = Field(min_length=1)
+    dept: list[str] = Field(min_length=1)
+    keywords: list[str] = Field(default_factory=list)
+
+
 class SearchCriteria(BaseModel):
     domains: list[str]
     locations: list[str]
     contract_types: list[str]
+    excluded_contract_patterns: list[str] = Field(default_factory=list)
 
 
 class Profile(BaseModel):
     profile_id: str
     role_ceiling: RoleCeiling
+    seniority_ceiling: SeniorityLevel | None = None
     skills: dict[str, SkillEntry]
+    zones: dict[str, Zone] = Field(default_factory=dict)
     search_criteria: SearchCriteria
 
     def tech_level(self, tech: str) -> int | None:

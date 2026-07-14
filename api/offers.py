@@ -90,6 +90,11 @@ def _derive_score_breakdown(row) -> str | None:
         attain_parts.append(
             f"poste {facts.role_level.value}, ta cible est {profile.role_ceiling.value}"
         )
+    if attain.seniority_malus > 0:
+        ceiling_label = profile.seniority_ceiling.value if profile.seniority_ceiling else "?"
+        attain_parts.append(
+            f"séniorité {facts.seniority_required.value}, cible {ceiling_label} (−{attain.seniority_malus:.0f})"
+        )
     if attain.techs_missing:
         # Top 3 missing, importance core/required seulement
         from orchestrator.job_search.scoring.aliases import canonicalize
