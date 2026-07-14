@@ -1,124 +1,53 @@
-# IMPLEMENTATION — Unification zones (source unique profil YAML)
+# IMPLEMENTATION — Cristallisation rules/pipeline.md
 
 ## Vue d'ensemble
 
-Deux référentiels de zones divergents — `AREA_COMMUNES` (france_travail.py, 6 zones, codes INSEE) et `AREA_RULES` (filters.py, 5 zones, dept + keywords) — causent une déperdition active : nancy fetchée puis rejetée au gate. Unification en une source unique dans le profil YAML, consommée par le fetch ET le hard filter. Gate contrat basculé sur `search_criteria.contract_types` (déjà déclaré, actuellement ignoré). Première chose à attaquer : le schéma zones dans le profil + modèle Pydantic.
+Les règles du pipeline n'ont jamais été écrites — l'architecture a évolué (abandon embeddings, scoring déterministe, gates à causes, zones en source unique) sans que `.claude/rules/` suive. Ce chantier cristallise le contrat descriptif-normatif du pipeline depuis le code stabilisé (vagues 1-2 livrées), pas depuis l'intention.
 
-Invariants : cf. `rules/architecture.md` §1 (sources pluggables), §4 (0 LLM au rescore). Ce chantier ne touche ni l'extraction ni le scoring — uniquement fetch, hard filter localisation, gate contrat.
+Livrable unique : `.claude/rules/pipeline.md`. Zéro code écrit.
 
-## Schémas cibles
+## Phases
 
-Base de travail, à affiner au livrable correspondant.
+### Phase 1 — Rédaction de `.claude/rules/pipeline.md` (contrat 6 étages + invariants transversaux)
 
-```python
-# matching/profile.py
-class Zone(BaseModel):
-    insee: list[str]     # min 1 — codes commune pour l'API France Travail
-    dept: list[str]      # min 1 — préfixes dept pour le hard filter location
-    keywords: list[str]  # mots-clés matchés dans le champ location (uppercase)
+Format par étage : `CONSOMME / PRODUIT / INVARIANTS / INTERDITS`, avec référence fichier.
 
-class Profile(BaseModel):
-    # ... existant ...
-    zones: dict[str, Zone]           # référentiel complet
-    search_criteria: SearchCriteria  # .locations sélectionne les zones actives
-```
-
-```yaml
-# profiles/gregoire.yaml
-zones:
-  strasbourg_area:
-    insee: ["67482"]
-    dept: ["67"]
-    keywords: ["strasbourg", "bas-rhin"]
-  reims_area:
-    insee: ["51454"]
-    dept: ["51"]
-    keywords: ["reims", "marne"]
-  nancy_area:
-    insee: ["54395"]
-    dept: ["54"]
-    keywords: ["nancy"]
-  paris_area:
-    insee: ["75101"]
-    dept: ["75", "92", "93", "94"]
-    keywords: ["paris", "ile-de-france"]
-  lyon_area:
-    insee: ["69123"]
-    dept: ["69"]
-    keywords: ["lyon", "rhone", "rhône"]
-  toulouse_area:
-    insee: ["31555"]
-    dept: ["31"]
-    keywords: ["toulouse", "haute-garonne"]
-
-search_criteria:
-  locations:
-    - strasbourg_area
-    - reims_area
-    - nancy_area
-    - paris_area
-    - remote
-  contract_types:
-    - cdi
-    - freelance
-```
-
-## Phase 1 — Schéma zones + gate contrat (profil + Pydantic + YAML)
-
-- [x] **L1** — Modèle `Zone` dans `matching/profile.py` (`insee: list[str]` min 1, `dept: list[str]` min 1, `keywords: list[str]`). Champ `zones: dict[str, Zone]` sur `Profile`. ValidationError si `insee` ou `dept` vide. — *done* : `Zone` importable, profil charge sans erreur. XS.
-- [x] **L2** — Section `zones:` dans `profiles/gregoire.yaml` : reporter fidèlement les 6 zones de `AREA_COMMUNES` + les 5 règles de `AREA_RULES`, compléter nancy (dept `["54"]`, keywords `["nancy"]`). — *done* : `load_profile("profiles/gregoire.yaml")` valide, 6 zones, nancy a ses 3 faces. XS.
-- [x] **L3** — Gate contrat dans `filters.py` : lire `criteria.contract_types` au lieu des patterns hardcodés. Reporter les exclusions actuelles (alternance/stage/apprentissage/MIS) dans la logique : si `contract_types` est renseigné, n'accepter que les types listés (CDI/freelance=LIB) + rejeter les stages/alternances systématiquement. Comportement identique à config identique. — *done* : offre alternance toujours rejetée, offre CDI passe, offre MIS rejetée si MIS absent de contract_types. S.
+- [x] L1 — Étage 1 Fetch : sources pluggables → `list[JobOffer]`. Réf : `sources/base.py` (interface `Source`), `sources/france_travail.py`, `sources/remotive.py`, `sources/indeed_file.py`, `run.py:55-70`. Zones résolues depuis `profile.zones` + `search_criteria.locations`. Mapping natif→`JobOffer` vit exclusivement dans l'adapter. `description_raw` préservé, `description` = Markdown propre (via `_clean.py`).
+- [x] L2 — Étage 2 Dédup : fingerprint cross-source + `(source, source_id)`. Réf : `storage/dedup.py`, `sources/fingerprint.py`. Guard intra-batch.
+- [x] L3 — Étage 3 Hard filters : localisation (zone dept/keywords ou remote) + contrat (alternance/stage → out, `contract_types` whitelist). Réf : `scoring/filters.py`, profil YAML (`search_criteria.locations`, `search_criteria.contract_types`, `zones`). Offre filtrée → `save_offer(filtered_out=True, filter_reason=...)`, jamais supprimée.
+- [x] L4 — Étage 4 Extraction LLM : Ollama, 1 appel/offre, température 0.1, 3 few-shots. Réf : `scoring/extractor.py`, `scoring/tracing.py`. Produit `ExtractedFacts` (seniority, techs w/ importance, domain, role_level, langues_requises, parse_failed). Trace JSONL append (`data/traces/extract_facts.jsonl`). Parsing défensif : retry 2×, fallback `parse_failed=True`, ne crashe jamais.
+- [x] L5 — Étage 5 Scoring + gates + catégorisation : Python pur. Réf : `scoring/desirability.py`, `scoring/attainability.py`, `scoring/hors_perimetre.py`, `scoring/categorize.py`, `scoring/aliases.py`. Canonicalisation via `alias.yaml` appliquée au scoring seulement (jamais à l'ingestion). Gate hors-périmètre APRÈS d/a (scores conservés intacts). `perimetre_causes` en liste. 4 catégories via 2 seuils (d>50, a>40).
+- [x] L6 — Étage 6 Persistance : `save_offer` UPSERT `ON CONFLICT(source, source_id)`. Réf : `storage/offers.py`, `storage/db.py`. `offers` = seule table de vérité du scoring. `extracted_facts_json`, `category`, `techs_matched/missing_json`, `perimetre_causes` persistés. `verdicts` / `human_reviews` = données d'interaction, jamais intrants de recalcul.
+- [x] L7 — Invariants transversaux : 5 invariants payés pendant les vagues, inscrits en section dédiée avec explication courte.
+- [x] L8 — Relecture croisée : chaque ligne vérifiable dans le code actuel. Aucune règle « souhaitée mais pas encore vraie ».
 
 ✋ Verify before continuing:
-- [x] `python -c "from orchestrator.job_search.matching.profile import load_profile; p,_=load_profile('profiles/gregoire.yaml'); print(len(p.zones), list(p.zones))"` → 6 zones, nancy présente
-- [x] zone sans `dept` dans un YAML test → ValidationError
-- [x] grep `AREA_COMMUNES\|AREA_RULES` hors `_archive/` : occurrences encore présentes (attendu — suppression Phase 2)
+- [x] Chaque étage cite au moins un fichier de référence vérifiable dans le code
+- [x] Aucune règle n'est un vœu — tout est vrai du code actuel (relecture croisée faite)
+- [x] Les 5 invariants transversaux sont inscrits et correspondent au comportement réel
+- [x] `architecture.md` n'est pas dupliqué — `pipeline.md` pointe vers les invariants partagés quand pertinent
 
-## Phase 2 — Câblage fetch + hard filter sur le profil
+### Phase 2 — Mise à jour STATE + DECISIONS
 
-- [x] **L4** — `france_travail.py` : `FranceTravailSource` prend le profil (ou les zones résolues) au lieu de `commune: str`. `run.py` construit les sources depuis `profile.zones` filtré par `profile.search_criteria.locations`. `AREA_COMMUNES` supprimé. — *done* : `run.py` ne référence plus `AREA_COMMUNES`, fetch piloté par le profil. S.
-- [x] **L5** — `filters.py` : `apply_hard_filters` consomme `profile.zones` (passé via `criteria` ou en paramètre direct) pour la localisation, au lieu de `AREA_RULES`. `AREA_RULES` supprimé. Comportement remote inchangé (`offer.remote AND "remote" in locations`). — *done* : `grep -rn AREA_RULES` (hors archive) = 0. S.
-- [x] **L6** — `rescore.py` : vérifier que le rescore passe les zones au hard filter (même chemin que `run.py`). — *done* : `python -m orchestrator.job_search.rescore --dry-run --force` sans erreur. XS.
-
-✋ Verify before continuing:
-- [x] `grep -rn "AREA_COMMUNES\|AREA_RULES" orchestrator/ api/ tests/` : 0 occurrence
-- [x] `python -m orchestrator.job_search.run --max 5` : run réel sans erreur (4 zones FT, gate contract:mis OK)
-- [x] `python -m orchestrator.job_search.rescore --dry-run --force` : 301 offres, 0 crash, gate contract:cdd OK
-- [x] 0 LLM appelé par ce chantier (invariant §4)
-
-## Phase 3 — Tests unitaires + démo zone pluggable
-
-- [x] **L7** — Test : zone sans `dept` → ValidationError Pydantic. XS.
-- [x] **L8** — Test : offre location "54 - Nancy" avec nancy active → PASSE le hard filter. XS.
-- [x] **L9** — Test : offre alternance avec `contract_types=["cdi", "freelance"]` → `filtered_out=True`. XS.
-- [x] **L10** — Démo zone pluggable : ajouter une zone test (ex. `lyon_area` dans locations si absent des actives), relancer, constater fetch + filtre cohérents SANS modification de code. — *done* : démontré dans le terminal. XS.
+- [x] L9 — Mettre à jour `STATE.md` : sections "Dernière action" et "Prochaine action"
+- [x] L10 — Ajouter une ligne datée dans `DECISIONS.md` : cristallisation du contrat pipeline dans rules/
 
 ✋ Verify before continuing:
-- [x] `pytest` complet vert (anciens + nouveaux tests) — 146/147 passent, 1 échec pré-existant (test_aliases copilot)
-- [x] Démo zone pluggable documentée (output terminal)
+- [x] `STATE.md` reflète le chantier terminé
+- [x] `DECISIONS.md` a une entrée datée pour la cristallisation
 
 ## Livrables détaillés
 
-| # | Livrable | Done | Taille |
-|---|----------|------|--------|
-| L1 | Modèle `Zone` Pydantic + champ `zones` sur `Profile` | zone importable, profil valide | XS |
-| L2 | Section `zones:` dans `gregoire.yaml` (6 zones, nancy complète) | load_profile valide, 6 zones | XS |
-| L3 | Gate contrat depuis `contract_types` profil | comportement identique, configurable | S |
-| L4 | Fetch depuis `profile.zones` + suppression `AREA_COMMUNES` | run.py piloté par profil | S |
-| L5 | Hard filter depuis `profile.zones` + suppression `AREA_RULES` | 0 occurrence grep | S |
-| L6 | Vérification rescore compatible | dry-run sans erreur | XS |
-| L7 | Test zone sans dept → ValidationError | pytest vert | XS |
-| L8 | Test nancy passe le hard filter | pytest vert | XS |
-| L9 | Test alternance rejetée par contract_types | pytest vert | XS |
-| L10 | Démo zone pluggable (lyon ajouté sans code) | output terminal | XS |
+1. **L1-L6** — 6 blocs d'étage dans `pipeline.md`, format `CONSOMME/PRODUIT/INVARIANTS/INTERDITS` — XS chacun
+2. **L7** — Section invariants transversaux — XS
+3. **L8** — Relecture croisée (pas de fichier produit, vérification) — XS
+4. **L9** — Mise à jour `STATE.md` — XS
+5. **L10** — Entrée `DECISIONS.md` — XS
 
 ## Dépendances critiques
 
-- L1+L2 bloquent L4 et L5 (le schéma doit exister avant d'être consommé)
-- L4+L5 bloquent L6 (rescore dépend du même chemin)
-- L4+L5 bloquent L8 (test nancy a besoin du nouveau hard filter)
+- L8 (relecture croisée) bloque la validation de Phase 1 — pas de /review avant.
 
 ## Garde-fous
 
-- Si `rescore --dry-run --force` montre des catégories qui changent → investiguer AVANT de conclure (ce chantier ne touche pas le scoring, toute dérive est un bug)
-- Si le run réel échoue sur l'API France Travail → vérifier que les codes INSEE reportés sont corrects (source : `AREA_COMMUNES` actuel, valeurs vérifiées en Phase 0)
+- Si une règle décrit un comportement souhaité mais pas encore implémenté → elle va dans `DECISIONS.md` comme dette, pas dans `rules/pipeline.md`.

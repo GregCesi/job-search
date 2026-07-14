@@ -1,12 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Unification zones (source unique profil YAML) — L1→L10 livrés. Zone Pydantic dans profile.py, 6 zones dans gregoire.yaml, gate contrat sur contract_types, fetch+hard filter câblés sur profil, AREA_COMMUNES+AREA_RULES supprimés, 10 tests, démo zone pluggable.
+- Dernière action : Cristallisation rules/pipeline.md — contrat descriptif-normatif du pipeline en 6 étages (fetch→dédup→filters→LLM→scoring→persist) + 5 invariants transversaux, vérifié par relecture croisée code↔règles.
 - Prochaine action : aucune — chantier terminé
 - Bloquant : aucun
 
 ## Phase en cours
-- Unification zones : LIVRÉE ✓ (2026-07-14, L1→L10, run+rescore validés)
+- Cristallisation pipeline.md : LIVRÉE ✓ (2026-07-14, L1→L10, relecture croisée validée)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
@@ -30,3 +30,4 @@
 - Chantier dédup amont Indeed : LIVRÉ ✓ (2026-06-26, L0→L2, fingerprint partagé, endpoint check-known, skill v2 throttle+dédup)
 - Chantier export contextuel : LIVRÉ ✓ (2026-06-30, L1→L6, endpoint export/offers + ExportPopover front)
 - Remédiation code mort : LIVRÉE ✓ (2026-07-14, L1→L9, ChromaDB/purge/view supprimés, dette enregistrée)
+- Cristallisation pipeline.md : LIVRÉE ✓ (2026-07-14, L1→L10, contrat 6 étages + 5 invariants, relecture croisée validée)
