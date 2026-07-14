@@ -13,15 +13,6 @@ load_dotenv()
 
 _TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token"
 _SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
-# Mapping zone profil → code INSEE commune (pour l'API France Travail).
-AREA_COMMUNES: dict[str, str] = {
-    "strasbourg_area": "67482",
-    "reims_area": "51454",
-    "nancy_area": "54395",
-    "paris_area": "75101",   # 1er arr. — 75056 rejeté par l'API, 75101+rayon couvre tout Paris
-    "lyon_area": "69123",
-    "toulouse_area": "31555",
-}
 
 _REMOTE_KEYWORDS = {"télétravail", "teletravail", "remote", "full remote", "full-remote"}
 

@@ -101,7 +101,7 @@ def main() -> None:
 
         print(f"[rescore] ({i}/{len(rows)}) {offer.title[:55]}", flush=True)
 
-        filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria)
+        filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria, profile.zones)
         if filtered_out:
             print(f"           → filtré : {filter_reason}")
             if not args.dry_run:

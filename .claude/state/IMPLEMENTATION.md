@@ -1,58 +1,124 @@
-# IMPLEMENTATION — Remédiation code mort (ChromaDB, purge, view)
+# IMPLEMENTATION — Unification zones (source unique profil YAML)
 
 ## Vue d'ensemble
 
-Suppression du code mort résiduel d'une architecture antérieure (matching par embeddings ChromaDB, remplacé par scoring déterministe Python). Aucun changement de comportement du pipeline — uniquement des suppressions d'étapes mortes et de dépendances inutilisées. Première chose à attaquer : le bloc ChromaDB (le plus gros, le plus de fichiers touchés).
+Deux référentiels de zones divergents — `AREA_COMMUNES` (france_travail.py, 6 zones, codes INSEE) et `AREA_RULES` (filters.py, 5 zones, dept + keywords) — causent une déperdition active : nancy fetchée puis rejetée au gate. Unification en une source unique dans le profil YAML, consommée par le fetch ET le hard filter. Gate contrat basculé sur `search_criteria.contract_types` (déjà déclaré, actuellement ignoré). Première chose à attaquer : le schéma zones dans le profil + modèle Pydantic.
 
-Périmètre gelé : toute découverte annexe va dans le registre de dette (L9), pas dans cette session.
+Invariants : cf. `rules/architecture.md` §1 (sources pluggables), §4 (0 LLM au rescore). Ce chantier ne touche ni l'extraction ni le scoring — uniquement fetch, hard filter localisation, gate contrat.
 
-## Phases
+## Schémas cibles
 
-### Phase 1 — Suppressions code mort (L1–L8)
+Base de travail, à affiner au livrable correspondant.
 
-- [x] **L1** — Supprimer `orchestrator/job_search/matching/embedder.py` (fichier entier). Le dossier `matching/` conserve `__init__.py` et `profile.py`. **XS**
+```python
+# matching/profile.py
+class Zone(BaseModel):
+    insee: list[str]     # min 1 — codes commune pour l'API France Travail
+    dept: list[str]      # min 1 — préfixes dept pour le hard filter location
+    keywords: list[str]  # mots-clés matchés dans le champ location (uppercase)
 
-- [x] **L2** — Nettoyer `run.py` : retirer l'import `Embedder` (ligne 27), l'instanciation + `embed_profile` (lignes 61-63), l'appel `embedder.add_offer(offer)` (ligne 100). Renumérotation des commentaires d'étapes si nécessaire. **S**
+class Profile(BaseModel):
+    # ... existant ...
+    zones: dict[str, Zone]           # référentiel complet
+    search_criteria: SearchCriteria  # .locations sélectionne les zones actives
+```
 
-- [x] **L3** — Retirer `chromadb>=0.5` de `requirements.txt`. **XS**
+```yaml
+# profiles/gregoire.yaml
+zones:
+  strasbourg_area:
+    insee: ["67482"]
+    dept: ["67"]
+    keywords: ["strasbourg", "bas-rhin"]
+  reims_area:
+    insee: ["51454"]
+    dept: ["51"]
+    keywords: ["reims", "marne"]
+  nancy_area:
+    insee: ["54395"]
+    dept: ["54"]
+    keywords: ["nancy"]
+  paris_area:
+    insee: ["75101"]
+    dept: ["75", "92", "93", "94"]
+    keywords: ["paris", "ile-de-france"]
+  lyon_area:
+    insee: ["69123"]
+    dept: ["69"]
+    keywords: ["lyon", "rhone", "rhône"]
+  toulouse_area:
+    insee: ["31555"]
+    dept: ["31"]
+    keywords: ["toulouse", "haute-garonne"]
 
-- [x] **L4** — Supprimer `data/chroma/` et `data/profile_cache.json`. Vérifier `.gitignore` : l'entrée `chroma/` peut rester (gardien passif) ou partir — au choix, pas bloquant. **XS**
+search_criteria:
+  locations:
+    - strasbourg_area
+    - reims_area
+    - nancy_area
+    - paris_area
+    - remote
+  contract_types:
+    - cdi
+    - freelance
+```
 
-- [x] **L5** — Supprimer `insert_stub()` dans `storage/dedup.py` (lignes 29-51) + l'import `JobOffer` s'il devient orphelin. Garder `filter_new()`. **XS**
+## Phase 1 — Schéma zones + gate contrat (profil + Pydantic + YAML)
 
-- [x] **L6** — Supprimer `storage/purge.py` (fichier entier — ne contient que le no-op `purge_irrelevant()`). **XS**
-
-- [x] **L7** — Retirer les 2 appels `purge_irrelevant` : import + appel dans `run.py` (lignes 43, 133-136), import + appel dans `rescore.py` (lignes 37, 179-181). Retirer les lignes de log associées (`{purged} offres purgées`). **S**
-
-- [x] **L8** — Supprimer `orchestrator/job_search/view.py` (fichier entier). Retirer la référence dans `CODEMAP.md:217`. Retirer aussi la ligne `purge.py` dans `CODEMAP.md:221`. **XS**
+- [x] **L1** — Modèle `Zone` dans `matching/profile.py` (`insee: list[str]` min 1, `dept: list[str]` min 1, `keywords: list[str]`). Champ `zones: dict[str, Zone]` sur `Profile`. ValidationError si `insee` ou `dept` vide. — *done* : `Zone` importable, profil charge sans erreur. XS.
+- [x] **L2** — Section `zones:` dans `profiles/gregoire.yaml` : reporter fidèlement les 6 zones de `AREA_COMMUNES` + les 5 règles de `AREA_RULES`, compléter nancy (dept `["54"]`, keywords `["nancy"]`). — *done* : `load_profile("profiles/gregoire.yaml")` valide, 6 zones, nancy a ses 3 faces. XS.
+- [x] **L3** — Gate contrat dans `filters.py` : lire `criteria.contract_types` au lieu des patterns hardcodés. Reporter les exclusions actuelles (alternance/stage/apprentissage/MIS) dans la logique : si `contract_types` est renseigné, n'accepter que les types listés (CDI/freelance=LIB) + rejeter les stages/alternances systématiquement. Comportement identique à config identique. — *done* : offre alternance toujours rejetée, offre CDI passe, offre MIS rejetée si MIS absent de contract_types. S.
 
 ✋ Verify before continuing:
-- [x] `pytest` : 136 passed, 1 failed (pré-existant — alias outils_dev_ia, commit 72628db)
-- [x] `python -m orchestrator.job_search.run` : import OK (run complet requiert Ollama + API FT)
-- [x] `python -m orchestrator.job_search.rescore --dry-run` : sans erreur, 0 appel LLM ✓
-- [x] `grep -rn "embedder\|chroma\|sentence_transformers\|insert_stub\|purge_irrelevant" --include="*.py" orchestrator/ api/` : zéro occurrence ✓
+- [x] `python -c "from orchestrator.job_search.matching.profile import load_profile; p,_=load_profile('profiles/gregoire.yaml'); print(len(p.zones), list(p.zones))"` → 6 zones, nancy présente
+- [x] zone sans `dept` dans un YAML test → ValidationError
+- [x] grep `AREA_COMMUNES\|AREA_RULES` hors `_archive/` : occurrences encore présentes (attendu — suppression Phase 2)
 
-### Phase 2 — Registre de dette (L9)
+## Phase 2 — Câblage fetch + hard filter sur le profil
 
-- [x] **L9** — Ajouter dans `DECISIONS.md` une section « Dette acceptée — remédiation 2026-07-14 » avec 3 entrées datées : (1) distance 30 km hardcodée (`france_travail.py`) — réveil : besoin >30 km ; (2) seuils catégorie 50/40 hardcodés (`categorize.py`) — réveil : recalibrage des catégories ; (3) chantier persistance/exposition API (dérivés recalculés, GET effet de bord seen, workflow human_reviews orphelin, bugs export/filtres) — réveil : vague 4. **XS**
+- [x] **L4** — `france_travail.py` : `FranceTravailSource` prend le profil (ou les zones résolues) au lieu de `commune: str`. `run.py` construit les sources depuis `profile.zones` filtré par `profile.search_criteria.locations`. `AREA_COMMUNES` supprimé. — *done* : `run.py` ne référence plus `AREA_COMMUNES`, fetch piloté par le profil. S.
+- [x] **L5** — `filters.py` : `apply_hard_filters` consomme `profile.zones` (passé via `criteria` ou en paramètre direct) pour la localisation, au lieu de `AREA_RULES`. `AREA_RULES` supprimé. Comportement remote inchangé (`offer.remote AND "remote" in locations`). — *done* : `grep -rn AREA_RULES` (hors archive) = 0. S.
+- [x] **L6** — `rescore.py` : vérifier que le rescore passe les zones au hard filter (même chemin que `run.py`). — *done* : `python -m orchestrator.job_search.rescore --dry-run --force` sans erreur. XS.
 
 ✋ Verify before continuing:
-- [x] Les 3 entrées sont datées et chaque entrée a son déclencheur de réveil ✓
-- [x] `grep` : toujours zéro occurrence ✓
+- [x] `grep -rn "AREA_COMMUNES\|AREA_RULES" orchestrator/ api/ tests/` : 0 occurrence
+- [x] `python -m orchestrator.job_search.run --max 5` : run réel sans erreur (4 zones FT, gate contract:mis OK)
+- [x] `python -m orchestrator.job_search.rescore --dry-run --force` : 301 offres, 0 crash, gate contract:cdd OK
+- [x] 0 LLM appelé par ce chantier (invariant §4)
+
+## Phase 3 — Tests unitaires + démo zone pluggable
+
+- [x] **L7** — Test : zone sans `dept` → ValidationError Pydantic. XS.
+- [x] **L8** — Test : offre location "54 - Nancy" avec nancy active → PASSE le hard filter. XS.
+- [x] **L9** — Test : offre alternance avec `contract_types=["cdi", "freelance"]` → `filtered_out=True`. XS.
+- [x] **L10** — Démo zone pluggable : ajouter une zone test (ex. `lyon_area` dans locations si absent des actives), relancer, constater fetch + filtre cohérents SANS modification de code. — *done* : démontré dans le terminal. XS.
+
+✋ Verify before continuing:
+- [x] `pytest` complet vert (anciens + nouveaux tests) — 146/147 passent, 1 échec pré-existant (test_aliases copilot)
+- [x] Démo zone pluggable documentée (output terminal)
 
 ## Livrables détaillés
 
-1. **L1** — Suppression `embedder.py` — done : fichier absent, `matching/` garde `profile.py` — **XS**
-2. **L2** — Nettoyage `run.py` (Embedder) — done : aucune référence `embedder`/`Embedder`/`embed_profile`/`add_offer` dans `run.py` — **S**
-3. **L3** — Retrait dep `chromadb` — done : absent de `requirements.txt` — **XS**
-4. **L4** — Suppression `data/chroma/` + `data/profile_cache.json` — done : absents du filesystem — **XS**
-5. **L5** — Suppression `insert_stub()` — done : absent de `dedup.py`, `filter_new()` intact — **XS**
-6. **L6** — Suppression `purge.py` — done : fichier absent — **XS**
-7. **L7** — Retrait appels `purge_irrelevant` — done : 0 occurrence dans `run.py` et `rescore.py` — **S**
-8. **L8** — Suppression `view.py` + refs — done : fichier absent, CODEMAP.md nettoyé — **XS**
-9. **L9** — 3 entrées dette dans `DECISIONS.md` — done : section présente avec déclencheurs — **XS**
+| # | Livrable | Done | Taille |
+|---|----------|------|--------|
+| L1 | Modèle `Zone` Pydantic + champ `zones` sur `Profile` | zone importable, profil valide | XS |
+| L2 | Section `zones:` dans `gregoire.yaml` (6 zones, nancy complète) | load_profile valide, 6 zones | XS |
+| L3 | Gate contrat depuis `contract_types` profil | comportement identique, configurable | S |
+| L4 | Fetch depuis `profile.zones` + suppression `AREA_COMMUNES` | run.py piloté par profil | S |
+| L5 | Hard filter depuis `profile.zones` + suppression `AREA_RULES` | 0 occurrence grep | S |
+| L6 | Vérification rescore compatible | dry-run sans erreur | XS |
+| L7 | Test zone sans dept → ValidationError | pytest vert | XS |
+| L8 | Test nancy passe le hard filter | pytest vert | XS |
+| L9 | Test alternance rejetée par contract_types | pytest vert | XS |
+| L10 | Démo zone pluggable (lyon ajouté sans code) | output terminal | XS |
+
+## Dépendances critiques
+
+- L1+L2 bloquent L4 et L5 (le schéma doit exister avant d'être consommé)
+- L4+L5 bloquent L6 (rescore dépend du même chemin)
+- L4+L5 bloquent L8 (test nancy a besoin du nouveau hard filter)
 
 ## Garde-fous
 
-- Si un grep post-suppression trouve une référence résiduelle (`embedder`, `chroma`, `insert_stub`, `purge_irrelevant`) dans du code Python (hors CARTE.md, hors `.venv`) → ne pas conclure, traquer et supprimer l'import/appel.
-- Si `run --max 5` échoue sur un import manquant → la suppression a cassé une dépendance non cartographiée. Lire le traceback, corriger l'import, ne pas ajouter de fonctionnalité.
+- Si `rescore --dry-run --force` montre des catégories qui changent → investiguer AVANT de conclure (ce chantier ne touche pas le scoring, toute dérive est un bug)
+- Si le run réel échoue sur l'API France Travail → vérifier que les codes INSEE reportés sont corrects (source : `AREA_COMMUNES` actuel, valeurs vérifiées en Phase 0)

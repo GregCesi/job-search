@@ -55,12 +55,16 @@ def main() -> None:
     conn = get_connection()
     init_db(conn)
 
-    # 3. Fetch
-    from orchestrator.job_search.sources.france_travail import AREA_COMMUNES
-    communes = [AREA_COMMUNES[loc] for loc in profile.search_criteria.locations if loc in AREA_COMMUNES]
-    per_commune = max(30, args.max_results // max(len(communes), 1))
+    # 3. Fetch — zones résolues depuis le profil
+    active_zones = {
+        name: profile.zones[name]
+        for name in profile.search_criteria.locations
+        if name in profile.zones
+    }
+    per_zone = max(30, args.max_results // max(len(active_zones), 1))
     sources: list[Source] = [
-        FranceTravailSource(commune=c, max_results=per_commune) for c in communes
+        FranceTravailSource(commune=zone.insee[0], max_results=per_zone)
+        for zone in active_zones.values()
     ] or [FranceTravailSource(max_results=args.max_results)]
     if not args.no_remotive:
         sources.append(RemotiveSource())
@@ -84,7 +88,7 @@ def main() -> None:
     for i, offer in enumerate(new_offers, 1):
         print(f"[run] ({i}/{len(new_offers)}) {offer.title[:55]}", flush=True)
 
-        filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria)
+        filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria, profile.zones)
         if filtered_out:
             save_offer(conn, offer, filtered_out=True, filter_reason=filter_reason)
             print(f"         → filtré : {filter_reason}")

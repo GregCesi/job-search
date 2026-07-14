@@ -30,7 +30,6 @@ class SearchCriteria(BaseModel):
     domains: list[str]
     locations: list[str]
     contract_types: list[str]
-    excluded_contract_patterns: list[str] = Field(default_factory=list)
 
 
 class Profile(BaseModel):

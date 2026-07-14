@@ -1,12 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Remédiation code mort (ChromaDB, purge, view) — L1→L9 livrés. Supprimé embedder.py, purge.py, view.py, insert_stub(), data/chroma/, profile_cache.json. Nettoyé run.py et rescore.py. Retiré chromadb de requirements.txt. Nettoyé CODEMAP.md. 3 entrées dette dans DECISIONS.md.
+- Dernière action : Unification zones (source unique profil YAML) — L1→L10 livrés. Zone Pydantic dans profile.py, 6 zones dans gregoire.yaml, gate contrat sur contract_types, fetch+hard filter câblés sur profil, AREA_COMMUNES+AREA_RULES supprimés, 10 tests, démo zone pluggable.
 - Prochaine action : aucune — chantier terminé
 - Bloquant : aucun
 
 ## Phase en cours
-- Remédiation code mort : LIVRÉE ✓ (2026-07-14, L1→L9)
+- Unification zones : LIVRÉE ✓ (2026-07-14, L1→L10, run+rescore validés)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
