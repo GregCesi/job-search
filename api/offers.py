@@ -3,7 +3,6 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -35,11 +34,11 @@ def _load_scoring_context() -> dict:
         return _scoring_ctx
     try:
         from orchestrator.job_search.matching.profile import load_profile
+        from orchestrator.job_search.paths import ALIAS_PATH, PROFILE_PATH
         from orchestrator.job_search.scoring.aliases import load_alias_table
 
-        repo_root = Path(__file__).resolve().parent.parent
-        profile, _ = load_profile(repo_root / "profiles" / "gregoire.yaml")
-        table = load_alias_table(repo_root / "profiles" / "alias.yaml")
+        profile, _ = load_profile(PROFILE_PATH)
+        table = load_alias_table(ALIAS_PATH)
         _scoring_ctx = {"profile": profile, "table": table}
     except Exception as exc:
         log.warning("scoring context unavailable: %s", exc)

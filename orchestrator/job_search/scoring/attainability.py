@@ -8,7 +8,7 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from orchestrator.job_search.matching.profile import MasteryLevel, Profile
+from orchestrator.job_search.matching.profile import Profile
 from orchestrator.job_search.scoring.aliases import AliasTable, canonicalize
 from orchestrator.job_search.sources.base import ExtractedFacts, SeniorityLevel, TechRequirement
 
@@ -21,9 +21,6 @@ _SENIORITY_ORDER: dict[SeniorityLevel, int] = {
 
 # Malus par cran de séniorité au-dessus du plafond profil (calibrable)
 SENIORITY_MALUS_PER_STEP = 20
-
-# Niveaux de maîtrise considérés comme "connu" pour le matching
-_KNOWN = {MasteryLevel.working, MasteryLevel.confirmed}
 
 
 # ---------------------------------------------------------------------------

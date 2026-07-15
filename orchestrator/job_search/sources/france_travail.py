@@ -30,17 +30,17 @@ def _detect_remote(raw: dict) -> bool:
 class FranceTravailSource(Source):
     def __init__(
         self,
+        keywords: list[str],
         commune: str | None = None,
         radius_km: int = 30,
         max_results: int = 150,
-        keywords: list[str] | None = None,
     ) -> None:
         self.client_id = os.environ["FRANCE_TRAVAIL_CLIENT_ID"]
         self.client_secret = os.environ["FRANCE_TRAVAIL_CLIENT_SECRET"]
         self.commune = commune
         self.radius_km = radius_km
         self.max_results = max_results
-        self.keywords = keywords or ["python", "data engineer", "machine learning", "développeur"]
+        self.keywords = keywords
         self._token: str | None = None
         self._token_expires_at: float = 0.0
 

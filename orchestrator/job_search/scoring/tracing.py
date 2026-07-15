@@ -10,7 +10,9 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-TRACE_PATH = Path("data/traces/extract_facts.jsonl")
+from orchestrator.job_search.paths import TRACES_PATH
+
+TRACE_PATH = TRACES_PATH
 
 
 class LLMTrace(BaseModel):

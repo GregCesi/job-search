@@ -9,12 +9,13 @@ import argparse
 import os
 from collections import Counter
 from datetime import datetime, timezone
-from pathlib import Path
+
+from orchestrator.job_search.paths import ALIAS_PATH, PROFILE_PATH, REPO_ROOT
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Re-categorize offers missing category")
-    parser.add_argument("--profile", default="profiles/gregoire.yaml")
+    parser.add_argument("--profile", default=str(PROFILE_PATH))
     parser.add_argument("--dry-run", action="store_true", help="Affiche sans écrire en base")
     parser.add_argument("--force", action="store_true", help="Recalcule toutes les offres (y compris déjà scorées)")
     parser.add_argument("--re-extract", action="store_true", help="Force ré-extraction LLM (ignore les facts en cache)")
@@ -39,7 +40,7 @@ def main() -> None:
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
     profile, profile_hash = load_profile(args.profile)
-    alias_table = load_alias_table("profiles/alias.yaml")
+    alias_table = load_alias_table(ALIAS_PATH)
     print(f"[rescore] profil : {profile.profile_id} ({profile.role_ceiling.value})")
 
     conn = get_connection()
@@ -169,7 +170,7 @@ def main() -> None:
             n_fail += 1
 
     # Rapport unmatched — techs inconnues triées par fréquence
-    unmatched_path = Path("data/unmatched_techs.txt")
+    unmatched_path = REPO_ROOT / "data" / "unmatched_techs.txt"
     unmatched_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{tech:<30s} {count}" for tech, count in unmatched_counter.most_common()]
     unmatched_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")

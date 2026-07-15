@@ -5,16 +5,15 @@ Chemin résolu depuis __file__ (pattern api/db.py).
 """
 import json
 import logging
-from pathlib import Path
+
+from orchestrator.job_search.paths import TRACES_PATH
 
 from .db import get_conn
 from .schemas import TraceParsedFacts, TraceOut
 
 log = logging.getLogger(__name__)
 
-_TRACES_PATH = (
-    Path(__file__).parent.parent / "data" / "traces" / "extract_facts.jsonl"
-)
+_TRACES_PATH = TRACES_PATH
 
 
 def read_traces_raw() -> list[dict]:

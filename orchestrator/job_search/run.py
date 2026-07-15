@@ -8,12 +8,13 @@ Usage:
 import argparse
 import os
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+
+from orchestrator.job_search.paths import ALIAS_PATH, PROFILE_PATH, REPO_ROOT
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Job search morning run")
-    parser.add_argument("--profile", default="profiles/gregoire.yaml")
+    parser.add_argument("--profile", default=str(PROFILE_PATH))
     parser.add_argument("--max", type=int, default=150, dest="max_results")
     parser.add_argument("--since-hours", type=int, default=24)
     parser.add_argument("--no-remotive", action="store_true", help="Disable Remotive source")
@@ -48,7 +49,7 @@ def main() -> None:
 
     # 1. Profil + alias
     profile, profile_hash = load_profile(args.profile)
-    alias_table = load_alias_table("profiles/alias.yaml")
+    alias_table = load_alias_table(ALIAS_PATH)
     print(f"[run] profil : {profile.profile_id} role_ceiling={profile.role_ceiling.value} (hash={profile_hash[:8]}…)")
 
     # 2. DB
@@ -61,11 +62,13 @@ def main() -> None:
         for name in profile.search_criteria.locations
         if name in profile.zones
     }
-    per_zone = max(30, args.max_results // max(len(active_zones), 1))
+    kw = profile.search_criteria.keywords
+    ft_codes = [(zone, code) for zone in active_zones.values() for code in zone.insee]
+    per_source = max(30, args.max_results // max(len(ft_codes), 1))
     sources: list[Source] = [
-        FranceTravailSource(commune=zone.insee[0], max_results=per_zone)
-        for zone in active_zones.values()
-    ] or [FranceTravailSource(max_results=args.max_results)]
+        FranceTravailSource(keywords=kw, commune=code, max_results=per_source)
+        for _zone, code in ft_codes
+    ] or [FranceTravailSource(keywords=kw, max_results=args.max_results)]
     if not args.no_remotive:
         sources.append(RemotiveSource())
     if not args.no_indeed:
@@ -132,7 +135,7 @@ def main() -> None:
     print()
     print(digest)
 
-    digest_path = Path(f"data/digest_{run_at.strftime('%Y%m%d_%H%M')}.txt")
+    digest_path = REPO_ROOT / f"data/digest_{run_at.strftime('%Y%m%d_%H%M')}.txt"
     digest_path.write_text(digest)
     print(f"[run] digest → {digest_path}")
 

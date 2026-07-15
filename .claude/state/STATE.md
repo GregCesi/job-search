@@ -1,12 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Cristallisation rules/pipeline.md — contrat descriptif-normatif du pipeline en 6 étages (fetch→dédup→filters→LLM→scoring→persist) + 5 invariants transversaux, vérifié par relecture croisée code↔règles.
+- Dernière action : Chantier S — 5 livrables nettoyage post-CARTE-V2 livrés (keywords→profil, insee multi-code, paths.py unique, dead code supprimé, rescore-p-report.md supprimé)
 - Prochaine action : aucune — chantier terminé
 - Bloquant : aucun
 
 ## Phase en cours
-- Cristallisation pipeline.md : LIVRÉE ✓ (2026-07-14, L1→L10, relecture croisée validée)
+- Chantier S nettoyage post-CARTE-V2 : LIVRÉ ✓ (2026-07-15, L1→L5, /review passé, 147 tests verts)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
@@ -31,3 +31,4 @@
 - Chantier export contextuel : LIVRÉ ✓ (2026-06-30, L1→L6, endpoint export/offers + ExportPopover front)
 - Remédiation code mort : LIVRÉE ✓ (2026-07-14, L1→L9, ChromaDB/purge/view supprimés, dette enregistrée)
 - Cristallisation pipeline.md : LIVRÉE ✓ (2026-07-14, L1→L10, contrat 6 étages + 5 invariants, relecture croisée validée)
+- Chantier S nettoyage post-CARTE-V2 : LIVRÉ ✓ (2026-07-15, L1→L5, keywords→profil, multi-INSEE, paths.py central, dead code purgé)

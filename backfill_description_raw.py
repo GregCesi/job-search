@@ -16,12 +16,10 @@ Usage:
 
 import argparse
 import sqlite3
-from pathlib import Path
 
+from orchestrator.job_search.paths import DB_PATH
 from orchestrator.job_search.sources._clean import html_to_markdown
 from orchestrator.job_search.storage.db import init_db
-
-DB_PATH = Path("data/job_search.sqlite")
 
 
 def backfill(dry_run: bool = False) -> None:

@@ -11,7 +11,8 @@ Lecture préalable recommandée : `architecture.md` (invariants fondamentaux), `
 **Réf** : `sources/base.py` (interface `Source`, modèle `JobOffer`), `sources/france_travail.py`, `sources/remotive.py`, `sources/indeed_file.py`, `run.py:55-70`
 
 ### CONSOMME
-- `profile.zones` + `profile.search_criteria.locations` → résolution des zones actives et répartition `per_zone`
+- `profile.zones` + `profile.search_criteria.locations` → résolution des zones actives et répartition `per_source`
+- `profile.search_criteria.keywords` → mots-clés de recherche France Travail (passés au constructeur, aucun défaut hardcodé)
 - Variables d'environnement : `FRANCE_TRAVAIL_CLIENT_ID`, `FRANCE_TRAVAIL_CLIENT_SECRET` (FT), `OLLAMA_MODEL`, `OLLAMA_HOST`
 - `data/indeed_inbox/*.jsonl` (IndeedFileSource — fichiers déposés par `/ingest-indeed`)
 - API Remotive publique (RemotiveSource — `https://remotive.com/api/remote-jobs`)
@@ -26,6 +27,8 @@ Lecture préalable recommandée : `architecture.md` (invariants fondamentaux), `
 - `fingerprint` = `sha256(normalize(title)|normalize(company)|normalize(location))[:16]` — crochet cross-source, calculé par `sources/fingerprint.py`
 - `source_id` = identifiant stable côté source (id FT, id Remotive, indeed_id)
 - Zones actives résolues depuis le profil YAML — pas de dict interne en dur
+- Keywords de recherche FT résolus depuis `search_criteria.keywords` — paramètre requis du constructeur `FranceTravailSource`, jamais de défaut hardcodé
+- Une `FranceTravailSource` par (zone active × code INSEE) — tous les codes `zone.insee` sont consommés, pas seulement le premier
 
 ### INTERDITS
 - Faire transiter un champ brut spécifique à une source dans le pipeline aval (étendre `JobOffer` si un champ manque)

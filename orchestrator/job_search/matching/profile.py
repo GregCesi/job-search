@@ -27,6 +27,7 @@ class Zone(BaseModel):
 
 
 class SearchCriteria(BaseModel):
+    keywords: list[str] = Field(min_length=1)
     domains: list[str]
     locations: list[str]
     contract_types: list[str]
@@ -50,12 +51,6 @@ class Profile(BaseModel):
         entry = self.skills.get(tech.lower())
         return entry.desire if entry else None
 
-
-# DEPRECATED — v1 enum, kept for import compat until chantier 2 Phase 3 (attainability.py rewrite)
-class MasteryLevel(str, Enum):
-    notions = "notions"
-    working = "working"
-    confirmed = "confirmed"
 
 
 def load_profile(path: str | Path) -> tuple[Profile, str]:

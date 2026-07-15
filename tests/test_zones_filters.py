@@ -14,6 +14,7 @@ ZONES = {
 }
 
 CRITERIA = SearchCriteria(
+    keywords=["python"],
     domains=["backend"],
     locations=["nancy_area", "strasbourg_area", "remote"],
     contract_types=["cdi", "freelance"],

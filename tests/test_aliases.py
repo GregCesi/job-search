@@ -1,6 +1,7 @@
 """Tests unitaires — canonicalize() + load_alias_table()."""
 import pytest
 
+from orchestrator.job_search.paths import ALIAS_PATH
 from orchestrator.job_search.scoring.aliases import (
     AliasTable,
     DuplicateAliasError,
@@ -9,7 +10,7 @@ from orchestrator.job_search.scoring.aliases import (
 )
 
 # Charge la vraie table une seule fois
-TABLE = load_alias_table("profiles/alias.yaml")
+TABLE = load_alias_table(ALIAS_PATH)
 
 
 # --- Cas 1 : variante connue → forme canonique ---
@@ -38,7 +39,7 @@ TABLE = load_alias_table("profiles/alias.yaml")
     ("paloalto", "palo_alto"),
     ("azure ad", "azure_ad"),
     ("microsoft_entrada_id", "azure_ad"),
-    ("microsoft copilot", "copilot"),
+    ("microsoft copilot", "outils_dev_ia"),
     ("vmware esxi", "vmware"),
     ("esx", "vmware"),
     ("vsphere", "vmware"),

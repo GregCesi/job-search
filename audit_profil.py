@@ -6,21 +6,20 @@ Consomme profiles/alias.yaml via le module scoring (source unique).
 import csv
 import json
 import sqlite3
-from pathlib import Path
 
 import yaml
 
+from orchestrator.job_search.paths import ALIAS_PATH, DB_PATH, PROFILE_PATH, REPO_ROOT
 from orchestrator.job_search.scoring.aliases import (
     canonicalize,
     load_alias_table,
 )
 
-ROOT = Path(__file__).parent
-DB = ROOT / "data" / "job_search.sqlite"
-PROFILE = ROOT / "profiles" / "gregoire.yaml"
-ALIAS_FILE = ROOT / "profiles" / "alias.yaml"
-OUT_MD = ROOT / "audit-profil.md"
-OUT_CSV = ROOT / "audit-profil.csv"
+DB = DB_PATH
+PROFILE = PROFILE_PATH
+ALIAS_FILE = ALIAS_PATH
+OUT_MD = REPO_ROOT / "audit-profil.md"
+OUT_CSV = REPO_ROOT / "audit-profil.csv"
 
 
 def load_profile_skills() -> set[str]:

@@ -1,8 +1,7 @@
 """Migration idempotente : ajoute offers.seen si absente."""
 import sqlite3
-from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "data" / "job_search.sqlite"
+from orchestrator.job_search.paths import DB_PATH
 
 
 def run() -> None:
