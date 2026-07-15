@@ -1,246 +1,412 @@
 # CODEMAP — job-search
 
-> Carte de retrieval du sourcing & scoring automatique d'offres d'emploi.
-> Générée le 2026-07-06. Pointeurs vers le code réel (fichier:lignes). Régénérable.
+> Carte de retrieval. Générée le 2026-07-15.
+> Pointeurs vers le code réel. Ne pas recopier le code. Régénérable — ne pas éditer à la main.
 
 ## Architecture générale
 
-Pipeline matinal : fetch (3 sources) → dédup (fingerprint) → filtres durs → LLM extraction (faits atomiques) → scoring Python (désirabilité × atteignabilité) → persistance (SQLite + ChromaDB) → digest + API REST → interface web Nuxt 4.
+Pipeline matinal : fetch (3 sources) → dédup (fingerprint) → hard filters → LLM-extract (faits intrinsèques) → score Python pur → hors-périmètre gates → digest + API REST → web Nuxt 4.
 
 Trois briques autour d'une base partagée `data/job_search.sqlite` :
-- **Orchestrator** (CLI matinale) : `orchestrator/job_search/` — orchestration, sourcing, scoring
+- **Orchestrator** (CLI matinale) : `orchestrator/job_search/` — sourcing, scoring, digestion
 - **API** (FastAPI, port 8000) : `api/` — endpoints offers, export, traces
-- **Web** (Nuxt 4, port 3000) : `web/` — interface pilotage
+- **Web** (Nuxt 4, port 3000) : `web/` — interface de pilotage candidat + opérateur
 
 ---
 
-## Orchestrator — pipeline d'ingestion
+## Points d'entrée
 
-### Point d'entrée principal
+### Orchestrator
 
-- **CLI run** : `orchestrator/job_search/run.py:14-135` — orchestrateur matinal
-  - Entrée : `python -m orchestrator.job_search.run [--profile profiles/gregoire.yaml] [--max 150] [--since-hours 24] [--no-remotive] [--no-indeed]`
-  - Étapes : 
-    1. Charge profil YAML + calcul hash SHA256 (ligne 52)
-    2. Charge alias table (ligne 53)
-    3. Init DB + Embedder (lignes 57-63)
-    4. Fetch 3 sources (lignes 66-79)
-    5. Dédup cross-source (ligne 82)
-    6. Itère : filtre durs → extraction LLM → scoring Python → catégorisation → persist (lignes 86-115)
-    7. Purge hors-périmètre (ligne 118)
-    8. Digest versement (lignes 122-131)
+- **CLI run** : `orchestrator/job_search/run.py:15-main()` 
+  - Usage : `python -m orchestrator.job_search.run [--profile] [--max] [--since-hours] [--no-remotive] [--no-indeed]`
+  - Étapes : profil load → db init → fetch 3 sources → dédup → foreach(filter → extract → score → persist) → digest
 
-### Schémas de domaine
+- **CLI rescore** : `orchestrator/job_search/rescore.py:16-main()` 
+  - 0 LLM — recalcule d/a/categorie/hors sur extracted_facts_json persistent
 
-- **JobOffer** : `orchestrator/job_search/sources/base.py:49-70`
-  - Identifiants : source, source_id, fingerprint (cross-source), title
-  - Description : description (Markdown dérivé), description_raw (brut immuable)
-  - Métadonnées : company, location, remote, contract_type, nature_contract, alternance, full_time, company_size, experience_required, rome_code, rome_label, url, fetched_at
-  - Faits extraits : extracted_facts (ExtractedFacts, rempli par LLM, persiste)
+- **CLI verdict** : `orchestrator/job_search/verdict.py:53-main()`
+  - Interaction verdict humain
 
-- **ExtractedFacts** : `orchestrator/job_search/sources/base.py:27-46`
-  - seniority_required : SeniorityLevel (junior|intermediate|senior|lead)
-  - techs_required : list[TechRequirement] (chaque tech a name + importance ∈ {core, required, nice_to_have})
-  - domain : domaine métier {ai_engineering, data_engineering, data_science, backend, devops, fullstack, embedded, other}
-  - role_level : RoleLevel (ic|lead|manager)
-  - parse_failed : flag si dégradation LLM (fallback appliqué, jamais crash)
+### API
 
-- **Source (ABC)** : `orchestrator/job_search/sources/base.py:72-75` — interface abstraite fetch() → list[JobOffer]
+- **app** : `api/main.py:34-app` — FastAPI port 8000
+  - Middleware : CORS allow_origins=[http://localhost:3000]
+  - Routers : offers, export, traces
+  - Lifespan : _migrate_db() (lignes 13-25)
 
-### Sources (adapters pluggables)
+### Web
 
-- **FranceTravailSource** : `orchestrator/job_search/sources/france_travail.py:31` — OAuth2 FT API, mots-clés {python, data engineer, machine learning, développeur}, commune INSEE 67482 + rayon 30km
-- **RemotiveSource** : `orchestrator/job_search/sources/remotive.py:14` — API https://remotive.com, HTML → Markdown, tous les jobs remote=True
-- **IndeedFileSource** : `orchestrator/job_search/sources/indeed_file.py:20` — JSONL inbox data/indeed_inbox/
+- **config** : `web/nuxt.config.ts` — apiBase=http://localhost:8000, Tailwind + Pinia v3
 
-### Dédup cross-source
+### Paths canoniques
 
-- **fingerprint()** : `orchestrator/job_search/sources/fingerprint.py:10` — SHA256[:16](titre norm | entreprise | lieu), universel
-- **filter_new()** : `orchestrator/job_search/storage/dedup.py:6` — retourne offres absentes de DB
-- **POST /offers/check-known** : `api/offers.py:187` — bulk dédup read-only
-
-### Profil cible (YAML mutable)
-
-- **Profile** : `orchestrator/job_search/matching/profile.py:27-41` — profile_id, role_ceiling (ic|lead|manager), skills[tech → {level:1-10, desire:0-10}], search_criteria
-- **load_profile()** : `orchestrator/job_search/matching/profile.py:51` — charge YAML, retourne (Profile, sha256_hex)
-- **Exemple** : `profiles/gregoire.yaml` — profile_id=gregoire, role_ceiling=ic, ~40 technos (python/fastapi/langgraph/rag/llm/vue/nuxt/java/etc.), domaines=[ai_engineering, automation, backend], localisations=[strasbourg_area, remote]
-
-### Filtres durs (pré-LLM, 0 coût)
-
-- **apply_hard_filters()** : `orchestrator/job_search/scoring/filters.py:20` — exclut alternance/stage/off-location → (filtered_out:bool, reason:str|None)
-
-### Extraction LLM (1 appel/offre, jamais recalculée)
-
-- **extract_facts()** : `orchestrator/job_search/scoring/extractor.py:102` — Ollama local, JSON structured output
-  - System prompt (ligne 29) : règles seniority/techs/domain/role
-  - Few-shot (ligne 57) : 3 exemples (IC, Tech Lead, Backend)
-  - User prompt : titre + description (8000 chars) + hints (seniority, ROME, alternance)
-  - Parsing défensif (ligne 150) : retry 2×, fallback parse_failed=True
-  - Trace écrite : data/traces/extract_facts.jsonl
-
-### Scoring Python (0 LLM, recalculable si profil change)
-
-#### Hors-périmètre (court-circuit)
-- **derive_hors_perimetre()** : `orchestrator/job_search/scoring/hors_perimetre.py:21` — no_tech | mgmt_role
-
-#### Désirabilité (0-100)
-- **compute_desirability()** : `orchestrator/job_search/scoring/desirability.py:72` — domain_gradient × desire_factor × 100
-  - domain_gradient (ligne 20) : ai_engineering=1.0 → data_science=0.7 → backend=0.5 → other=0.0
-  - desire_factor (ligne 41) : moyenne desire sur techs connues (inconnu=1.0 neutre, floor=0.5)
-
-#### Atteignabilité (0-100)
-- **compute_attainability()** : `orchestrator/job_search/scoring/attainability.py:138` — min(attain_tech, attain_role) non-compensatoire
-  - attain_tech (ligne 62) : moyenne pondérée {core:3.0, required:2.0, nice_to_have:0.5}
-  - attain_role (ligne 115) : portail gradué (même_cran=100, +1=40, +2+=0) vs role_ceiling profil
-  - Observable : techs_matched, techs_missing, blocked_by
-
-#### Catégorisation (4 cases)
-- **categorize()** : `orchestrator/job_search/scoring/categorize.py:22` — seuils DESIRABILITY=50, ATTAINABILITY=40
-  - parfait (d>50 ∧ a>40), reve (d>50 ∧ a≤40), atteignable (d≤50 ∧ a>40), hors (d≤50 ∧ a≤40)
-
-#### Canonicalisation techno
-- **canonicalize()** : `orchestrator/job_search/scoring/aliases.py:56` — tech brute → forme canon | None (exclu)
-- **load_alias_table()** : `orchestrator/job_search/scoring/aliases.py:24` — charge profiles/alias.yaml
-
-### Persistance offres (SQLite)
-
-- **save_offer()** : `orchestrator/job_search/storage/offers.py:27` — upsert (source, source_id), persiste extracted_facts_json, category, techs_matched_json, techs_missing_json
-- **get_offers_since()** : `orchestrator/job_search/storage/offers.py:94` — offres non-filtrées depuis datetime, triées par catégorie
-
-### Embeddings (ChromaDB)
-
-- **Embedder** : `orchestrator/job_search/matching/embedder.py:36` — client PersistentClient(data/chroma), collection "job_offers" cosine
-  - embed_profile() (ligne 66) : ré-embed ssi hash change, cache dans data/profile_cache.json
-  - add_offer() (ligne 79) : upsert offre
-  - similarity() (ligne 91) : cosine [0,1] offre ↔ profil
-
-### Digest
-
-- **generate_digest()** : `orchestrator/job_search/digest/formatter.py:24` — texte par catégorie, fichier data/digest_YYYYmmdd_HHMM.txt
+`orchestrator/job_search/paths.py` — source unique
+- REPO_ROOT → orchestrator/job_search/paths.py parent x3
+- DB_PATH → data/job_search.sqlite
+- TRACES_PATH → data/traces/extract_facts.jsonl
+- PROFILE_PATH → profiles/gregoire.yaml
+- ALIAS_PATH → profiles/alias.yaml
 
 ---
 
-## Database — SQLite + ChromaDB
+## Étage 1 — Fetch (sources pluggables)
+
+### Interface Source
+
+`orchestrator/job_search/sources/base.py:73-class Source(ABC)`
+- Méthode unique : `fetch() -> list[JobOffer]`
+- Contrat : chaque adapter mappe brut → JobOffer neutre
+
+### Schémas
+
+**SeniorityLevel** (base.py:9) : junior | intermediate | senior | lead
+
+**RoleLevel** (base.py:16) : ic | lead | manager
+
+**TechRequirement** (base.py:22) : {name: str, importance: core|required|nice_to_have}
+
+**ExtractedFacts** (base.py:27-47)
+- seniority_required: SeniorityLevel
+- techs_required: list[TechRequirement]
+- domain: str (8 valeurs fermées : ai_engineering, data_science, data_engineering, backend, fullstack, devops, embedded, other)
+- role_level: RoleLevel (défaut ic)
+- langues_requises: list[str]
+- parse_failed: bool (flag LLM dégradation, fallback appliqué)
+- Compat : model_validator coerce list[str]→list[TechRequirement] (v1)
+
+**JobOffer** (base.py:50-71)
+- Identifiants : source, source_id (natif stable), fingerprint (cross-source), title
+- Description : description (Markdown propre, dérivé), description_raw (brut immuable)
+- Métadonnées : company, location (libellé), remote, contract_type, nature_contract, alternance, full_time, company_size, experience_required, rome_code, rome_label, url, fetched_at
+- Extraction : extracted_facts (rempli étage 4, persiste une seule fois)
+
+### Adapters
+
+**FranceTravailSource** : `orchestrator/job_search/sources/france_travail.py:30-class`
+- Params : keywords (requis), commune (INSEE), radius_km (30), max_results (150)
+- Auth : OAuth2 (client_id/secret env) + _get_token() cache 30s (lignes 51-69)
+- Fetch : _search_page() paginated (75-85), _fetch_all() batches (87-99)
+- Remote detect : _detect_remote() sur titre+description+lieu (20-26)
+
+**RemotiveSource** : `orchestrator/job_search/sources/remotive.py:14-class`
+- API public https://remotive.com/api/remote-jobs
+- 0 auth, toutes offres remote=True
+
+**IndeedFileSource** : `orchestrator/job_search/sources/indeed_file.py:20-class`
+- Lit JSONL data/indeed_inbox/*.jsonl
+
+### Fingerprinting
+
+`orchestrator/job_search/sources/fingerprint.py:10-fingerprint(title, company, location) -> str`
+- Hash : sha256(normalize(title) | normalize(company) | normalize(location))[:16]
+- _normalize() (ligne 5) : NFD decomposition + remove accents (catégorie Mn) + lowercase
+- Double clé dédup : (source, source_id) intra-source + fingerprint cross-source
+
+### Description
+
+- description (JobOffer.55) : Markdown dérivé via html_to_markdown() si HTML source
+- description_raw (JobOffer.56) : brut immuable, source de vérité audit
+- Nettoyage : _clean.py:11-html_to_markdown() spécifique adapter
+
+---
+
+## Étage 2 — Dédup
+
+`orchestrator/job_search/storage/dedup.py:6-filter_new(conn, offers) -> list[JobOffer]`
+- Consomme : sqlite connection + batch JobOffer
+- Produit : offres absentes de DB uniquement
+- Clé : (source, source_id) + fingerprint
+- Invariant : pas de suppression — offres vues restent en base
+
+---
+
+## Étage 3 — Hard filters
+
+`orchestrator/job_search/scoring/filters.py:31-apply_hard_filters(offer, search_criteria, zones) -> (bool, str|None)`
+- Consomme : JobOffer, SearchCriteria (locations, contract_types), zones dict
+- Produit : (filtered_out, filter_reason)
+- Règles :
+  - alternance=True → out
+  - Stage codes (STA/STG/APP/PRO) in nature_contract → out
+  - contract_type non-whiteliste → out
+  - Localisation : remote=True+in(locations) OK, else zone match dept|keywords
+- Filtrage : persisté avec filtered_out=True (jamais supprimé)
+
+---
+
+## Étage 4 — LLM Extract
+
+`orchestrator/job_search/scoring/extractor.py:106-extract_facts(offer, model, host) -> ExtractedFacts`
+- Consomme : JobOffer + Ollama model (env OLLAMA_MODEL, host)
+- Produit : ExtractedFacts
+- Appelé une seule fois par offre à l'ingestion
+- Température : 0.1 (JSON stable)
+- Few-shot : 3 exemples intégrés (lignes ~57-80)
+- Parsing défensif : 2 retries (3 tentatives), fallback ExtractedFacts(parse_failed=True, techs=[], domain="other")
+- Fallback jamais exception LLM non-catchée
+
+**Traçabilité** : `orchestrator/job_search/scoring/tracing.py:18-class LLMTrace`
+- Append JSONL data/traces/extract_facts.jsonl
+- Sauvegarde : prompt complet, réponse brute, facts parsés, timestamp
+- Immuable (audit, vocabulaire brut LLM préservé)
+- Canonicalisation appliquée étage 5 seulement, jamais trace
+
+---
+
+## Étage 5 — Scoring Python pur (0 LLM)
+
+### Profil YAML mutable
+
+`orchestrator/job_search/matching/profile.py:56-load_profile(path) -> tuple[Profile, str]`
+- Consomme : fichier YAML
+- Produit : (Profile validé Pydantic, sha256_hex)
+
+**Profile** (profile.py:36-43)
+- profile_id: str
+- role_ceiling: RoleCeiling (ic|lead|manager)
+- seniority_ceiling: SeniorityLevel | None
+- skills: dict[str, SkillEntry] où SkillEntry = {level: 1-10, desire: 0-10}
+- zones: dict[str, Zone] où Zone = {insee: [code], dept: [prefix], keywords: [str]}
+- search_criteria: SearchCriteria (keywords, domains, locations, contract_types)
+
+**Exemple** : `profiles/gregoire.yaml`
+- ~50 skills (python, fastapi, langgraph, rag, llm, vue, nuxt, java, docker, git, sql, langchain, chromadb, sqlite, kubernetes, typescript, javascript, react, html, css, spring, pydantic, ollama, n8n, langfuse, mcp, supabase, agents, nlp, ml, postgresql, mysql, …)
+
+### Alias canonicalisation
+
+`orchestrator/job_search/scoring/aliases.py:24-load_alias_table(path) -> AliasTable`
+- Consomme : profiles/alias.yaml
+- Produit : AliasTable (canonicalisations + exclusions)
+- Application : étage 5 scoring seulement, jamais ingest/trace
+
+`canonicalize(tech, table) -> str | None` (ligne 56)
+- Variante → canonical ou None (exclu)
+
+### Désirabilité (offre m'intéresse-t-elle ?)
+
+`orchestrator/job_search/scoring/desirability.py:72-compute_desirability(facts, criteria, profile, table) -> Desirability`
+- Formule : domain_gradient × desire_factor × 100
+- _domain_score() (ligne 64) : gradient distance cœur-cible
+  - _DOMAIN_GRADIENT (lignes 20-29) : ai_engineering 1.0, data_science 0.4, data_engineering 0.5, backend 0.5, fullstack 0.25, devops 0.2, embedded 0.1, other 0.0
+- _desire_factor() (ligne 41) : moyenne desire profil sur techs offre
+  - Inconnu=1.0 neutre, desire=0 tout connu→_DESIRE_FLOOR (0.5), desire=10→1.0
+  - Techs exclues (alias) ignorées
+- Retour : Desirability(score 0-100, detail dict)
+
+### Atteignabilité (puis-je décrocher maintenant ?)
+
+`orchestrator/job_search/scoring/attainability.py:171-compute_attainability(facts, profile, table) -> Attainability`
+- Matching : recouvrement listes, architecture.md §4
+- Poids importance (lignes 31-35) : core 3.0, required 2.0, nice_to_have 0.5 (calibrables → DECISIONS.md)
+- _compute_attain_tech() (ligne 62) : moyenne pondérée niveaux-profil / poids
+  - Absent=0 (neutre), exclu (alias)=retiré calcul
+  - Dédup canon : N tokens bruts→1 canonical (max importance), tokens conservés matched/missing
+  - Retour : (score 0-100, matched[], missing[])
+- _compute_attain_role() (ligne 129) : ic/lead/manager vs role_ceiling profil → 100→0 linéaire
+- _compute_seniority_malus() (ligne 153) : malus par cran au-dessus seniority_ceiling
+  - SENIORITY_MALUS_PER_STEP = 20 (ligne 23)
+- Score final : min(attain_tech, attain_role) − seniority_malus → 0-100 (min non-compensatoire)
+- Retour : Attainability(score, attain_tech, attain_role, seniority_malus, techs_matched, techs_missing, blocked_by)
+
+### Hors-périmètre (gates post-scoring)
+
+`orchestrator/job_search/scoring/hors_perimetre.py:44-derive_hors_perimetre(facts, title, description, …) -> list[HorsPerimetreCause]`
+- Retour : liste causes (pas booléen) → observable
+- Causes (ligne 18) : no_tech, mgmt_role, langue, contrat, …
+- Appliquée APRÈS d/a calcul → scores d/a persistés intacts (observabilité)
+- Gatée ≠ supprimée : persistée perimetre_causes JSON
+
+### Catégorisation
+
+`orchestrator/job_search/scoring/categorize.py:22-categorize(desirability, attainability) -> Category`
+- Seuils : DESIRABILITY_THRESHOLD 50, ATTAINABILITY_THRESHOLD 40
+- Catégories (enum, ligne 10) : parfait, reve, atteignable, hors
+- Règle : min(d>50, a>40) non-compensatoire
+
+---
+
+## Étage 6 — Persistance
 
 ### Schéma SQLite
 
-- **offers** : `orchestrator/job_search/storage/db.py:16` — source, source_id, fingerprint, title, company, location, description, description_raw, extracted_facts_json, category, hors_perimetre_reason, techs_matched_json, techs_missing_json, filtered_out, filter_reason, reviewed_at, categorie_suggeree, categorie_corrigee, remarque, seen_candidat, etc.
-  - UNIQUE(source, source_id), index fingerprint
+`orchestrator/job_search/storage/db.py:13-init_db(conn)` crée 3 tables + indices
 
-- **verdicts** : `orchestrator/job_search/storage/db.py:41` — offer_id, status, created_at (statut=retenu|rejeté|candidaté|masqué|hors_perimetre_ok|hors_perimetre_faux_pos)
+**Table offers** (lignes 15-38 + migrations 62-119)
+- Clé : (source, source_id) UNIQUE → UPSERT
+- Brutes : title, company, location, remote, contract_type, nature_contract, alternance, full_time, company_size, experience_required, rome_code, rome_label, url, fetched_at
+- Contenu : description (MD), description_raw (brut)
+- LLM : extracted_facts_json (ExtractedFacts, une fois à l'ingest)
+- Scoring : category, techs_matched_json, techs_missing_json, perimetre_causes (JSON list)
+- Interaction : seen_candidat, verdicts FK, human_reviews FK
+- Filtrage : filtered_out, filter_reason
+- Audit : rescored_at (timestamp rescore)
+- Index : idx_offers_fingerprint
 
-- **human_reviews** : `orchestrator/job_search/storage/db.py:50` — offer_id, ratings_json, ai_snapshot_json (snapshot figé), global_audit_text, created_at
+**Table verdicts** (lignes 40-45)
+- FK : offer_id
+- status : retenu|rejeté|candidaté|masqué|hors_perimetre_ok|hors_perimetre_faux_pos, created_at
+- Statut humain global, ne recalcule pas offers.extracted_facts_json
 
-### Initialisation & migrations
+**Table human_reviews** (lignes 49-57)
+- PK : offer_id (TEXT)
+- ratings_json : scores humains par-critère (optionnels)
+- ai_snapshot_json : copie figée criteria_json moment review → auto-portante post-refonte
+- global_audit_text, global_score, seen_at_review, created_at
 
-- **get_connection()** : `orchestrator/job_search/storage/db.py:7` — DB_PATH=data/job_search.sqlite
-- **init_db()** : `orchestrator/job_search/storage/db.py:14` — crée tables
-- **migrate_offers_schema()** : `orchestrator/job_search/storage/db.py:63` — migrations incrémentales (ajoute colonnes, renomme seen→seen_candidat, supprime anciens champs score)
+**Migration schéma** : `migrate_offers_schema()` (ligne 62)
+- ALTER TABLE additif (ALTER ADD/RENAME/DROP)
+- Supprime anciens champs score, criteria_json Zone A v1
+- Supprime anciens champs L5 desirability, attainability, score_in_category, …
 
-### ChromaDB
+### Sauvegarde
 
-- Chemin : data/chroma/ (PersistentClient)
-- Collection : "job_offers", metric=cosine
-- Embedding : DefaultEmbeddingFunction (Sentence Transformers)
+`orchestrator/job_search/storage/offers.py:27-save_offer(conn, offer, …)`
+- UPSERT offers via (source, source_id)
+- Params : JobOffer + filtered_out, filter_reason, extracted_facts, category, techs_matched/missing, perimetre_causes
+- Transactionnel + commit + trace log si LLM
+- Jamais suppression — offre ingérée = persistée
+
+**StoredOffer** (ligne 10) : projection read depuis DB
 
 ---
 
-## API — FastAPI
+## Rescore & retraitement
 
-### Point d'entrée
+`orchestrator/job_search/rescore.py:16-main()`
+- Relance scoring Python (0 LLM) sur offres DB
+- Scénario : changement profil YAML, ajustement poids, gate formula
+- Lit extracted_facts_json (LLM immuable), recalcule d/a/categorie/hors
 
-- **app** : `api/main.py:9` — FastAPI, CORS allow_origins=[http://localhost:3000], routers {offers, export, traces}
+`orchestrator/job_search/verdict.py:53-main()`
+- Interaction verdict humain (_record_verdict() ligne 36, _list_recent() ligne 16)
 
-### Endpoints offres
+---
 
-- **GET /offers** : `api/offers.py:53` — filtres {remote, source, verdict, filtered_out, category, hors_perimetre, etat_review, q}, tri multi-col (sort={fetched_at|title|company|category|seen_candidat|location}, order={asc|desc})
-- **POST /offers/check-known** : `api/offers.py:187` — bulk fingerprint check
-- **GET /offers/{offer_id}** : `api/offers.py:216` — offre complète + extracted_facts, techs_matched/missing
-- **PUT /offers/{offer_id}/verdict** : `api/offers.py:292` — upsert status (204)
-- **DELETE /offers/{offer_id}/verdict** : `api/offers.py:391` — reset (204)
-- **PUT /offers/{offer_id}/category-review** : `api/offers.py:326` — review humaine (204)
-- **GET /offers/{offer_id}/review** : `api/offers.py:368` — fetch review
+## Digest
 
-### Endpoints export
+`orchestrator/job_search/digest/formatter.py:24-generate_digest(offers, run_at) -> str`
+- Consomme : list[StoredOffer], timestamp optionnel
+- Produit : texte Markdown → data/digest_YYYYMMDD_HHMM.txt
+- _format_offer() (ligne 10) : rang + summary
 
-- **GET /export/offers** : `api/export.py:31` — Markdown contextualisé
-- **GET /export/calibration** : `api/export.py:189` — comparaison human vs IA
+---
 
-### Endpoints traces LLM
+## API — FastAPI (port 8000)
 
-- **GET /traces/counts** : `api/traces.py:89` — count traces/offer
-- **GET /traces** : `api/traces.py:95` — list traces détaillées
-- **PUT /traces/{trace_key}/note** : `api/traces.py:117` — upsert annotation
-- **GET /traces/export** : `api/traces.py:154` — JSONL
+### Lifecycle & init
+
+`api/main.py:13-_migrate_db()`
+- Ajoute colonnes manquantes (idempotent)
+- Appliquée lifespan (lignes 28-31)
+
+### Routes offers.py
+
+**Listes & filtres**
+
+`@router.get("/offers")` (ligne 188) : list[OfferRow]
+- Params : category, is_hors_perimetre, verdict, sort, order
+- Contexte : charge profile/alias (ligne 30)
+
+`@router.get("/offers/{offer_id}")` (ligne 366) : OfferDetail
+- Détail complet + extracted_facts, techs_matched/missing
+
+**Verdict humain**
+
+`@router.put("/offers/{offer_id}/verdict")` (ligne 444) : status (204)
+
+`@router.delete("/offers/{offer_id}/verdict")` (ligne 542) : reset (204)
+
+**Calibration**
+
+`@router.put("/offers/{offer_id}/category-review")` (ligne 478) : review (204)
+- Écrit categorie_suggeree, categorie_corrigee, remarque, reviewed_at dans `offers` (pas dans human_reviews)
+
+`@router.get("/offers/{offer_id}/review")` (ligne 519) : ReviewOut
+- Fetch review + scores IA snapshot
+
+**Dédup**
+
+`@router.post("/offers/check-known")` (ligne 337) : fingerprint bulk check
+
+### Routes traces.py
+
+`@router.get("/traces")` (ligne 95) : list[TraceOut]
+- read_traces_raw() (traces_reader.py:19), build_traces_out() (ligne 118)
+
+`@router.get("/traces/counts")` (ligne 89) : dict[str, int]
+
+`@router.put("/traces/{trace_key}/note")` (ligne 117) : annotation
+
+`@router.get("/traces/export")` (ligne 153) : JSONL export
+
+### Routes export.py
+
+`@router.get("/export/offers")` (ligne 31) : Markdown filtré, scores détail, techs
+
+`@router.get("/export/calibration")` (ligne 268) : human vs IA divergences
 
 ### Schémas API
 
-- **OfferRow** : `api/schemas.py:6` — id, title, company, location, remote, contract_type, category, verdict, seen_candidat, filtered_out, hors_perimetre_reason, categorie_{suggeree|corrigee|finale}, etat_review, remarque, reviewed_at
-- **OfferDetail** : `api/schemas.py:42` — OfferRow + source_id, description, url, source, extracted_facts, techs_matched, techs_missing
-- **ExtractedFactsSchema** : `api/schemas.py:34` — seniority_required, techs_required, domain, role_level, parse_failed
+**OfferRow** (schemas.py:6) : id, title, company, location, remote, contract_type, category, verdict, seen_candidat, filtered_out, hors_perimetre_reason, categorie_*, etat_review, reviewed_at
 
-### Helpers API
+**OfferDetail** (schemas.py:45) : OfferRow + source_id, description, url, source, extracted_facts, techs_matched, techs_missing
 
-- **_derive_review_fields()** : `api/offers.py:28` — dérive categorie_finale (corrigee ?? suggeree) + etat_review (non_relue|validee|corrigee), jamais persistés
+**ExtractedFactsSchema** (schemas.py:37) : seniority_required, techs_required, domain, role_level, parse_failed
 
----
+### Helpers
 
-## Frontend — Nuxt 4 + Pinia v3
-
-### Config
-
-- **nuxt.config.ts** : `web/nuxt.config.ts:1` — apiBase=http://localhost:8000, modules {@pinia/nuxt, @nuxtjs/tailwindcss}
-
-### Stores Pinia
-
-- **useOffersStore** : `web/app/stores/offers.ts:84` — state {offers[], openedOffer, activeView, filters, loading}, VIEW_PRESETS candidat={cibles|gaps|filet|retenues}, opérateur={a_traiter|hors_perimetre|tout}
-- **useTracesStore** : `web/app/stores/traces.ts:33` — state {traces[], selectedTrace, filters}
-
-### Pages
-
-- **index.vue** : `web/app/pages/index.vue` — candidat view
-- **operateur.vue** : `web/app/pages/operateur.vue` — opérateur view + review humaine
-- **traces.vue** : `web/app/pages/traces.vue` — inspect extractions LLM
-
-### Components
-
-- **OffersTable.vue** — affiche offres, tri, filtres
-- **OfferDetail.vue** — offre complète + facts + verdict
-- **FiltersPanel.vue** — filtres dynamiques
-- **ExportPopover.vue** — export contextuel → Markdown
-- **VerdictBadge.vue** — badge statut
+`_derive_review_fields()` (offers.py:141) : dérive categorie_finale, etat_review (non persistés)
 
 ---
 
-## Fichiers périphériques (cartographiés par nom/sig)
+## Web — Nuxt 4 + Pinia v3
 
-- `orchestrator/job_search/verdict.py:53` — CLI interaction verdict
-- `orchestrator/job_search/rescore.py:15` — CLI rescore (0 LLM)
-- `orchestrator/job_search/sources/_clean.py` — html_to_markdown()
-- `orchestrator/job_search/storage/reviews.py` — helpers human_reviews
-- `orchestrator/job_search/calibration/disagreement.py:27` — score divergence humain vs IA
-- `orchestrator/job_search/scoring/tracing.py` — LLMTrace + writer
-- `api/traces_reader.py` — lecteur traces disk
-- `api/db.py:9` — get_conn()
-- `web/app/app.vue` — layout root
+`web/nuxt.config.ts` — apiBase=http://localhost:8000, Tailwind, Pinia v3
+
+Structure : pages/, components/, stores/
 
 ---
 
 ## Invariants détectés
 
-1. **Sources pluggables** (architecture.md §1) — Toute source → JobOffer. Mapping interne. Pipeline aval agnostique source natif. Implémentations : FranceTravailSource, RemotiveSource, IndeedFileSource.
+1. **Sources pluggables** — Toute source → JobOffer. Mapping intra-adapter. Pipeline aval agnostique source brute. Implémentations : FranceTravailSource, RemotiveSource, IndeedFileSource.
 
-2. **Profil mutable, ré-embedding ssi hash change** (architecture.md §2) — load_profile() retourne hash SHA256. Embedder compare avant ré-embed ChromaDB. Multiples profils possibles.
+2. **Profil YAML source unique** — Pilotage sans code (zones, skills, criteria). load_profile() retourne hash SHA256. Plusieurs profils possibles.
 
-3. **Scoring explicable par construction** (architecture.md §3) — LLM note faits atomiques. Scores Python agrégés. Jamais score opaque en bloc. Parsing défensif obligatoire (fallback parse_failed). Critères + justifs persistés observable.
+3. **Fingerprint universel cross-source** — sha256[:16](title norm | company | location). Détecte doublons FT ↔ Remotive ↔ Indeed. Centralisée.
 
-4. **0 LLM au recalcul** (architecture.md §4) — LLM 1× ingestion. Scoring Python recalculable sans coût (profil change → 0 appel LLM). Séparation extractor vs scoring functions pures.
+4. **LLM une seule fois** — ExtractedFacts persisté à l'ingest. Rescore 0 LLM sur extracted_facts_json. Séparation extractor vs scoring Python pur.
 
-5. **Separation offers/verdicts/human_reviews** — 3 tables distinctes. Verdicts + reviews ne sont PAS intrants recalcul. Signal apprentissage préservé.
+5. **Scoring explicable** — d/a calculés code (architecture.md §3), min() non-compensatoire. Critères + justifs observables.
 
-6. **Dédup cross-source par fingerprint universel** — SHA256[:16](titre norm | entreprise | lieu). Détecte doublons FT ↔ Remotive ↔ Indeed. Formule centralisée, jamais réimplémentée.
+6. **Trace immuable** — JSONL append-only, vocabulaire LLM brut. Canonicalisation appliquée étage 5 seulement.
 
-7. **Description double** — description=Markdown dérivé (viewer+LLM), description_raw=brut immuable (traçabilité source). Chaque adapter appelle html_to_markdown() + conserve raw.
+7. **Canonicalisation post-extract** — alias.yaml appliquée scorer, jamais ingest/trace.
 
-8. **Alias centralisée** — YAML externe (mutable), chargée run. Canonicalize appliquée attainability + desirability. Exclu (alias=None) retirés du calcul.
+8. **Parsing défensif** — Fallback ExtractedFacts, jamais exception LLM non-catchée.
 
+9. **Triple persistence** — offers (données IA), verdicts (statut humain), human_reviews (détail review + snapshot IA).
+
+10. **Gate post-scoring** — d/a persistés même si gatée (observabilité). Causes listées (pas booléen).
+
+---
+
+## Tests
+
+`tests/` — 5 fichiers, 147 tests (pytest)
+
+- `test_aliases.py` — canonicalisation alias.yaml
+- `test_hors_perimetre.py` — gates hors-périmètre
+- `test_html_to_markdown.py` — nettoyage HTML→Markdown
+- `test_human_reviews.py` — workflow review humaine
+- `test_zones_filters.py` — hard filters localisation + contrat
+
+---
+
+## Fichiers config
+
+- `profiles/gregoire.yaml` — profil cible (skills, zones, search_criteria)
+- `profiles/alias.yaml` — alias canonicalisation technos
+- `.env` — credentials FT, Ollama config
+- `requirements.txt` — dépendances Python

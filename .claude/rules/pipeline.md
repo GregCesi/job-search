@@ -1,3 +1,7 @@
+---
+paths: ["orchestrator/**", "api/**"]
+---
+
 # Pipeline — contrat par étage
 
 Contrat descriptif-normatif du pipeline d'ingestion. Chaque règle est vraie du code actuel — les souhaits non implémentés vont dans `DECISIONS.md`.

@@ -1,8 +1,2 @@
 {
-  "mcpServers": {
-    "chroma": {
-      "command": "uvx",
-      "args": ["chroma-mcp", "--db-path", "./chroma"]
-    }
-  }
 }

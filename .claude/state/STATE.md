@@ -1,12 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier S — 5 livrables nettoyage post-CARTE-V2 livrés (keywords→profil, insee multi-code, paths.py unique, dead code supprimé, rescore-p-report.md supprimé)
-- Prochaine action : aucune — chantier terminé
+- Dernière action : Augmentation .claude/ (scaffold-claude) — CODEMAP corrigée (3 erreurs factuelles + tests manquants), CLAUDE.md nettoyé (ChromaDB fantôme), .mcp.json vidé, pipeline.md scopé, prompts/ archivé. Prompt codemap-builder renforcé (4 garde-fous anti-invention).
+- Prochaine action : aucune — augmentation terminée
 - Bloquant : aucun
 
 ## Phase en cours
-- Chantier S nettoyage post-CARTE-V2 : LIVRÉ ✓ (2026-07-15, L1→L5, /review passé, 147 tests verts)
+- Augmentation .claude/ + fiabilisation codemap-builder : LIVRÉ ✓ (2026-07-15)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
