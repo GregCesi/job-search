@@ -1,3 +1,5 @@
+> **ARCHIVE — gelé le 2026-08-04. Plus aucune écriture dans ce fichier. Journal actif dans Notion (base Journal, espace « Cockpit - IA Engineer »).**
+
 # JOURNAL — job-search-zone-a
 
 Une ligne par session. Format : `{YYYY-MM-DD HH:MM} — {objectif} — {fait} — {reste}`. Enrichi par `/handoff`.

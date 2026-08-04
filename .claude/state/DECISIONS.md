@@ -1,3 +1,5 @@
+> **ARCHIVE — gelé le 2026-08-04. Plus aucune écriture dans ce fichier. Les arbitrages structurants futurs vont dans `.claude/rules/` (s'ils décrivent le code) ou dans la section "Ce que ça révèle" d'une entrée Journal Notion (s'ils décrivent un cap).**
+
 # DECISIONS — job-search-zone-a
 
 Une ligne par décision architecturale ou de cadrage prise en cours de route. Format : `{YYYY-MM-DD} — {décision} — {raison} — {alternative écartée}`.

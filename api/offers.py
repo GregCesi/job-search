@@ -135,7 +135,7 @@ def _derive_score_breakdown(row) -> str | None:
     return "Hors — scoring insuffisant."
 router = APIRouter()
 
-_SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat", "location", "hors_perimetre_reason"}
+_SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat", "hors_perimetre_reason"}
 
 
 def _derive_review_fields(row) -> dict:
@@ -276,6 +276,32 @@ def list_offers(
                     WHEN 'reve'        THEN 2
                     WHEN 'atteignable' THEN 3
                     WHEN 'hors'        THEN 4
+                    ELSE 5
+                END {d}""")
+        elif s == "location":
+            order_clauses.append(f"""
+                CASE WHEN o.remote = 1 THEN 1 ELSE 0 END {d},
+                o.location {d} NULLS LAST""")
+        elif s == "contract_type":
+            order_clauses.append(f"""
+                CASE o.contract_type
+                    WHEN 'CDI'       THEN 1
+                    WHEN 'Permanent' THEN 1
+                    WHEN 'Full-time' THEN 1
+                    WHEN 'Freelance' THEN 2
+                    WHEN 'LIB'       THEN 2
+                    WHEN 'CDD'       THEN 3
+                    WHEN 'MIS'       THEN 4
+                    WHEN 'Part-time' THEN 5
+                    ELSE 6
+                END {d}""")
+        elif s == "verdict":
+            order_clauses.append(f"""
+                CASE v.status
+                    WHEN 'retenu'                THEN 1
+                    WHEN 'hors_perimetre_faux_pos' THEN 2
+                    WHEN 'hors_perimetre_ok'     THEN 3
+                    WHEN 'rejeté'                THEN 4
                     ELSE 5
                 END {d}""")
         elif s in _SORT_COLS:

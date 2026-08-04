@@ -81,6 +81,9 @@ class FranceTravailSource(Source):
         )
         if resp.status_code == 204:
             return []
+        if resp.status_code == 400:
+            warnings.warn(f"FT API 400 pour {params} range={start}-{end} — zone ignorée")
+            return []
         resp.raise_for_status()
         return resp.json().get("resultats", [])
 

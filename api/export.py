@@ -116,6 +116,28 @@ def export_offers(
                     WHEN 'hors'        THEN 4
                     ELSE 5
                 END {d}""")
+        elif s == "contract_type":
+            order_clauses.append(f"""
+                CASE o.contract_type
+                    WHEN 'CDI'       THEN 1
+                    WHEN 'Permanent' THEN 1
+                    WHEN 'Full-time' THEN 1
+                    WHEN 'Freelance' THEN 2
+                    WHEN 'LIB'       THEN 2
+                    WHEN 'CDD'       THEN 3
+                    WHEN 'MIS'       THEN 4
+                    WHEN 'Part-time' THEN 5
+                    ELSE 6
+                END {d}""")
+        elif s == "verdict":
+            order_clauses.append(f"""
+                CASE v.status
+                    WHEN 'retenu'                THEN 1
+                    WHEN 'hors_perimetre_faux_pos' THEN 2
+                    WHEN 'hors_perimetre_ok'     THEN 3
+                    WHEN 'rejeté'                THEN 4
+                    ELSE 5
+                END {d}""")
         elif s in _sort_cols:
             order_clauses.append(f"o.{s} {d} NULLS LAST")
         else:

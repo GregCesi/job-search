@@ -121,11 +121,11 @@ const store = useOffersStore()
 const COLS = [
   { key: 'title',        label: 'Poste',       sortable: true  },
   { key: 'company',      label: 'Entreprise',  sortable: true  },
-  { key: 'contract_type',label: 'Contrat',     sortable: false },
+  { key: 'contract_type',label: 'Contrat',     sortable: true  },
   { key: 'location',     label: 'Lieu',        sortable: true  },
   { key: 'category',     label: 'Catégorie',   sortable: true  },
   { key: 'fetched_at',   label: 'Récupéré',    sortable: true  },
-  { key: 'verdict',      label: 'Verdict',     sortable: false },
+  { key: 'verdict',      label: 'Verdict',     sortable: true  },
 ]
 
 function categoryLabel(c: string) {

@@ -1,12 +1,13 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Augmentation .claude/ (scaffold-claude) — CODEMAP corrigée (3 erreurs factuelles + tests manquants), CLAUDE.md nettoyé (ChromaDB fantôme), .mcp.json vidé, pipeline.md scopé, prompts/ archivé. Prompt codemap-builder renforcé (4 garde-fous anti-invention).
-- Prochaine action : aucune — augmentation terminée
+- Dernière action : TCK-9 livré — journal sort des repos vers Notion, skills globaux mis à jour (scaffold-claude, handoff, implementation), CLAUDE.md job-search installé avec bloc contractuel, JOURNAL.md + DECISIONS.md gelés.
+- Prochaine action : valider les ✋ Verify manuels du chantier Tri colonnes (test API + front), puis clore.
 - Bloquant : aucun
 
 ## Phase en cours
-- Augmentation .claude/ + fiabilisation codemap-builder : LIVRÉ ✓ (2026-07-15)
+- Chantier Tri colonnes Contrat/Verdict : LIVRÉ (livrables [x], ✋ Verify manuels en attente utilisateur)
+- TCK-9 Journal Notion : LIVRÉ ✓ (2026-08-04)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
@@ -32,3 +33,5 @@
 - Remédiation code mort : LIVRÉE ✓ (2026-07-14, L1→L9, ChromaDB/purge/view supprimés, dette enregistrée)
 - Cristallisation pipeline.md : LIVRÉE ✓ (2026-07-14, L1→L10, contrat 6 étages + 5 invariants, relecture croisée validée)
 - Chantier S nettoyage post-CARTE-V2 : LIVRÉ ✓ (2026-07-15, L1→L5, keywords→profil, multi-INSEE, paths.py central, dead code purgé)
+- Tri colonnes Contrat/Verdict : LIVRÉ ✓ (2026-08-04, L1.1→L1.5, tri sémantique CASE SQL + activation front)
+- TCK-9 Journal Notion : LIVRÉ ✓ (2026-08-04, L2→L5, skills globaux + gel repo)
