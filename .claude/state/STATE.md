@@ -1,13 +1,14 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : TCK-9 livré — journal sort des repos vers Notion, skills globaux mis à jour (scaffold-claude, handoff, implementation), CLAUDE.md job-search installé avec bloc contractuel, JOURNAL.md + DECISIONS.md gelés.
-- Prochaine action : valider les ✋ Verify manuels du chantier Tri colonnes (test API + front), puis clore.
+- Dernière action : Chantier Tri colonnes Contrat/Verdict clôturé — bug bucket CASE SQL (CDI/Permanent/Full-time partageaient THEN 1) corrigé dans offers.py + export.py, tous les ✋ Verify passés.
+- Prochaine action : aucun chantier en cours — prochaine décision à prendre.
 - Bloquant : aucun
 
 ## Phase en cours
-- Chantier Tri colonnes Contrat/Verdict : LIVRÉ (livrables [x], ✋ Verify manuels en attente utilisateur)
+- Chantier Tri colonnes Contrat/Verdict : LIVRÉ ✓ (2026-08-05, L1.1→L1.5 + bug bucket CASE corrigé)
 - TCK-9 Journal Notion : LIVRÉ ✓ (2026-08-04)
+- TCK-5 Migration journal → Notion : LIVRÉ ✓ (2026-08-04)
 
 ## Mémoire
 - Dernière /memory-update : 2026-06-02 (refonte scoring double-axe livrée)
@@ -35,3 +36,4 @@
 - Chantier S nettoyage post-CARTE-V2 : LIVRÉ ✓ (2026-07-15, L1→L5, keywords→profil, multi-INSEE, paths.py central, dead code purgé)
 - Tri colonnes Contrat/Verdict : LIVRÉ ✓ (2026-08-04, L1.1→L1.5, tri sémantique CASE SQL + activation front)
 - TCK-9 Journal Notion : LIVRÉ ✓ (2026-08-04, L2→L5, skills globaux + gel repo)
+- TCK-5 Migration journal → Notion : LIVRÉ ✓ (2026-08-04, 11 entrées écrites, fiche Projet réécrite)

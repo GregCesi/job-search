@@ -39,12 +39,12 @@ Les colonnes "Contrat" (`contract_type`) et "Verdict" dans la table des offres n
 - [x] **1.5** Test manuel : lancer API + front, cliquer sur Contrat et Verdict, vérifier le tri dans les deux sens.
 
 ### ✋ Verify before continuing:
-- [ ] `GET /offers?sort=contract_type&order=asc` → CDI/Permanent/Full-time en tête
-- [ ] `GET /offers?sort=contract_type&order=desc` → ordre inverse, CDI en fin
-- [ ] `GET /offers?sort=verdict&order=asc` → retenu en tête, NULL en fin
-- [ ] `GET /offers?sort=verdict&order=desc` → ordre inverse
-- [ ] Clic sur en-tête "Contrat" dans le front → tri toggle + flèche affichée
-- [ ] Clic sur en-tête "Verdict" dans le front → tri toggle + flèche affichée
-- [ ] Les autres tris existants (category, location, title, company, fetched_at) ne sont pas impactés
+- [x] `GET /offers?sort=contract_type&order=asc` → CDI/Permanent/Full-time en tête
+- [x] `GET /offers?sort=contract_type&order=desc` → ordre inverse, CDI en fin
+- [x] `GET /offers?sort=verdict&order=asc` → retenu en tête, NULL en fin
+- [x] `GET /offers?sort=verdict&order=desc` → ordre inverse
+- [x] Clic sur en-tête "Contrat" dans le front → tri toggle + flèche affichée
+- [x] Clic sur en-tête "Verdict" dans le front → tri toggle + flèche affichée
+- [x] Les autres tris existants (category, location, title, company, fetched_at) ne sont pas impactés
 
 Si tout est OK : "go". Sinon dis ce qui cloche.

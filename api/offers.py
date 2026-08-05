@@ -286,14 +286,14 @@ def list_offers(
             order_clauses.append(f"""
                 CASE o.contract_type
                     WHEN 'CDI'       THEN 1
-                    WHEN 'Permanent' THEN 1
-                    WHEN 'Full-time' THEN 1
-                    WHEN 'Freelance' THEN 2
-                    WHEN 'LIB'       THEN 2
-                    WHEN 'CDD'       THEN 3
-                    WHEN 'MIS'       THEN 4
-                    WHEN 'Part-time' THEN 5
-                    ELSE 6
+                    WHEN 'Permanent' THEN 2
+                    WHEN 'Full-time' THEN 3
+                    WHEN 'Freelance' THEN 4
+                    WHEN 'LIB'       THEN 5
+                    WHEN 'CDD'       THEN 6
+                    WHEN 'MIS'       THEN 7
+                    WHEN 'Part-time' THEN 8
+                    ELSE 9
                 END {d}""")
         elif s == "verdict":
             order_clauses.append(f"""
