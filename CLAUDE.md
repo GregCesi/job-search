@@ -63,6 +63,16 @@ formulations de commit. Le journal dit ce que le système fait désormais, pas c
 **## Ce que ça invalide** — ce qu'une entrée antérieure affirmait et qui est maintenant faux.
   Omets la section s'il n'y a rien. N'invente jamais son contenu.
 
+### Titre des entrées
+
+Toute entrée écrite par Claude Code porte le suffixe `— exécution` : `Titre du chantier — exécution`.
+Systématique, sans condition. Tu ne consultes pas Notion et tu ne peux pas savoir si une entrée `— conception` existe déjà pour ce chantier — c'est voulu. Le suffixe `— conception` est porté par le chat ; aucune coordination entre les deux côtés n'est requise.
+
+### Propriété des champs
+
+À la **création**, tous les champs du contrat ci-dessous sont autorisés, dont `Projet`.
+En **modification** d'une entrée existante, `Tickets` et `Projet` sont interdits : ils appartiennent au chat. Ne pas les écrire, même s'ils semblent vides.
+
 ### Appel
 
 Utilise `notion-create-pages` avec :

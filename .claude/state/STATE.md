@@ -1,7 +1,7 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : Chantier Tri colonnes Contrat/Verdict clôturé — bug bucket CASE SQL (CDI/Permanent/Full-time partageaient THEN 1) corrigé dans offers.py + export.py, tous les ✋ Verify passés.
+- Dernière action : TCK-21 clôturé — suffixe `— exécution` et règle de propriété des champs (Tickets/Projet) inscrits dans le bloc contractuel Journal de scaffold-claude + propagés dans CLAUDE.md job-search.
 - Prochaine action : aucun chantier en cours — prochaine décision à prendre.
 - Bloquant : aucun
 
@@ -37,3 +37,4 @@
 - Tri colonnes Contrat/Verdict : LIVRÉ ✓ (2026-08-04, L1.1→L1.5, tri sémantique CASE SQL + activation front)
 - TCK-9 Journal Notion : LIVRÉ ✓ (2026-08-04, L2→L5, skills globaux + gel repo)
 - TCK-5 Migration journal → Notion : LIVRÉ ✓ (2026-08-04, 11 entrées écrites, fiche Projet réécrite)
+- TCK-21 Bloc contractuel Journal : LIVRÉ ✓ (2026-08-05, suffixe — exécution systématique + règle propriété Tickets/Projet)
