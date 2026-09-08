@@ -73,19 +73,28 @@ class FranceTravailSource(Source):
     # ------------------------------------------------------------------
 
     def _search_page(self, params: dict, start: int, end: int) -> list[dict]:
-        resp = requests.get(
-            _SEARCH_URL,
-            headers={"Authorization": f"Bearer {self._get_token()}"},
-            params={**params, "range": f"{start}-{end}"},
-            timeout=20,
-        )
-        if resp.status_code == 204:
-            return []
-        if resp.status_code == 400:
-            warnings.warn(f"FT API 400 pour {params} range={start}-{end} — zone ignorée")
-            return []
-        resp.raise_for_status()
-        return resp.json().get("resultats", [])
+        max_retries = 3
+        for attempt in range(max_retries):
+            resp = requests.get(
+                _SEARCH_URL,
+                headers={"Authorization": f"Bearer {self._get_token()}"},
+                params={**params, "range": f"{start}-{end}"},
+                timeout=20,
+            )
+            if resp.status_code == 204:
+                return []
+            if resp.status_code in (400, 500):
+                warnings.warn(f"FT API {resp.status_code} pour {params} range={start}-{end} — ignoré")
+                return []
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", 2 ** attempt))
+                warnings.warn(f"FT API 429 — attente {retry_after}s (tentative {attempt + 1}/{max_retries})")
+                time.sleep(retry_after)
+                continue
+            resp.raise_for_status()
+            return resp.json().get("resultats", [])
+        warnings.warn(f"FT API 429 persistant pour {params} range={start}-{end} — ignoré")
+        return []
 
     def _fetch_all(self, params: dict, limit: int | None = None) -> list[dict]:
         cap = limit or self.max_results
