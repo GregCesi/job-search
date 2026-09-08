@@ -63,6 +63,44 @@ formulations de commit. Le journal dit ce que le système fait désormais, pas c
 **## Ce que ça invalide** — ce qu'une entrée antérieure affirmait et qui est maintenant faux.
   Omets la section s'il n'y a rien. N'invente jamais son contenu.
 
+### Verdict — obligatoire sur toute entrée Journal écrite par Claude Code
+
+Discriminant : `Auteur` = `Claude Code`. Aucune autre entrée ne porte ce
+bloc. Le verdict vit dans le corps de l'entrée, pas en propriétés.
+
+Le verdict précède le récit. Un récit écrit en premier fixe une version des
+faits que le verdict n'a plus qu'à ratifier.
+
+#### 1. Barre
+Une ligne. Ce qui avait été demandé, et où c'est écrit : `EXE-n`, ou
+`IMPLEMENTATION.md` étape N. Sans ce pointeur, les trois sections suivantes
+ne confrontent rien et produisent un second récit.
+
+#### 2. Confrontation
+Une ligne par item de la barre, dans l'ordre de la barre, préfixée
+`tenu` / `non tenu` / `non abordé`.
+
+L'item est cité tel qu'il est écrit, jamais reformulé. Une reformulation
+déplace la cible. Un item impossible à citer signale que la barre était mal
+écrite : c'est une information, pas une gêne.
+
+Une ligne `tenu` nomme le fait qui le prouve — commande passée, fichier
+produit, test vert, commit. Sans fait, c'est un avis, et l'avis d'un agent
+sur son propre travail ne vaut rien.
+
+Un `non tenu` dit ce qui manque, en termes observables. Pas pourquoi : le
+pourquoi est du récit.
+
+#### 3. Hors demande
+Ce qui a été fait que la barre ne demandait pas. Section obligatoire :
+`aucun` s'écrit. Une section absente est ambiguë entre *rien à signaler* et
+*pas regardé*.
+
+#### 4. Hypothèses tombées
+Celles déclarées au cadrage que l'exécution a invalidées. En régime
+spécifié : le champ `Hypothèses déclarées` de `EXE-n`. En implémentation :
+celles prises faute d'information. `aucune` s'écrit.
+
 ### Titre des entrées
 
 Toute entrée écrite par Claude Code porte le suffixe `— exécution` : `Titre du chantier — exécution`.
