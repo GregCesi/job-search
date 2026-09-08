@@ -1,11 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : TCK-21 clôturé — suffixe `— exécution` et règle de propriété des champs (Tickets/Projet) inscrits dans le bloc contractuel Journal de scaffold-claude + propagés dans CLAUDE.md job-search.
+- Dernière action : 2026-09-08 — Chantier « Page offre retenue » : LIVRÉ ✓ (Phase 1→4, L1→L9, route `/offers/[id]` + frise + synthèse + cartes vides + comportements Retenir/Retenues/Retirer).
 - Prochaine action : aucun chantier en cours — prochaine décision à prendre.
-- Bloquant : aucun
+- Bloquant : aucun.
 
 ## Phase en cours
+- Chantier Page offre retenue : LIVRÉ ✓ (2026-09-08, L1→L9)
 - Chantier Tri colonnes Contrat/Verdict : LIVRÉ ✓ (2026-08-05, L1.1→L1.5 + bug bucket CASE corrigé)
 - TCK-9 Journal Notion : LIVRÉ ✓ (2026-08-04)
 - TCK-5 Migration journal → Notion : LIVRÉ ✓ (2026-08-04)
@@ -38,3 +39,4 @@
 - TCK-9 Journal Notion : LIVRÉ ✓ (2026-08-04, L2→L5, skills globaux + gel repo)
 - TCK-5 Migration journal → Notion : LIVRÉ ✓ (2026-08-04, 11 entrées écrites, fiche Projet réécrite)
 - TCK-21 Bloc contractuel Journal : LIVRÉ ✓ (2026-08-05, suffixe — exécution systématique + règle propriété Tickets/Projet)
+- Chantier Page offre retenue : LIVRÉ ✓ (2026-09-08, L1→L9, route `/offers/[id]` plein-écran, frise statut, synthèse extraction, cartes vides, Retenir→navigation)

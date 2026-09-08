@@ -74,7 +74,13 @@ const VIEWS: { key: CandidateView; label: string }[] = [
   { key: 'retenues', label: 'Retenues' },
 ]
 
+const router = useRouter()
+
 async function handleSelect(offer: OfferRow) {
-  await store.openDetail(offer.id)
+  if (store.activeView === 'retenues') {
+    router.push(`/offers/${offer.id}`)
+  } else {
+    await store.openDetail(offer.id)
+  }
 }
 </script>

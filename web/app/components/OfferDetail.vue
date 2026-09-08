@@ -138,25 +138,42 @@
           <section>
             <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Verdict</h3>
             <div class="flex flex-wrap gap-2">
-              <button
-                v-for="v in displayedVerdicts" :key="v.status"
-                :class="[
-                  'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                  offer.verdict === v.status
-                    ? v.activeClass
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
-                ]"
-                @click="toggleVerdict(v.status)"
-              >
-                {{ v.label }}
-              </button>
-              <button
-                v-if="offer.verdict"
-                class="px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:bg-gray-50 transition-all"
-                @click="store.clearVerdict(offer.id)"
-              >
-                Retirer
-              </button>
+              <!-- Candidat : bouton Retenir navigue vers la page offre -->
+              <template v-if="props.mode === 'candidat'">
+                <button
+                  :class="[
+                    'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                    offer.verdict === 'retenu'
+                      ? 'bg-blue-50 border-blue-300 text-blue-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
+                  ]"
+                  @click="handleRetenir()"
+                >
+                  {{ offer.verdict === 'retenu' ? 'Voir la page →' : 'Retenir →' }}
+                </button>
+              </template>
+              <!-- Opérateur : boutons verdict classiques -->
+              <template v-else>
+                <button
+                  v-for="v in displayedVerdicts" :key="v.status"
+                  :class="[
+                    'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                    offer.verdict === v.status
+                      ? v.activeClass
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
+                  ]"
+                  @click="toggleVerdict(v.status)"
+                >
+                  {{ v.label }}
+                </button>
+                <button
+                  v-if="offer.verdict"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:bg-gray-50 transition-all"
+                  @click="store.clearVerdict(offer.id)"
+                >
+                  Retirer
+                </button>
+              </template>
             </div>
           </section>
 
@@ -235,6 +252,7 @@ const props = withDefaults(defineProps<{ offer: OfferDetail; mode?: 'candidat' |
 defineEmits<{ close: [] }>()
 
 const store = useOffersStore()
+const router = useRouter()
 
 // ── Markdown rendering ──────────────────────────────────────────────────
 const renderedDescription = computed(() =>
@@ -323,6 +341,13 @@ const displayedVerdicts = computed(() => {
   if (props.offer.hors_perimetre_reason) return HP_VERDICTS
   return VERDICTS
 })
+
+async function handleRetenir() {
+  if (props.offer.verdict !== 'retenu') {
+    await store.setVerdict(props.offer.id, 'retenu')
+  }
+  router.push(`/offers/${props.offer.id}`)
+}
 
 function toggleVerdict(status: string) {
   if (props.offer.verdict === status) {
