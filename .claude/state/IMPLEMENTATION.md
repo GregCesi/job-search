@@ -1,105 +1,168 @@
-# IMPLEMENTATION — Page offre retenue (emplacements phase 2)
+# IMPLEMENTATION — Belge dans le périmètre (gate langue · ad_language · EURES)
 
 ## Vue d'ensemble
 
-Créer la première route paramétrée du projet (`/offers/[id]`) : une page plein-écran par offre retenue qui montre des données réelles à gauche et trois emplacements vides à droite (Entreprise, CV, Lettre). But exclusif : rendre visible la composition de la phase 2 avant de la bâtir. Aucun process de remplissage n'est construit ici. Le chantier touche uniquement `web/app/` — 0 modification côté `api/` et `orchestrator/`.
+Trois changements séquencés : (1) le gate hors-périmètre cesse de bloquer sur la langue de l'offre,
+(2) un champ `ad_language` détecte et stocke la langue de rédaction pour filtrer la vue candidat,
+(3) une source EURES alimente la base en offres belges. L'ordre est contraint : 1 et 2 doivent
+être en place avant que les offres EURES soient visibles correctement. Première chose à attaquer :
+supprimer la cause `langue` du gate et rescore les 29 offres libérées.
 
-Première chose à attaquer : créer la route et le layout plein-écran (Phase 1), condition sans laquelle rien d'autre ne s'intègre.
+Refs architecture : `rules/architecture.md` §1 (sources pluggables), §3 (scoring explicable),
+§4 (0 LLM au recalcul). Règles pipeline : `rules/pipeline.md` §1 (adapter), §5 (gates
+observables). Règles sources : `rules/sources.md` (contrat adapter).
+
+---
+
+## Phase 0 — Réponses aux questions de cadrage
+
+*(Informations factuelles issues du code et de la base. Guident les choix de plan.)*
+
+**Q1 — Retrait complet vs retrait dutch uniquement**
+29 offres actuellement gatées par `langue`. Parmi elles : 0 mentionnent dutch/néerlandais.
+Répartition : russe 12, allemand 8, espagnol 5, italien 3, arabe 2, polonais 2, portugais 1.
+→ Retirer seulement dutch|néerlandais = 0 offre récupérée aujourd'hui. Retirer la cause
+entièrement = 29 offres récupérées. La décision actée implique le retrait complet.
+
+**Q2 — description vs description_raw pour la détection**
+`description` est toujours non NULL (0 sur 1934). `description_raw` est NULL pour 317 offres
+(219 FT + 50 Indeed + 48 Remotive — 16 % de la base). Utiliser `description` uniquement.
+
+**Q3 — Patron de backfill**
+`backfill_description_raw.py` à la racine est le patron exact : script autonome, idempotent
+sur `WHERE col IS NULL`, `--dry-run`, pas de LLM, pas de re-pull.
+
+**Q4 — Filtre candidat : côté API ou Nuxt ?**
+Côté API — VIEW_PRESETS envoie des query params, l'API filtre en SQL (pattern de `hors_perimetre`,
+`hp_cause`, etc.). Ajouter `ad_language` comme query param dans `GET /offers` ; l'inclure dans
+les 4 presets candidat du store. Aucune logique métier côté Nuxt (règle `frontend.md`).
+
+**Q5 — EuresSource reçoit ses config via __init__**
+Même patron que `FranceTravailSource(keywords=kw, commune=code, ...)`. Instantiation dans
+`run.py` conditionnée sur la présence de "belgique_area" dans `active_zones` (déjà déclaré
+dans le profil). `Source.fetch()` ne prend toujours aucun paramètre.
+
+**Q6 — Fingerprint cross-source**
+Tient en l'état. FT = emplois français ("67 - Strasbourg"), EURES = emplois belges
+("Bruxelles"). Aucun chevauchement géographique → pas de faux doublons inter-sources.
+
+**Q7 — Risque de run trop long**
+Non mesurable depuis le code (pas de champ `duration_ms` dans les traces). Fourchette estimée :
+200 nouvelles offres × ~15-25 s/offre (modèle local 8B) = 50-80 min. Risque réel mais non
+bloquant pour ce chantier ; pas de timer à introduire ici.
+
+---
 
 ## Schémas cibles
 
-Aucun schéma Python/SQL touché. Le front consomme `GET /offers/{id}` existant — réponse `OfferDetail` qui expose déjà tous les champs nécessaires. Aucun champ à ajouter.
+**`offers.ad_language TEXT`** — nouvelle colonne ajoutée via `migrate_offers_schema`.
+Valeurs : `"fr" | "en" | "nl" | "other"` | NULL (NULL = non encore détecté).
+Écrite par `backfill_ad_language.py` (existant) et par le pipeline à l'ingestion de
+nouvelles offres (à partir de L6 pour EURES). Base de travail, pas contrat figé.
 
-Type TS à créer dans la page : aucun nouveau type — `OfferDetail` est déjà exporté depuis `stores/offers.ts`.
+**`HorsPerimetreCause`** — enum réduit à 3 valeurs : `no_tech`, `mgmt_role`, `contrat`.
+La valeur `langue` est supprimée. Aucun changement aux valeurs restantes.
+
+Aucun changement au schéma `ExtractedFacts` ni au prompt/schéma de sortie de l'extractor.
+
+---
 
 ## Phases
 
 ---
 
-### Phase 1 — Route paramétrée + layout plein-écran
+### Phase 1 — Retrait de la cause `langue` + rescore des 29 libérées
 
-**Objectif** : la page `/offers/[id]` s'affiche, fetche l'offre, structure deux colonnes à hauteur fixe sans scroll de page.
+**Objectif** : aucune offre n'est plus écartée pour raison de langue ; les 29 offres
+libérées passent le gate et sont rescorées sans appel LLM.
 
-- [x] Créer `web/app/pages/offers/[id].vue`
-- [x] `onMounted` : `$fetch<OfferDetail>(\`${apiBase}/offers/${id}\`)` → état local `offer`
-- [x] Layout : `h-screen overflow-hidden flex flex-col` — en-tête fixe, corps `flex-1 overflow-hidden flex`
-- [x] En-tête : titre du poste, entreprise, lien `offer.url` « Voir l'annonce ↗ », bouton/lien retour (`router.back()`)
-- [x] Corps : colonne gauche `flex flex-col gap-4 overflow-hidden` (2/3 de largeur), colonne droite `flex flex-col gap-3` (1/3)
-- [x] État de chargement (`v-if="offer"` / skeleton ou spinner sinon)
+**Fichiers touchés** : `orchestrator/job_search/scoring/hors_perimetre.py`, rescore en CLI.
+
+- [ ] **L1a** — Quatre fichiers à mettre à jour en une passe :
+      — `scoring/hors_perimetre.py` : supprimer `LANGUES_TIERCES`, `_LANGUE_RE`, le bloc
+        "Règle langue" (lignes 63-66 actuelles), et la valeur `langue` de l'enum `HorsPerimetreCause`.
+      — `tests/test_hors_perimetre.py` : supprimer les tests de la section "Règle langue"
+        (classe `TestLangue` ou équivalent — toute assertion sur `HorsPerimetreCause.langue`).
+      — `api/offers.py:198` : mettre à jour la docstring `hp_cause` — retirer `langue` de la
+        liste des valeurs valides.
+      — `api/export.py:41` : idem.
+- [ ] **L1b** — Rescore des libérées : `python -m orchestrator.job_search.rescore --force`.
+      Réutilise les `extracted_facts_json` en cache — 0 appel LLM. Relever `wc -l
+      data/traces/extract_facts.jsonl` avant l'exécution pour comparer après.
 
 ✋ Verify before continuing:
-- [ ] `git diff orchestrator/job_search/storage/db.py` est vide
-- [ ] La page s'affiche sur `/offers/123` (id valide) sans scroll de page, les deux colonnes occupent toute la hauteur disponible
+- [ ] `git diff orchestrator/job_search/scoring/extractor.py` est vide — prompt système et schéma de sortie identiques (invariant L1a)
+- [ ] `wc -l data/traces/extract_facts.jsonl` avant = après le rescore — 0 nouvelle trace LLM (invariant L1b)
+- [ ] `SELECT COUNT(*) FROM offers WHERE perimetre_causes LIKE '%"langue"%'` → 0 — aucune offre encore gatée par `langue`
 
 Si tout est OK : "go". Sinon dis ce qui cloche.
 
 ---
 
-### Phase 2 — Colonne gauche : frise de statut + synthèse + annonce
+### Phase 2 — Champ `ad_language` + backfill + filtre candidat
 
-**Objectif** : bloc résumé en haut (frise + extraction), bloc annonce en bas avec scroll interne uniquement.
+**Objectif** : toute offre en base porte sa langue de rédaction ; la vue candidat
+n'affiche que les offres rédigées en français ou en anglais.
 
-- [x] **Frise de statut** — quatre étapes ordonnées : `Retenue → Prête à l'envoi → Candidature envoyée → Entretien à préparer`. Étape courante toujours `Retenue` (hardcodé). Aucun `@click` sur les étapes — attribut `tabindex="-1"` et pas de handler. Étape active mise en avant par couleur (indigo/blue, cohérent avec le reste du projet). Les trois autres en gris neutre.
-- [x] **Synthèse d'extraction** — dans un bloc `rounded-lg border bg-gray-50` :
-  - Lieu + remote (`offer.remote` → badge teal "Remote", sinon `offer.location`)
-  - Contrat (`offer.contract_type`)
-  - Séniorité (`offer.extracted_facts?.seniority_required`)
-  - Rôle (`offer.extracted_facts?.role_level`)
-  - Domaine (`offer.extracted_facts?.domain`)
-  - Technos requises avec importance — même badges que `OfferDetail.vue` (`techBadgeClass`) splitées matchées / manquantes via `offer.techs_matched` / `offer.techs_missing`
-  - Catégorie (`offer.category` / `offer.categorie_finale`), date (`offer.fetched_at`), source (`offer.source`)
-- [x] **Bloc annonce** — `flex-1 overflow-y-auto` avec `v-html="renderedDescription"` (DOMPurify + marked, même pattern que `OfferDetail.vue:240-242`)
+**Fichiers touchés** : `storage/db.py`, nouveau `scoring/ad_language.py`, nouveau
+`backfill_ad_language.py` (racine), `api/offers.py`, `web/app/stores/offers.ts`.
+
+- [ ] **L2** — `storage/db.py:migrate_offers_schema` : ajouter `("ad_language", "TEXT")` dans
+      la liste `add_cols`. La migration est idempotente — si la colonne existe déjà, rien ne
+      se passe.
+- [ ] **L3** — Nouveau `orchestrator/job_search/scoring/ad_language.py` : fonction
+      `detect_ad_language(text: str) -> str` retournant `"fr" | "en" | "nl" | "other"`.
+      Détection offline uniquement — aucun import `ollama`, `requests`, `httpx`, `socket` ni
+      aucun client modèle. Utiliser `langdetect` (bibliothèque offline). Si `len(text) < 100`
+      : retourner `"other"` (texte trop court, détection non fiable — logguer un warning).
+- [ ] **L4** — Nouveau `backfill_ad_language.py` à la racine, calqué sur
+      `backfill_description_raw.py` : idempotent sur `WHERE ad_language IS NULL`, lit
+      `description`, appelle `detect_ad_language`, écrit `ad_language`. Argument `--dry-run`.
+      Exécuter après écriture du fichier et valider le dry-run avant la passe réelle.
+- [ ] **L5** — `api/offers.py:list_offers` : ajouter query param `ad_language: str | None`.
+      Si renseigné, filtrer `o.ad_language IN (...)` (valeurs séparées par virgule comme
+      `etat_review`). `stores/offers.ts:VIEW_PRESETS` : ajouter `ad_language: "fr,en"` dans
+      les 4 presets candidat (`cibles`, `gaps`, `filet`, `retenues`). `OfferRow` et `Filters`
+      : ajouter le champ `ad_language`.
 
 ✋ Verify before continuing:
-- [ ] Cliquer sur chacune des quatre étapes de la frise n'a aucun effet visible ni réseau
-- [ ] Sur une offre dont la description dépasse la hauteur de l'écran : seul le bloc annonce scrolle, la page ne scrolle pas
+- [ ] Imports de `scoring/ad_language.py` ne contiennent aucun de : `ollama`, `requests`, `httpx`, `socket`, `urllib` — vérifiable via lecture du fichier (invariant L3)
+- [ ] `SELECT COUNT(*) FROM offers WHERE ad_language IS NULL` → 0 après le backfill (L4 — backfill complet)
+- [ ] `SELECT COUNT(*), ad_language FROM offers GROUP BY ad_language` : les offres nl sont en base mais `GET /offers` avec les filtres candidat (`ad_language=fr,en`) ne les retourne pas (L5 — filtre candidat)
 
 Si tout est OK : "go". Sinon dis ce qui cloche.
 
 ---
 
-### Phase 3 — Colonne droite : cartes vides + bouton Envoyer
+### Phase 3 — Source EURES + câblage run.py
 
-**Objectif** : trois cartes « à produire » cliquables + overlay plein-écran vide + bouton Envoyer inerte.
+**Objectif** : les offres belges rentrent dans la base via EURES, avec url + company réels,
+sans bloquer sur la localisation, et invisibles dans la vue candidat si rédigées en néerlandais.
 
-- [x] **Trois cartes** `Entreprise`, `CV`, `Lettre de motivation` — chacune : titre, badge/label « à produire », état visuellement vide (ex. zone grisée avec icône ou texte italique). `cursor-pointer`.
-- [x] Au clic sur une carte : overlay `fixed inset-0 z-50 bg-white flex flex-col` avec en-tête (titre de la carte + bouton fermer) et corps vide (message « Aucun contenu — à produire »). Fermeture via le bouton ou clic sur le fond.
-- [x] **Bouton Envoyer** — `@click` handler qui ne fait rien (`() => {}`), pas d'appel réseau. Style cohérent avec les autres boutons d'action du projet.
-- [x] Aucun `$fetch`, `useFetch`, `axios` ni mutation de store dans le handler Envoyer.
+**Fichiers touchés** : nouveau `orchestrator/job_search/sources/eures.py`, `run.py`.
 
-✋ Verify before continuing:
-- [ ] Les trois cartes affichent un état vide — aucune donnée métier (pas de `offer.extracted_facts`, `offer.description`, ni aucun champ de l'offre dans ces cartes)
-- [ ] Clic sur Envoyer : onglet réseau du navigateur ne montre aucune requête, le store n'est pas muté
-- [ ] `grep -E "ollama|extract|generate" <(git diff)` sur le diff de ce chantier à ce stade est vide
-
-Si tout est OK : "go". Sinon dis ce qui cloche.
-
----
-
-### Phase 4 — Comportements existants modifiés
-
-**Objectif** : bouton Retenir navigue au lieu de toggler ; onglet Retenues ouvre la page ; action Retirer disponible sur la page.
-
-**Fichiers touchés** : `web/app/components/OfferDetail.vue`, `web/app/pages/index.vue`, `web/app/pages/offers/[id].vue` (déjà créé).
-
-- [x] **`OfferDetail.vue` — bouton Retenir** (mode candidat, section Verdicts) :
-  - Remplacer `toggleVerdict('retenu')` par un handler `handleRetenir()` :
-    - Si `offer.verdict !== 'retenu'` → `await store.setVerdict(offer.id, 'retenu')` puis `router.push(\`/offers/\${offer.id}\`)`
-    - Si `offer.verdict === 'retenu'` → `router.push(\`/offers/\${offer.id}\`)` sans PUT (déjà retenu)
-  - Le bouton ne toglle plus : clic en tout cas navigue vers la page. Libellé : « Retenir → » (ou « Voir la page → » si déjà retenu).
-- [x] **`index.vue` — `handleSelect`** : si `store.activeView === 'retenues'` → `router.push(\`/offers/\${offer.id}\`)` ; sinon → `await store.openDetail(offer.id)` (comportement actuel). Les onglets Cibles, Gaps, Filet ouvrent toujours le drawer.
-- [x] **`offers/[id].vue` — action « Retirer des retenues »** : bouton dans l'en-tête ou sous la frise → `await $fetch(\`${apiBase}/offers/${offer.id}/verdict\`, { method: 'DELETE' })` puis `router.back()`. Libellé : « Retirer des retenues ».
+- [ ] **L6** — Nouveau `sources/eures.py` : implémenter `EuresSource(keywords: list[str],
+      countries: list[str] = ["BE"], max_per_keyword: int = 200)`.
+      — Pagination : POST search avec 1 keyword, `resultsPerPage` ≤ 50, `pageNumber` incrémenté
+        jusqu'à ce que `jvs` soit vide (HTTP 200 = fin normale, pas d'erreur).
+      — Détail : GET `.../public/jv/id/{id}` pour chaque offre — champs à récupérer : employer
+        réel, url de candidature, ville en clair.
+      — Délai entre appels (au minimum `time.sleep(0.5)`).
+      — Mapping → `JobOffer` : `source="eures"`, `url` = lien de candidature non nul (toujours
+        depuis la réponse détail), `company` = employeur réel (champ `employer` de la réponse
+        détail, pas l'agence intermédiaire), `location` = ville en clair depuis la réponse
+        détail, `description` = champ texte de l'offre nettoyé via `_clean.html_to_markdown()`,
+        `description_raw` = texte brut avant nettoyage.
+      — Fingerprint via `fingerprint(title, company, location)` (module partagé).
+      — Gestion d'erreur : une offre échouée = warning + skip (jamais de crash du run).
+- [ ] **L7** — `run.py` : dans le bloc fetch, si `"belgique_area" in active_zones`, instancier
+      `EuresSource(keywords=kw)` et l'ajouter à `sources`. Ajouter option CLI `--no-eures`.
 
 ✋ Verify before continuing:
-- [x] Clic sur "Retenir" depuis un drawer (onglet Cibles) sur une offre non retenue : PUT déclenché, navigation vers `/offers/{id}` — vérifiable via onglet réseau + URL
-- [x] Recliquer sur "Retenir" depuis un drawer sur une offre **déjà retenue** : aucun DELETE déclenché, navigation seulement — le toggle a disparu
-- [x] Depuis la page `/offers/{id}`, aucun geste ne retire l'offre de la liste des retenues ni ne provoque un splice silencieux — l'offre reste accessible par router.back()
-- [x] Clic sur une ligne dans l'onglet Retenues : ouvre `/offers/{id}` (pas le drawer)
-- [x] Clic sur une ligne dans les onglets Cibles, Gaps, Filet : ouvre toujours le drawer (comportement inchangé)
-- [x] Clic "Retirer des retenues" sur la page : DELETE déclenché, retour vers la liste — vérifiable via onglet réseau + URL
-- [x] `git diff api/` est vide (0 fichier api/ modifié)
-- [x] `git diff orchestrator/job_search/storage/db.py` est vide
-- [x] `grep -E "ollama|extract|generate" <(git diff)` sur le diff complet du chantier est vide
+- [ ] `SELECT COUNT(*) FROM offers WHERE source='eures' AND url IS NULL` → 0 (invariant L6 — url toujours non nulle)
+- [ ] `SELECT location, filter_reason FROM offers WHERE source='eures' AND filter_reason='location:hors_zone'` → 0 lignes pour des lieux belges réels comme Bruxelles, Gand, etc. (invariant L6+L7)
+- [ ] Sur 10 offres EURES tirées au hasard : `company` = employeur réel, pas agence interim (invariant L6 — company mapping depuis réponse détail)
+- [ ] `SELECT COUNT(*), ad_language FROM offers WHERE source='eures' GROUP BY ad_language` : `nl` > 0 en base ET `GET /offers` avec les filtres candidat ne les retourne pas (invariants L5+L6 combinés)
 
 Si tout est OK : "go". Sinon dis ce qui cloche.
 
@@ -107,24 +170,51 @@ Si tout est OK : "go". Sinon dis ce qui cloche.
 
 ## Livrables détaillés
 
-1. **`web/app/pages/offers/[id].vue` (création)** — route + layout + fetch. Done = la page s'affiche sur un id valide, hauteur fixe, 0 scroll de page. **S**
-2. **Frise de statut** — 4 étapes, aucune interactive. Done = clic sur chacune → 0 effet. **XS**
-3. **Bloc synthèse extraction** — tous les champs listés dans la Phase 2, même badges techs que `OfferDetail.vue`. Done = affichage correct sur une offre avec `extracted_facts`. **S**
-4. **Bloc annonce** — scroll interne uniquement. Done = la page ne scrolle pas quand la description déborde. **XS**
-5. **Trois cartes + overlay plein-écran** — état vide, aucune donnée métier. Done = aucun champ de l'offre dans les cartes, overlay s'ouvre et se ferme. **S**
-6. **Bouton Envoyer inerte** — 0 appel réseau, 0 mutation. Done = l'onglet réseau reste vide au clic. **XS**
-7. **Modification bouton Retenir** (`OfferDetail.vue`) — perd toggle, navigue. Done = PUT + navigation vérifiés via réseau. **S**
-8. **Modification `handleSelect`** (`index.vue`) — Retenues → page, autres → drawer. Done = comportement conditionnel vérifié par onglet. **S**
-9. **Action Retirer des retenues** (`offers/[id].vue`) — DELETE + retour. Done = DELETE + router.back() vérifiés. **XS**
+1. **L1a — Retrait cause `langue`** (`scoring/hors_perimetre.py`) — supprimer enum value,
+   constantes regex, et bloc de règle. Done = `git diff` ne montre que des suppressions dans
+   ce fichier, aucune addition. **XS**
+
+2. **L1b — Rescore libération** — `rescore --force` sur 29 offres. Done = `wc -l
+   extract_facts.jsonl` avant = après (0 appel LLM). **XS**
+
+3. **L2 — Colonne `ad_language`** (`storage/db.py`) — ajout idempotent dans `migrate_offers_schema`.
+   Done = `PRAGMA table_info(offers)` montre `ad_language TEXT`. **XS**
+
+4. **L3 — Module `scoring/ad_language.py`** — `detect_ad_language(text) -> str`, offline.
+   Done = imports sans client réseau ni modèle, détection correcte sur échantillon. **S**
+
+5. **L4 — Backfill `backfill_ad_language.py`** — idempotent, `--dry-run`. Done = 0 NULL en
+   base après exécution, dry-run validé manuellement avant la passe réelle. **S**
+
+6. **L5 — Filtre candidat** (`api/offers.py` + `stores/offers.ts`) — query param `ad_language`
+   + VIEW_PRESETS. Done = `GET /offers?ad_language=fr,en` exclut les offres nl. **S**
+
+7. **L6 — `EuresSource`** (`sources/eures.py`) — search + detail par offre, mapping complet,
+   url non nulle, company = employeur réel, délai, pagination sur jvs vide. Done = 0 url
+   NULL, company = employeur réel sur échantillon. **M**
+
+8. **L7 — Câblage `run.py`** — condition belgique_area + `--no-eures`. Done = run déclenche
+   EuresSource quand belgique_area est dans active_zones. **XS**
 
 ## Dépendances critiques
 
-- Livrable 1 (route + layout) bloque tous les autres — rien ne s'intègre sans la page.
-- Livrable 3 (synthèse) dépend de la présence de l'en-tête + layout (livrable 1).
-- Livrable 9 (Retirer) vit dans `offers/[id].vue` — dépend de la création du fichier (livrable 1).
+- L1a bloque L1b (rescore impossible sans le retrait)
+- L2 bloque L4 (la colonne doit exister avant d'y écrire)
+- L3 bloque L4 (backfill appelle `detect_ad_language`)
+- L5 bloque la visibilité correcte des offres EURES dans la vue candidat
+- L1 + L2 + L3 + L4 + L5 doivent être terminés avant L7 (sinon : offres nl visibles)
 
 ## Garde-fous
 
-- Si la DOMPurify sanitization produit un `v-html` sans sanitize → stop et remonte : même pattern que `OfferDetail.vue:241` (`DOMPurify.sanitize(marked(...))` uniquement).
-- Si le test de scroll révèle que le layout laisse déborder la page → réexaminer la chaîne `h-screen overflow-hidden` → `flex-1 overflow-hidden` → `overflow-y-auto` sur le bloc annonce ; le problème vient d'un maillon de la chaîne qui n'a pas `overflow-hidden`.
-- Règle absolue : `git diff api/` et `git diff orchestrator/job_search/storage/db.py` doivent rester vides à chaque ✋. Si non vide → stop immédiat.
+- Si `detect_ad_language` produit > 5 % d'erreurs sur le dry-run du backfill (offres en fr
+  classées "other" ou "nl") → stop, inspecter l'échantillon avant de committer. La bibliothèque
+  `langdetect` est probabiliste sur les textes courts.
+- Si `SELECT COUNT(*) FROM offers WHERE source='eures' AND url IS NULL` > 0 après un run
+  EURES → stop immédiat, remonter : l'url doit venir de la réponse détail, jamais construite
+  synthétiquement.
+- L'enum `HorsPerimetreCause` réduit à 3 valeurs : si un consommateur référence `HorsPerimetreCause.langue`
+  quelque part dans le code, le retrait en L1a cassera à l'import → grep avant de retirer.
+- Si le rescore (L1b) fait passer des offres de `perimetre_causes=['langue']` directement
+  en catégorie (parfait/reve/etc.) sans les bloquer sur une autre cause → comportement
+  nominal ; si toutes tombent en `perimetre_causes=['no_tech']` → attendu aussi (elles
+  avaient peut-être techs_required=[] en plus de la cause langue).
