@@ -21,8 +21,8 @@ class SkillEntry(BaseModel):
 
 
 class Zone(BaseModel):
-    insee: list[str] = Field(min_length=1)
-    dept: list[str] = Field(min_length=1)
+    insee: list[str] = Field(default_factory=list)
+    dept: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
 
 

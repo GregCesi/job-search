@@ -36,6 +36,7 @@ export interface ExtractedFacts {
   techs_required: TechInfo[]
   domain: string
   role_level: string | null  // ic | lead | manager
+  langues_requises: string[]
   parse_failed: boolean
 }
 
@@ -55,6 +56,7 @@ export interface Filters {
   exclude_category?: string
   hors_perimetre?: boolean
   hp_cause?: string
+  exclude_ad_language?: string
   etat_review?: string
   remote?: boolean
   source?: string
@@ -74,10 +76,10 @@ export type ActiveView = CandidateView | OperatorView
 
 const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> & { sort: string; order: string }> = {
   // Candidat
-  cibles:      { category: 'parfait',     hors_perimetre: false, sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
-  gaps:        { category: 'reve',        hors_perimetre: false, sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
-  filet:       { category: 'atteignable', hors_perimetre: false, sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
-  retenues:    { verdict: 'retenu', hors_perimetre: false, exclude_category: 'hors', sort: 'fetched_at', order: 'desc' },
+  cibles:      { category: 'parfait',     hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  gaps:        { category: 'reve',        hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  filet:       { category: 'atteignable', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  retenues:    { verdict: 'retenu', hors_perimetre: false, exclude_category: 'hors', exclude_ad_language: 'nl', sort: 'fetched_at', order: 'desc' },
   // Opérateur
   a_traiter:      { etat_review: 'non_relue,a_revoir', hors_perimetre: false, sort: 'category',   order: 'desc' },
   hors_perimetre: { hors_perimetre: true,                            sort: 'hors_perimetre_reason', order: 'asc' },
@@ -116,6 +118,7 @@ export const useOffersStore = defineStore('offers', () => {
       if (filters.value.exclude_category !== undefined) params.exclude_category = filters.value.exclude_category
       if (filters.value.hors_perimetre !== undefined) params.hors_perimetre = filters.value.hors_perimetre
       if (filters.value.hp_cause !== undefined) params.hp_cause = filters.value.hp_cause
+      if (filters.value.exclude_ad_language !== undefined) params.exclude_ad_language = filters.value.exclude_ad_language
       if (filters.value.etat_review !== undefined) params.etat_review = filters.value.etat_review
       if (filters.value.remote !== undefined) params.remote = filters.value.remote
       if (filters.value.source !== undefined) params.source = filters.value.source

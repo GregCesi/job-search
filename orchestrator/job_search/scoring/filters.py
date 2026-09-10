@@ -19,12 +19,25 @@ _STAGE_CODES = {"STA", "STG", "APP", "PRO"}
 # Mots-clés dans nature_contract signalant stage/apprentissage (fallback si code absent)
 _STAGE_KEYWORDS = ("stage", "apprentissage", "apprenti", "alternance")
 
-# Mapping code contrat France Travail → clé profil
+# Mapping code contrat → clé profil (France Travail + EURES positionOfferingCode)
 _CONTRACT_MAP: dict[str, str] = {
+    # France Travail
     "CDI": "cdi",
     "CDD": "cdd",
     "LIB": "freelance",
     "MIS": "mis",
+    # EURES positionOfferingCode (uppercase dans le filtre)
+    "DIRECTHIRE": "cdi",
+    "SELFEMPLOYED": "freelance",
+    "CONTRACT": "cdd",
+    "TEMPORARYTOHIRE": "cdd",
+    "TEMPORARY": "cdd",
+    "CONTRACTTOHIRE": "cdi",
+    "ONCALL": "cdd",
+    "APPRENTICESHIP": "alternance",
+    "INTERNSHIP": "stage",
+    "SEASONAL": "cdd",
+    "RECRUITMENTRESERVE": "cdd",
 }
 
 

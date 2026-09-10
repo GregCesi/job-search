@@ -1,11 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : 2026-09-08 — Chantier « Page offre retenue » : LIVRÉ ✓ (Phase 1→4, L1→L9, route `/offers/[id]` + frise + synthèse + cartes vides + comportements Retenir/Retenues/Retirer).
-- Prochaine action : aucun chantier en cours — prochaine décision à prendre.
+- Dernière action : 2026-09-10 — Chantier « Belge dans le périmètre » : LIVRÉ ✓ (Phase 1→3, L1a→L8). 596 offres EURES ingérées, nl=301 invisibles en vue candidat, 36 atteignable/rêve scorées.
+- Prochaine action : commit + entrée Notion Journal.
 - Bloquant : aucun.
 
 ## Phase en cours
+- Chantier Belge dans le périmètre (gate langue + ad_language + EURES) : LIVRÉ ✓ (2026-09-09→10, L1a→L8)
 - Chantier Page offre retenue : LIVRÉ ✓ (2026-09-08, L1→L9)
 - Chantier Tri colonnes Contrat/Verdict : LIVRÉ ✓ (2026-08-05, L1.1→L1.5 + bug bucket CASE corrigé)
 - TCK-9 Journal Notion : LIVRÉ ✓ (2026-08-04)
@@ -16,6 +17,7 @@
 - Convs post-update à traiter : session chantier 2 complète
 
 ## Sessions récentes
+- Chantier Belge dans le périmètre : LIVRÉ ✓ (2026-09-09→10, L1a→L8, 596 EURES ingérées)
 - Zone A : sourcing & tri auto livrée (voir `_archive/IMPLEMENTATION-zone-a.md`)
 - Cockpit web Zone A livré (Nuxt 4, read-only)
 - Refonte scoring double-axe : LIVRÉE ✓ (2026-06-02, L1→L13, 68 offres scorées)

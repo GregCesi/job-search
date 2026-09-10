@@ -35,6 +35,7 @@ def save_offer(
     perimetre_causes: list[str] | None = None,
     techs_matched: list[str] | None = None,
     techs_missing: list[str] | None = None,
+    ad_language: str | None = None,
 ) -> None:
     """Upsert offer. Filtered/hors-périmètre offers saved without category."""
     import json
@@ -65,9 +66,9 @@ def save_offer(
              extracted_facts_json, category,
              filtered_out, filter_reason, hors_perimetre_reason,
              perimetre_causes,
-             techs_matched_json, techs_missing_json, rescored_at)
+             techs_matched_json, techs_missing_json, rescored_at, ad_language)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json  = excluded.extracted_facts_json,
             category              = excluded.category,
@@ -79,7 +80,8 @@ def save_offer(
             perimetre_causes      = excluded.perimetre_causes,
             techs_matched_json    = excluded.techs_matched_json,
             techs_missing_json    = excluded.techs_missing_json,
-            rescored_at           = excluded.rescored_at
+            rescored_at           = excluded.rescored_at,
+            ad_language           = COALESCE(excluded.ad_language, ad_language)
         """,
         (
             offer.source, offer.source_id, offer.fingerprint,
@@ -99,6 +101,7 @@ def save_offer(
             matched_json,
             missing_json,
             now,
+            ad_language,
         ),
     )
     conn.commit()

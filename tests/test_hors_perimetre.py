@@ -59,53 +59,6 @@ class TestMgmtRole:
         assert HorsPerimetreCause.mgmt_role not in causes
 
 
-# ── Règle langue ───────────────────────────────────────────────
-
-class TestLangue:
-    @pytest.mark.parametrize("keyword", [
-        "German", "allemand", "Deutsch",
-        "Spanish", "espagnol",
-        "Russian", "russe",
-        "Portuguese", "portugais",
-        "Japanese", "japonais",
-        "Chinese", "chinois", "Mandarin",
-        "Arabic", "arabe",
-        "Polish", "polonais",
-        "Italian", "italien",
-        "Dutch", "néerlandais",
-    ])
-    def test_langue_tierce_triggers(self, keyword: str):
-        causes = derive_hors_perimetre(
-            _facts(),
-            title=f"Software Engineer ({keyword} required)",
-        )
-        assert HorsPerimetreCause.langue in causes
-
-    def test_french_does_not_trigger(self):
-        causes = derive_hors_perimetre(
-            _facts(),
-            title="Data Analyst (French Language)",
-            description="Français courant exigé",
-        )
-        assert HorsPerimetreCause.langue not in causes
-
-    def test_english_does_not_trigger(self):
-        causes = derive_hors_perimetre(
-            _facts(),
-            title="AI Engineer",
-            description="English fluency required",
-        )
-        assert HorsPerimetreCause.langue not in causes
-
-    def test_langue_in_description_triggers(self):
-        causes = derive_hors_perimetre(
-            _facts(),
-            title="Data Analyst",
-            description="Must speak Portuguese fluently",
-        )
-        assert HorsPerimetreCause.langue in causes
-
-
 # ── Règle contrat ──────────────────────────────────────────────
 
 class TestContrat:
@@ -170,14 +123,6 @@ class TestContrat:
 # ── Cumul de causes ────────────────────────────────────────────
 
 class TestCumul:
-    def test_langue_plus_contrat(self):
-        causes = derive_hors_perimetre(
-            _facts(),
-            title="Alternance développeur German-speaking",
-        )
-        assert HorsPerimetreCause.langue in causes
-        assert HorsPerimetreCause.contrat in causes
-
     def test_no_tech_plus_mgmt(self):
         causes = derive_hors_perimetre(
             _facts(techs=[], role="manager"),
@@ -185,17 +130,16 @@ class TestCumul:
         assert HorsPerimetreCause.no_tech in causes
         assert HorsPerimetreCause.mgmt_role in causes
 
-    def test_all_four_causes(self):
+    def test_all_three_causes(self):
         causes = derive_hors_perimetre(
             _facts(techs=[], role="manager"),
-            title="Stage German DevOps",
+            title="Stage DevOps",
             alternance=True,
         )
-        assert len(causes) == 4
+        assert len(causes) == 3
         assert set(causes) == {
             HorsPerimetreCause.no_tech,
             HorsPerimetreCause.mgmt_role,
-            HorsPerimetreCause.langue,
             HorsPerimetreCause.contrat,
         }
 

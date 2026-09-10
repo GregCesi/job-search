@@ -195,7 +195,8 @@ def list_offers(
     category: str | None = Query(None, description="parfait | reve | atteignable | hors"),
     exclude_category: str | None = Query(None, description="Exclut les offres de cette catégorie (ex: hors)"),
     hors_perimetre: bool | None = Query(None, description="True=seulement hors-périmètre, False=exclut hors-périmètre, None=tout"),
-    hp_cause: str | None = Query(None, description="Filtre par cause HP : no_tech | mgmt_role | langue | contrat"),
+    hp_cause: str | None = Query(None, description="Filtre par cause HP : no_tech | mgmt_role | contrat"),
+    exclude_ad_language: str | None = Query(None, description="Exclut les offres dont ad_language est dans cette liste (comma-separated, ex: nl)"),
     etat_review: str | None = Query(None, description="non_relue | validee | corrigee"),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
     sort: str = Query("category"),
@@ -237,6 +238,12 @@ def list_offers(
     if hp_cause is not None:
         conditions.append("o.perimetre_causes LIKE ?")
         params.append(f'%"{hp_cause}"%')
+    if exclude_ad_language is not None:
+        langs = [l.strip() for l in exclude_ad_language.split(",") if l.strip()]
+        if langs:
+            placeholders = ",".join("?" * len(langs))
+            conditions.append(f"(o.ad_language IS NULL OR o.ad_language NOT IN ({placeholders}))")
+            params.extend(langs)
     if etat_review is not None:
         etats = [e.strip() for e in etat_review.split(",") if e.strip()]
         if etats:
@@ -455,6 +462,7 @@ def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:
             techs_required=techs,
             domain=data.get("domain", ""),
             role_level=data.get("role_level"),
+            langues_requises=data.get("langues_requises", []),
             parse_failed=data.get("parse_failed", False),
         )
     except Exception as exc:

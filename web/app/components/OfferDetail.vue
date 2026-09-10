@@ -197,6 +197,7 @@
                 <span><span class="text-gray-400">Domaine</span> <span class="font-medium text-gray-700">{{ offer.extracted_facts.domain }}</span></span>
                 <span v-if="offer.extracted_facts.role_level"><span class="text-gray-400">Rôle</span> <span class="font-medium text-gray-700">{{ offer.extracted_facts.role_level }}</span></span>
                 <span><span class="text-gray-400">Séniorité</span> <span class="font-medium text-gray-700">{{ offer.extracted_facts.seniority_required }}</span></span>
+                <span v-if="offer.extracted_facts.langues_requises?.length"><span class="text-gray-400">Langues</span> <span class="font-medium text-gray-700">{{ offer.extracted_facts.langues_requises.join(', ') }}</span></span>
               </div>
               <!-- Tech badges — split by profile ownership -->
               <template v-if="offer.extracted_facts.techs_required.length > 0">

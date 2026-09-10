@@ -19,6 +19,7 @@ def main() -> None:
     parser.add_argument("--since-hours", type=int, default=24)
     parser.add_argument("--no-remotive", action="store_true", help="Disable Remotive source")
     parser.add_argument("--no-indeed", action="store_true", help="Disable Indeed file source")
+    parser.add_argument("--no-eures", action="store_true", help="Disable EURES source")
     args = parser.parse_args()
 
     from dotenv import load_dotenv
@@ -30,10 +31,12 @@ def main() -> None:
     from orchestrator.job_search.scoring.attainability import compute_attainability
     from orchestrator.job_search.scoring.categorize import categorize
     from orchestrator.job_search.scoring.desirability import compute_desirability
+    from orchestrator.job_search.scoring.ad_language import detect_ad_language
     from orchestrator.job_search.scoring.extractor import extract_facts
     from orchestrator.job_search.scoring.filters import apply_hard_filters
     from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
     from orchestrator.job_search.sources.base import JobOffer, Source
+    from orchestrator.job_search.sources.eures import EuresSource
     from orchestrator.job_search.sources.france_travail import FranceTravailSource
     from orchestrator.job_search.sources.indeed_file import IndeedFileSource
     from orchestrator.job_search.sources.remotive import RemotiveSource
@@ -73,6 +76,8 @@ def main() -> None:
         sources.append(RemotiveSource())
     if not args.no_indeed:
         sources.append(IndeedFileSource())
+    if not args.no_eures and "belgique_area" in active_zones:
+        sources.append(EuresSource(keywords=kw))
 
     all_offers: list[JobOffer] = []
     for src in sources:
@@ -93,7 +98,8 @@ def main() -> None:
 
         filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria, profile.zones)
         if filtered_out:
-            save_offer(conn, offer, filtered_out=True, filter_reason=filter_reason)
+            ad_lang = detect_ad_language(offer.description or "")
+            save_offer(conn, offer, filtered_out=True, filter_reason=filter_reason, ad_language=ad_lang)
             print(f"         → filtré : {filter_reason}")
             continue
 
@@ -112,18 +118,21 @@ def main() -> None:
             nature_contract=offer.nature_contract,
             alternance=offer.alternance,
         )
+        ad_lang = detect_ad_language(offer.description or "")
         if hp_causes:
             flag = " ⚠ parse_failed" if facts.parse_failed else ""
             causes_str = [c.value for c in hp_causes]
             save_offer(conn, offer,
                        perimetre_causes=causes_str,
-                       techs_matched=a.techs_matched, techs_missing=a.techs_missing)
+                       techs_matched=a.techs_matched, techs_missing=a.techs_missing,
+                       ad_language=ad_lang)
             print(f"         → hors_perimetre: {','.join(causes_str)}{flag}")
             continue
 
         cat = categorize(d.score, a.score)
         save_offer(conn, offer, category=cat,
-                   techs_matched=a.techs_matched, techs_missing=a.techs_missing)
+                   techs_matched=a.techs_matched, techs_missing=a.techs_missing,
+                   ad_language=ad_lang)
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
         print(f"         → [{cat.value}]{flag}")

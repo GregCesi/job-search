@@ -38,7 +38,7 @@ def export_offers(
     etat_review: str | None = Query(None),
     q: str | None = Query(None),
     exclude_category: str | None = Query(None),
-    hp_cause: str | None = Query(None, description="Filtre par cause HP : no_tech | mgmt_role | langue | contrat"),
+    hp_cause: str | None = Query(None, description="Filtre par cause HP : no_tech | mgmt_role | contrat"),
     sort: str = Query("category"),
     order: str = Query("desc"),
     include: str | None = Query(None, description="Champs à inclure (comma-separated). Défaut: company,category,techs"),

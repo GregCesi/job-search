@@ -39,6 +39,7 @@ class ExtractedFactsSchema(BaseModel):
     techs_required: list[TechSchema]
     domain: str
     role_level: str | None = None  # ic | lead | manager
+    langues_requises: list[str] = []
     parse_failed: bool = False
 
 

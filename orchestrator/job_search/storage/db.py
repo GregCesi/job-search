@@ -93,6 +93,8 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("perimetre_causes",    "TEXT"),
         # staleness : timestamp du dernier (re)score — comparé à reviewed_at
         ("rescored_at",         "TEXT"),
+        # chantier belge — langue de rédaction de l'annonce (fr|en|nl|other)
+        ("ad_language",         "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:
