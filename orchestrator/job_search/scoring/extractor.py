@@ -25,6 +25,10 @@ load_dotenv()
 
 _DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 _DEFAULT_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+# Fenêtre fixée explicitement : le défaut d'Ollama change selon sa version et
+# tronque en silence (TCK-200, offre 2874 sous 0.22.0). Prompt max ≈ 4000 tokens
+# (description plafonnée à 8000 chars + système + few-shot), réponse JSON < 1000.
+_NUM_CTX = 8192
 
 _SYSTEM_PROMPT = """\
 You are a technical job offer analyzer. Extract facts from the job offer — no scoring, no opinion.
@@ -139,7 +143,10 @@ def extract_facts(
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                options={"temperature": 0.1},
+                options={"temperature": 0.1, "num_ctx": _NUM_CTX},
+                # Raisonnement coupé : sur gemma4:12b il consomme la fenêtre et
+                # rend une réponse vide (done_reason=length, TCK-200).
+                think=False,
             )
             _last_raw = resp.message.content
             raw = resp.message.content.strip()
