@@ -64,6 +64,22 @@ def main() -> None:
     init_db(conn)
 
     current_version = extraction_version(model)
+
+    # Garde-fou (TCK-211) : sans Ollama, extract_facts renvoie un fallback vide
+    # qui écraserait les faits existants. On refuse de démarrer.
+    if args.re_extract or args.re_extract_stale:
+        import ollama
+        try:
+            listed = ollama.Client(host=host).list()
+        except Exception as exc:
+            raise SystemExit(f"[rescore] Ollama injoignable sur {host} ({exc}). Lance l'app Ollama ou `ollama serve`, puis relance.")
+        models = listed.get("models", []) if isinstance(listed, dict) else getattr(listed, "models", [])
+        available = {
+            (m.get("model") or m.get("name")) if isinstance(m, dict) else (getattr(m, "model", None) or getattr(m, "name", None))
+            for m in models
+        }
+        if model not in available and f"{model}:latest" not in available:
+            raise SystemExit(f"[rescore] modèle {model} absent d'Ollama (disponibles : {sorted(available)}).")
     conditions: list[str] = ["(o.filtered_out = 0 OR o.filtered_out IS NULL)"]
     params: list = []
     order_params: list = []
@@ -187,7 +203,8 @@ def main() -> None:
 
         if facts is None:
             facts = extract_facts(offer, model=model, host=host)
-            version = current_version
+            # Une extraction en échec n'est pas marquée : elle sera retentée au prochain run
+            version = None if facts.parse_failed else current_version
 
         offer = offer.model_copy(update={"extracted_facts": facts})
 
@@ -213,6 +230,8 @@ def main() -> None:
             flag = " ⚠ parse_failed" if facts.parse_failed else ""
             causes_str = [c.value for c in hp_causes]
             print(f"           → hors_perimetre: {','.join(causes_str)}{flag}")
+            if facts.parse_failed:
+                n_fail += 1
             if not args.dry_run:
                 save_offer(conn, offer,
                            perimetre_causes=causes_str,

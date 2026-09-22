@@ -125,14 +125,16 @@ def main() -> None:
             save_offer(conn, offer,
                        perimetre_causes=causes_str,
                        techs_matched=a.techs_matched, techs_missing=a.techs_missing,
-                       ad_language=ad_lang, extraction_version=extraction_version(model))
+                       ad_language=ad_lang,
+                   extraction_version=None if facts.parse_failed else extraction_version(model))
             print(f"         → hors_perimetre: {','.join(causes_str)}{flag}")
             continue
 
         cat = categorize(d.score, a.score)
         save_offer(conn, offer, category=cat,
                    techs_matched=a.techs_matched, techs_missing=a.techs_missing,
-                   ad_language=ad_lang, extraction_version=extraction_version(model))
+                   ad_language=ad_lang,
+                   extraction_version=None if facts.parse_failed else extraction_version(model))
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
         print(f"         → [{cat.value}]{flag}")
