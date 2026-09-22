@@ -199,6 +199,8 @@ def list_offers(
     exclude_ad_language: str | None = Query(None, description="Exclut les offres dont ad_language est dans cette liste (comma-separated, ex: nl)"),
     etat_review: str | None = Query(None, description="non_relue | validee | corrigee"),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
+    view_profile: bool | None = Query(None),
+    include_remote: bool | None = Query(None),
     sort: str = Query("category"),
     order: str = Query("desc"),
 ) -> list[OfferRow]:
@@ -263,6 +265,15 @@ def list_offers(
         conditions.append("(LOWER(o.title) LIKE ? OR LOWER(o.company) LIKE ?)")
         like = f"%{q.lower()}%"
         params.extend([like, like])
+    if view_profile is True:
+        from api.view_profile import build_view_clauses
+        zone_conds, zone_params = build_view_clauses()
+        zone_conds = list(zone_conds)
+        if include_remote is True:
+            zone_conds.append("o.remote = 1")
+        if zone_conds:
+            conditions.append(f"({' OR '.join(zone_conds)})")
+            params.extend(zone_params)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

@@ -96,6 +96,8 @@ export const useOffersStore = defineStore('offers', () => {
   const activeView = ref<ActiveView>('a_traiter')
   const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter })
   const loading = ref(false)
+  const viewProfileActive = ref(true)
+  const includeRemote = ref(false)
   const traceCounts = ref<Record<string, number>>({})
 
   async function fetchTraceCounts() {
@@ -125,6 +127,10 @@ export const useOffersStore = defineStore('offers', () => {
       if (filters.value.verdict !== undefined) params.verdict = filters.value.verdict
       if (filters.value.seen_candidat !== undefined) params.seen_candidat = filters.value.seen_candidat
       if (filters.value.q) params.q = filters.value.q
+      if (['cibles', 'gaps', 'filet', 'retenues'].includes(activeView.value)) {
+        params.view_profile = viewProfileActive.value
+        if (includeRemote.value) params.include_remote = true
+      }
 
       const data = await $fetch<OfferRow[]>(`${config.public.apiBase}/offers`, { params })
       offers.value = data
@@ -202,6 +208,8 @@ export const useOffersStore = defineStore('offers', () => {
     activeView,
     filters,
     loading,
+    viewProfileActive,
+    includeRemote,
     traceCounts,
     fetchOffers,
     fetchTraceCounts,

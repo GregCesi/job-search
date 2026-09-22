@@ -70,7 +70,7 @@ import type { OfferRow, ActiveView } from '~/stores/offers'
 const config = useRuntimeConfig()
 const store = useOffersStore()
 onMounted(() => {
-  store.fetchOffers()
+  store.setView('a_traiter')
   store.fetchTraceCounts()
 })
 

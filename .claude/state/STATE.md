@@ -1,11 +1,13 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : 2026-09-10 — Chantier « Belge dans le périmètre » : LIVRÉ ✓ (Phase 1→3, L1a→L8). 596 offres EURES ingérées, nl=301 invisibles en vue candidat, 36 atteignable/rêve scorées.
-- Prochaine action : commit + entrée Notion Journal.
+- Dernière action : 2026-09-22 — TCK-162 Vue candidat filtre géographique : LIVRÉ ✓ (L0→L8). `api/view_profile.py` + 2 params `view_profile`/`include_remote` sur `GET /offers` + `vue_candidat.yaml` + toggle+case dans `index.vue` + fermeture fuite `operateur.vue`. 18 conditions SQL, 0 écart SQL/Python, 0 cas liège.
+- Prochaine action : handoff — entrée Journal Notion pour ce chantier.
 - Bloquant : aucun.
 
 ## Phase en cours
+- TCK-162 Vue candidat filtre géographique : LIVRÉ ✓ (2026-09-22, L0→L8)
+- TCK-200 Expérience extraction 6 variantes : LIVRÉ ✓ (2026-09-21, L1→L2)
 - Chantier Belge dans le périmètre (gate langue + ad_language + EURES) : LIVRÉ ✓ (2026-09-09→10, L1a→L8)
 - Chantier Page offre retenue : LIVRÉ ✓ (2026-09-08, L1→L9)
 - Chantier Tri colonnes Contrat/Verdict : LIVRÉ ✓ (2026-08-05, L1.1→L1.5 + bug bucket CASE corrigé)

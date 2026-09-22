@@ -11,4 +11,5 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DB_PATH = REPO_ROOT / "data" / "job_search.sqlite"
 TRACES_PATH = REPO_ROOT / "data" / "traces" / "extract_facts.jsonl"
 PROFILE_PATH = REPO_ROOT / "profiles" / "gregoire.yaml"
+VUE_CANDIDAT_PATH = REPO_ROOT / "profiles" / "vue_candidat.yaml"
 ALIAS_PATH = REPO_ROOT / "profiles" / "alias.yaml"

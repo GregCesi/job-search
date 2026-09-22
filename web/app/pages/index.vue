@@ -26,6 +26,24 @@
         <span class="text-xs text-gray-400">
           {{ store.offers.length }} offre{{ store.offers.length !== 1 ? 's' : '' }}
         </span>
+        <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            :checked="store.viewProfileActive"
+            @change="store.viewProfileActive = ($event.target as HTMLInputElement).checked; store.fetchOffers()"
+            class="accent-indigo-600"
+          />
+          Profil de vue
+        </label>
+        <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            :checked="store.includeRemote"
+            @change="store.includeRemote = ($event.target as HTMLInputElement).checked; store.fetchOffers()"
+            class="accent-indigo-600"
+          />
+          Inclure le remote
+        </label>
         <NuxtLink
           to="/traces"
           class="text-xs text-indigo-600 hover:underline font-medium"
@@ -63,6 +81,8 @@ import type { OfferRow, CandidateView } from '~/stores/offers'
 const config = useRuntimeConfig()
 const store = useOffersStore()
 onMounted(() => {
+  store.viewProfileActive = true
+  store.includeRemote = false
   store.setView('cibles')
   store.fetchTraceCounts()
 })

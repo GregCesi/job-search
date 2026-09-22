@@ -1,0 +1,4 @@
+# Profil de vue candidat — désigne des zones de gregoire.yaml sans les redéfinir
+zones:
+  - belgique_area
+  - strasbourg_area
