@@ -44,7 +44,7 @@ aliases:
   opencv:        [open_cv]
 
   # --- DevOps / CI ---
-  ci_cd:         [ci/cd]
+  ci_cd:         [ci/cd, cicd, ci/cd pipelines]
   gitlab_ci:     [gitlab ci]
 
   # --- Réseau / sécurité ---
@@ -74,11 +74,23 @@ aliases:
   # entrées de profil à part entière (cf. gregoire.yaml), pas des proxies.
   # STOPGAP ai/ia → llm — amende la décision L17-18 (technos molles).
   # Vrai fix = compétence dérivée Tier-2, backlog.
-  llm:           [llms, ai, ia, artificial_intelligence, intelligence_artificielle]
+  llm:           [llms, ai, ia, artificial_intelligence, intelligence_artificielle,
+                  large language models, generative ai, genai, gen ai, ia generative, ia générative, llm api]   # TCK-211 : même stopgap, étendu aux variantes
   agents:        [agents_ia, ai_agents]
   ml:            [machine_learning, ml_frameworks]
   nlp:           []
   rag:           []
+
+
+  # --- Variantes relevées après la bascule gemma4:12b (TCK-211, 22/09/2026) ---
+  # Même notion, écritures différentes. Aucune implication (chromadb ≠ vector_database).
+  vector_database: [vector databases, vector db, vector dbs, bases vectorielles, base vectorielle, vectorial bases]
+  rest_api:      [rest api, rest apis, api rest, apis rest, rest, api, apis]   # api générique rabattu sur rest_api (décision 22/09)
+  powerbi:       [power bi]
+  azure_devops:  [azuredevops]
+  nodejs:        [node, node.js]
+  scikit-learn:  [sklearn]
+  hugging_face:  [huggingface]
 
 
 exclude:
@@ -96,3 +108,15 @@ exclude:
   - os
   - microsoft
   - cloud
+
+  # Langues humaines extraites comme technos (TCK-211)
+  - english
+  - french
+  - dutch
+  - anglais
+  - français
+  - francais
+  - néerlandais
+
+  # Diplôme, pas une techno
+  - master
