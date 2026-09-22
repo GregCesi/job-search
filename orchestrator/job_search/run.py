@@ -32,7 +32,7 @@ def main() -> None:
     from orchestrator.job_search.scoring.categorize import categorize
     from orchestrator.job_search.scoring.desirability import compute_desirability
     from orchestrator.job_search.scoring.ad_language import detect_ad_language
-    from orchestrator.job_search.scoring.extractor import extract_facts
+    from orchestrator.job_search.scoring.extractor import extract_facts, extraction_version
     from orchestrator.job_search.scoring.filters import apply_hard_filters
     from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
     from orchestrator.job_search.sources.base import JobOffer, Source
@@ -44,7 +44,7 @@ def main() -> None:
     from orchestrator.job_search.storage.dedup import filter_new
     from orchestrator.job_search.storage.offers import get_offers_since, save_offer
 
-    model = os.getenv("OLLAMA_MODEL", "llama3")
+    model = os.getenv("OLLAMA_MODEL", "gemma4:12b")
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
     run_at = datetime.now(timezone.utc)
@@ -125,14 +125,14 @@ def main() -> None:
             save_offer(conn, offer,
                        perimetre_causes=causes_str,
                        techs_matched=a.techs_matched, techs_missing=a.techs_missing,
-                       ad_language=ad_lang)
+                       ad_language=ad_lang, extraction_version=extraction_version(model))
             print(f"         → hors_perimetre: {','.join(causes_str)}{flag}")
             continue
 
         cat = categorize(d.score, a.score)
         save_offer(conn, offer, category=cat,
                    techs_matched=a.techs_matched, techs_missing=a.techs_missing,
-                   ad_language=ad_lang)
+                   ad_language=ad_lang, extraction_version=extraction_version(model))
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
         print(f"         → [{cat.value}]{flag}")

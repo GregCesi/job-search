@@ -4,6 +4,14 @@ Relance de la catégorisation sur les offres sans catégorie.
 Usage:
     python -m orchestrator.job_search.rescore
     python -m orchestrator.job_search.rescore --profile profiles/gregoire.yaml --dry-run
+
+Réextraction ciblée (TCK-211) — ne reprend que les offres dont `extraction_version`
+diffère de la version courante (modèle + prompt + schéma). Interruptible : chaque
+offre est écrite dès qu'elle est faite, un nouveau lancement reprend les restantes.
+Ordre : vue candidat d'abord, puis parfait → reve → atteignable → le reste.
+    python -m orchestrator.job_search.rescore --re-extract-stale --vue-candidat --categories parfait
+    python -m orchestrator.job_search.rescore --re-extract-stale --categories parfait,reve,atteignable
+    python -m orchestrator.job_search.rescore --re-extract-stale --random --limit 10
 """
 import argparse
 import os
@@ -19,6 +27,15 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Affiche sans écrire en base")
     parser.add_argument("--force", action="store_true", help="Recalcule toutes les offres (y compris déjà scorées)")
     parser.add_argument("--re-extract", action="store_true", help="Force ré-extraction LLM (ignore les facts en cache)")
+    parser.add_argument("--re-extract-stale", action="store_true",
+                        help="Réextrait les offres dont extraction_version diffère de la version courante (TCK-211)")
+    parser.add_argument("--vue-candidat", action="store_true",
+                        help="Restreint aux zones de profiles/vue_candidat.yaml")
+    parser.add_argument("--categories", default=None,
+                        help="Catégories courantes à traiter, séparées par des virgules "
+                             "(parfait,reve,atteignable,hors,hors_perimetre)")
+    parser.add_argument("--limit", type=int, default=None, help="Nombre maximum d'offres traitées")
+    parser.add_argument("--random", action="store_true", help="Ordre aléatoire (avec --limit : un échantillon)")
     args = parser.parse_args()
 
     from dotenv import load_dotenv
@@ -29,14 +46,14 @@ def main() -> None:
     from orchestrator.job_search.scoring.attainability import compute_attainability
     from orchestrator.job_search.scoring.categorize import categorize
     from orchestrator.job_search.scoring.desirability import compute_desirability
-    from orchestrator.job_search.scoring.extractor import extract_facts
+    from orchestrator.job_search.scoring.extractor import extract_facts, extraction_version
     from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
     from orchestrator.job_search.scoring.filters import apply_hard_filters
     from orchestrator.job_search.sources.base import JobOffer
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.offers import save_offer
 
-    model = os.getenv("OLLAMA_MODEL", "llama3")
+    model = os.getenv("OLLAMA_MODEL", "gemma4:12b")
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
     profile, profile_hash = load_profile(args.profile)
@@ -46,21 +63,68 @@ def main() -> None:
     conn = get_connection()
     init_db(conn)
 
-    if args.force:
-        score_cond = ""  # toutes les offres (y compris déjà gatées/scorées)
+    current_version = extraction_version(model)
+    conditions: list[str] = ["(o.filtered_out = 0 OR o.filtered_out IS NULL)"]
+    params: list = []
+    order_params: list = []
+
+    if args.re_extract_stale:
+        conditions.append("(o.extraction_version IS NULL OR o.extraction_version != ?)")
+        params.append(current_version)
+        print(f"[rescore] version courante : {current_version}")
+    elif not args.force:
+        conditions.append("o.category IS NULL AND o.hors_perimetre_reason IS NULL")
+
+    if args.categories:
+        wanted = [c.strip() for c in args.categories.split(",") if c.strip()]
+        cat_conds = []
+        plain = [c for c in wanted if c != "hors_perimetre"]
+        if plain:
+            cat_conds.append(f"o.category IN ({','.join('?' * len(plain))})")
+            params.extend(plain)
+        if "hors_perimetre" in wanted:
+            cat_conds.append("o.hors_perimetre_reason IS NOT NULL")
+        conditions.append("(" + " OR ".join(cat_conds) + ")")
+
+    zone_sql = "0"
+    if args.vue_candidat or args.re_extract_stale:
+        from api.view_profile import build_view_clauses
+        zone_conds, zone_params = build_view_clauses()
+        if zone_conds:
+            zone_sql = "(" + " OR ".join(zone_conds) + ")"
+            if args.vue_candidat:
+                conditions.append(zone_sql)
+                params.extend(zone_params)
+            order_params = list(zone_params)
+
+    if args.random:
+        order_sql = "RANDOM()"
+        order_params = []
+    elif args.re_extract_stale:
+        # Du plus intéressant au moins intéressant : zone candidat, puis catégorie
+        order_sql = (
+            f"CASE WHEN {zone_sql} THEN 0 ELSE 1 END, "
+            "CASE o.category WHEN 'parfait' THEN 0 WHEN 'reve' THEN 1 "
+            "WHEN 'atteignable' THEN 2 ELSE 3 END, o.fetched_at DESC"
+        )
     else:
-        score_cond = "AND category IS NULL AND hors_perimetre_reason IS NULL"
+        order_sql = "o.fetched_at DESC"
+        order_params = []
+
+    limit_sql = f"LIMIT {int(args.limit)}" if args.limit else ""
     rows = conn.execute(
         f"""
-        SELECT source, source_id, fingerprint, title, description,
-               company, location, remote, contract_type, nature_contract,
-               alternance, full_time, company_size, experience_required,
-               rome_code, rome_label, url, fetched_at, extracted_facts_json
-        FROM offers
-        WHERE (filtered_out = 0 OR filtered_out IS NULL)
-          {score_cond}
-        ORDER BY fetched_at DESC
-        """
+        SELECT o.source, o.source_id, o.fingerprint, o.title, o.description, o.description_raw,
+               o.company, o.location, o.remote, o.contract_type, o.nature_contract,
+               o.alternance, o.full_time, o.company_size, o.experience_required,
+               o.rome_code, o.rome_label, o.url, o.fetched_at, o.extracted_facts_json,
+               o.category
+        FROM offers o
+        WHERE {" AND ".join(conditions)}
+        ORDER BY {order_sql}
+        {limit_sql}
+        """,
+        params + order_params,
     ).fetchall()
 
     print(f"[rescore] {len(rows)} offres à scorer", flush=True)
@@ -83,6 +147,7 @@ def main() -> None:
             fingerprint=r["fingerprint"],
             title=r["title"] or "",
             description=r["description"] or "",
+            description_raw=r["description_raw"],
             company=r["company"],
             location=r["location"],
             remote=bool(r["remote"]),
@@ -100,7 +165,7 @@ def main() -> None:
             else datetime.now(timezone.utc),
         )
 
-        print(f"[rescore] ({i}/{len(rows)}) {offer.title[:55]}", flush=True)
+        print(f"[rescore] ({i}/{len(rows)}) [{r['category'] or '-'}] {offer.title[:55]}", flush=True)
 
         filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria, profile.zones)
         if filtered_out:
@@ -112,7 +177,8 @@ def main() -> None:
 
         # Réutilise les faits déjà extraits si disponibles — 0 LLM (architecture.md §4)
         facts = None
-        if not args.re_extract and r["extracted_facts_json"]:
+        version = None  # écrit seulement si l'extraction est refaite ici
+        if not (args.re_extract or args.re_extract_stale) and r["extracted_facts_json"]:
             try:
                 from orchestrator.job_search.sources.base import ExtractedFacts
                 facts = ExtractedFacts.model_validate_json(r["extracted_facts_json"])
@@ -121,6 +187,7 @@ def main() -> None:
 
         if facts is None:
             facts = extract_facts(offer, model=model, host=host)
+            version = current_version
 
         offer = offer.model_copy(update={"extracted_facts": facts})
 
@@ -149,19 +216,23 @@ def main() -> None:
             if not args.dry_run:
                 save_offer(conn, offer,
                            perimetre_causes=causes_str,
-                           techs_matched=a.techs_matched, techs_missing=a.techs_missing)
+                           techs_matched=a.techs_matched, techs_missing=a.techs_missing,
+                           extraction_version=version)
             n_ok += 1
             continue
 
         cat = categorize(d.score, a.score)
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
-        print(f"           → [{cat.value}]{flag}")
+        prev = r["category"] or "-"
+        moved = f"  (était {prev})" if prev != cat.value else ""
+        print(f"           → [{cat.value}]{flag}{moved}")
 
         if not args.dry_run:
             save_offer(conn, offer, category=cat,
                        perimetre_causes=[],
-                       techs_matched=a.techs_matched, techs_missing=a.techs_missing)
+                       techs_matched=a.techs_matched, techs_missing=a.techs_missing,
+                       extraction_version=version)
             n_ok += 1
         else:
             n_ok += 1

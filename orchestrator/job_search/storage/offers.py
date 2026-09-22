@@ -36,6 +36,7 @@ def save_offer(
     techs_matched: list[str] | None = None,
     techs_missing: list[str] | None = None,
     ad_language: str | None = None,
+    extraction_version: str | None = None,
 ) -> None:
     """Upsert offer. Filtered/hors-périmètre offers saved without category."""
     import json
@@ -66,14 +67,16 @@ def save_offer(
              extracted_facts_json, category,
              filtered_out, filter_reason, hors_perimetre_reason,
              perimetre_causes,
-             techs_matched_json, techs_missing_json, rescored_at, ad_language)
+             techs_matched_json, techs_missing_json, rescored_at, ad_language,
+             extraction_version)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json  = excluded.extracted_facts_json,
             category              = excluded.category,
             description           = excluded.description,
-            description_raw       = excluded.description_raw,
+            -- COALESCE : un appelant qui ne relit pas le brut (rescore) ne l'efface plus (TCK-211)
+            description_raw       = COALESCE(excluded.description_raw, description_raw),
             filtered_out          = excluded.filtered_out,
             filter_reason         = excluded.filter_reason,
             hors_perimetre_reason = excluded.hors_perimetre_reason,
@@ -81,7 +84,8 @@ def save_offer(
             techs_matched_json    = excluded.techs_matched_json,
             techs_missing_json    = excluded.techs_missing_json,
             rescored_at           = excluded.rescored_at,
-            ad_language           = COALESCE(excluded.ad_language, ad_language)
+            ad_language           = COALESCE(excluded.ad_language, ad_language),
+            extraction_version    = COALESCE(excluded.extraction_version, extraction_version)
         """,
         (
             offer.source, offer.source_id, offer.fingerprint,
@@ -102,6 +106,7 @@ def save_offer(
             missing_json,
             now,
             ad_language,
+            extraction_version,
         ),
     )
     conn.commit()

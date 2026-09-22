@@ -4,6 +4,7 @@ Extraction LLM des faits intrinsèques d'une offre (architecture.md §4).
 Un seul appel par offre, à l'ingestion. Résultat persisté sur `offers`.
 Jamais recalculé sauf si l'offre change.
 """
+import hashlib
 import json
 import os
 import warnings
@@ -23,7 +24,7 @@ from orchestrator.job_search.sources.base import (
 
 load_dotenv()
 
-_DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+_DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:12b")
 _DEFAULT_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 # Fenêtre fixée explicitement : le défaut d'Ollama change selon sa version et
 # tronque en silence (TCK-200, offre 2874 sous 0.22.0). Prompt max ≈ 4000 tokens
@@ -87,6 +88,24 @@ Experience hint: Souhaitée
 → {"seniority_required": "intermediate", "techs_required": [{"name": "java", "importance": "core"}, {"name": "spring", "importance": "core"}, {"name": "postgresql", "importance": "required"}, {"name": "docker", "importance": "required"}, {"name": "jenkins", "importance": "required"}, {"name": "kafka", "importance": "nice_to_have"}, {"name": "rabbitmq", "importance": "nice_to_have"}], "domain": "backend", "role_level": "ic", "langues_requises": []}
 """
 
+# Version du vocabulaire de sortie. À incrémenter à chaque changement de champ
+# ou d'énumération rendus par le modèle (TCK-211).
+SCHEMA_VERSION = 1
+_TEMPERATURE = 0.1
+
+
+def extraction_version(model: str = _DEFAULT_MODEL) -> str:
+    """Identifie une extraction : modèle + empreinte (prompts, num_ctx, température) + schéma.
+
+    Deux offres de même version ont été extraites dans les mêmes conditions.
+    Changer le prompt, le modèle ou le schéma change la version : la réextraction
+    ciblée (`rescore --re-extract-stale`) sait alors quelles offres refaire.
+    """
+    payload = f"{_SYSTEM_PROMPT}\n{_FEW_SHOT}\nctx={_NUM_CTX}\ntemp={_TEMPERATURE}"
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
+    return f"{model}|p{digest}|s{SCHEMA_VERSION}"
+
+
 _SENIORITY_VALID = {s.value for s in SeniorityLevel}
 _ROLE_VALID = {r.value for r in RoleLevel}
 _IMPORTANCE_VALID = {"core", "required", "nice_to_have"}
@@ -143,7 +162,7 @@ def extract_facts(
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                options={"temperature": 0.1, "num_ctx": _NUM_CTX},
+                options={"temperature": _TEMPERATURE, "num_ctx": _NUM_CTX},
                 # Raisonnement coupé : sur gemma4:12b il consomme la fenêtre et
                 # rend une réponse vide (done_reason=length, TCK-200).
                 think=False,
@@ -216,7 +235,8 @@ def extract_facts(
             _write_trace(LLMTrace(
                 offer_id=offer.source_id,
                 model=model,
-                temperature=0.1,
+                extraction_version=extraction_version(model),
+                temperature=_TEMPERATURE,
                 prompt_system=_SYSTEM_PROMPT,
                 prompt_user=user_prompt,
                 raw_response=_last_raw,
@@ -235,7 +255,8 @@ def extract_facts(
     _write_trace(LLMTrace(
         offer_id=offer.source_id,
         model=model,
-        temperature=0.1,
+        extraction_version=extraction_version(model),
+        temperature=_TEMPERATURE,
         prompt_system=_SYSTEM_PROMPT,
         prompt_user=user_prompt,
         raw_response=_last_raw,

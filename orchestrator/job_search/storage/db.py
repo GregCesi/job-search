@@ -95,6 +95,8 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("rescored_at",         "TEXT"),
         # chantier belge — langue de rédaction de l'annonce (fr|en|nl|other)
         ("ad_language",         "TEXT"),
+        # TCK-211 — version de l'extraction (modèle + empreinte prompt + schéma)
+        ("extraction_version",  "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:
