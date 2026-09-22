@@ -24,11 +24,12 @@ aliases:
   cpp:           [c++, cplusplus]
   go:            [golang]
   javascript:    [js]
-  vue:           [vuejs]
+  vue:           [vuejs, vue.js]
+  react:         [react.js, reactjs]
 
   # --- Bases de données ---
   postgresql:    [postgres]
-  sql_server:    [sql server, sqlserver]
+  sql_server:    [sql server, sqlserver, mssql, ms sql, microsoft sql server]
   mongodb:       [mongo]
   neo4j:         [ne4j]            # typo générée par le LLM
 
@@ -45,7 +46,7 @@ aliases:
 
   # --- DevOps / CI ---
   ci_cd:         [ci/cd, cicd, ci/cd pipelines]
-  gitlab_ci:     [gitlab ci]
+  gitlab_ci:     [gitlab ci, gitlab ci/cd, gitlab-ci]
 
   # --- Réseau / sécurité ---
   palo_alto:     [palo alto, paloalto]
