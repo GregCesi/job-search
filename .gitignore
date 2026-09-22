@@ -31,6 +31,14 @@ chroma/
 
 data/traces/
 
+# Profil personnel
+profiles/gregoire.yaml
+
+# Sorties régénérables
+audit-profil.csv
+audit-profil.md
+
 # Rapports one-shot
 rescore-p-report.md
-CARTE.md.claude/worktrees/
+CARTE.md
+.claude/worktrees/

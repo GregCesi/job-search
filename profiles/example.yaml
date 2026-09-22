@@ -1,0 +1,48 @@
+# Profil exemple — copier ce fichier en gregoire.yaml (ou <votre_nom>.yaml) et remplir.
+# Ce fichier est fictif et ne doit pas être modifié directement.
+# profiles/gregoire.yaml (et tout autre profil réel) est exclu du dépôt via .gitignore.
+
+profile_id: example
+role_ceiling: ic              # ic | lead | manager
+seniority_ceiling: intermediate  # junior | intermediate | senior | lead
+
+skills:
+  # level 1-10 = compréhension / capacité à en parler (barème : docs/bareme-niveau.md)
+  # desire 0-10 = envie de travailler dessus. Techno absente = inconnue = neutre.
+  python:    { level: 5, desire: 8 }
+  fastapi:   { level: 4, desire: 7 }
+  docker:    { level: 6, desire: 5 }
+  git:       { level: 8, desire: 6 }
+  sql:       { level: 5, desire: 5 }
+  # Ajouter vos compétences selon le même format...
+
+zones:
+  strasbourg_area:
+    insee: ["67482"]
+    dept: ["67"]
+    keywords: ["strasbourg", "bas-rhin"]
+  paris_area:
+    insee: ["75101"]
+    dept: ["75", "92", "93", "94"]
+    keywords: ["paris", "ile-de-france"]
+  belgique_area:
+    insee: []
+    dept: []
+    keywords: ["belgique", "belgium", "bruxelles", "brussels"]
+  # Ajouter d'autres zones selon le même format...
+
+search_criteria:
+  keywords:
+    - python
+    - backend
+  domains:
+    - backend
+    - ai_engineering
+  locations:
+    - strasbourg_area
+    - paris_area
+    - belgique_area
+    - remote
+  contract_types:
+    - cdi
+    - freelance
