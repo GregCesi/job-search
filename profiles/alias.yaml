@@ -55,7 +55,7 @@ aliases:
   azure_ad:      [azure ad, microsoft_entrada_id]   # Microsoft Entra ID = ex-Azure AD
 
   # --- Outils dev IA (assistants / LLM-as-tool) ---
-  outils_dev_ia: [claude, claudia, anthropic, gpt, chatgpt, gpt-4, openai, cursor, copilot, microsoft copilot]
+  outils_dev_ia: [claude, claudia, anthropic, gpt, chatgpt, gpt-4, openai, cursor, copilot, microsoft copilot, github copilot]
 
   # --- Virtualisation (tout écrasé sur vmware — décision actée) ---
   vmware:        [vmware esxi, esx, vsphere, esxi]
@@ -76,8 +76,8 @@ aliases:
   # STOPGAP ai/ia → llm — amende la décision L17-18 (technos molles).
   # Vrai fix = compétence dérivée Tier-2, backlog.
   llm:           [llms, ai, ia, artificial_intelligence, intelligence_artificielle,
-                  large language models, generative ai, genai, gen ai, ia generative, ia générative, llm api]   # TCK-211 : même stopgap, étendu aux variantes
-  agents:        [agents_ia, ai_agents]
+                  large language models, generative ai, genai, gen ai, ia generative, ia générative, llm api, openai api]   # TCK-211 : même stopgap, étendu aux variantes
+  agents:        [agents_ia, ai_agents, agentic ai, agentic workflows]
   ml:            [machine_learning, ml_frameworks]
   nlp:           []
   rag:           []
@@ -92,6 +92,14 @@ aliases:
   nodejs:        [node, node.js]
   scikit-learn:  [sklearn]
   hugging_face:  [huggingface]
+
+  # --- Variantes relevées sur les rêves et parfaits de la vue candidat (TCK-217, 23/09/2026) ---
+  gcp:           [google cloud platform, google cloud]
+  azure_openai:  [azure openai service]
+  azure_ai_foundry: [ai foundry]
+  oidc:          [openid connect]
+  ecs:           [amazon ecs]
+  openapi:       [swagger]
 
 
 exclude:
