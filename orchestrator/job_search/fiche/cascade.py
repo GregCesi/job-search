@@ -9,10 +9,9 @@ import os
 import sqlite3
 
 import ollama
-import yaml
 from pydantic import BaseModel
 
-from orchestrator.job_search.paths import INTERMEDIAIRES_PATH
+from orchestrator.job_search.fiche.intermediaires import load_normalized, normalize
 
 _DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:12b")
 _DEFAULT_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -43,11 +42,6 @@ def _fallback(reason: str = "fallback") -> CascadeResult:
         nom=None, entite=None, confiance="non_trouve", type_source="inconnu",
         methode=reason, etape=0,
     )
-
-
-def _load_intermediaires() -> set[str]:
-    data = yaml.safe_load(INTERMEDIAIRES_PATH.read_text(encoding="utf-8")) or {}
-    return {str(n).strip().lower() for n in data.get("intermediaires") or []}
 
 
 def _text(row: sqlite3.Row) -> str:
@@ -101,11 +95,11 @@ def identify_employer(
             return _fallback("offre introuvable")
 
         trace: list[str] = []
-        intermediaires = _load_intermediaires()
+        intermediaires = load_normalized()
         company = (row["company"] or "").strip()
 
         # Étape 1 — company vs liste d'intermédiaires connus
-        is_intermediaire = company.lower() in intermediaires
+        is_intermediaire = normalize(company) in intermediaires
         if is_intermediaire:
             trace.append(f"1: « {company} » ∈ intermediaires.yaml → type_source=agregateur")
         else:
@@ -123,7 +117,7 @@ def identify_employer(
                 if _digest(_text(o)) != target:
                     continue
                 other = (o["company"] or "").strip()
-                if other and other.lower() not in intermediaires:
+                if other and normalize(other) not in intermediaires:
                     sibling = other
                     trace.append(f"2: même annonce offre {o['id']} chez « {other} »")
                     break

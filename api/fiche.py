@@ -11,6 +11,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from orchestrator.job_search.fiche import intermediaires
 from orchestrator.job_search.fiche.service import reset_pending, run_fiche
 from orchestrator.job_search.paths import FICHE_CWD
 
@@ -31,7 +32,10 @@ class PointPatch(BaseModel):
     tas: Tas | None = None
 
 
-def _row_to_fiche(row) -> dict:
+_AGENCE_OU_AGREGATEUR = {"agence", "agregateur"}
+
+
+def _row_to_fiche(row, company: str | None) -> dict:
     return {
         "statut": row["statut"],
         "mode": row["mode"],
@@ -49,6 +53,12 @@ def _row_to_fiche(row) -> dict:
         "api_key_source": row["api_key_source"],
         "error_message": row["error_message"],
         "created_at": row["created_at"],
+        # bouton « Ajouter aux intermédiaires » : recalculé à chaque lecture, jamais persisté
+        "propose_intermediaire": (
+            row["employeur_type_source"] in _AGENCE_OU_AGREGATEUR
+            and bool(company)
+            and not intermediaires.is_known(company)
+        ),
     }
 
 
@@ -86,16 +96,31 @@ async def create_fiche(offer_id: int) -> dict:
 def get_fiche(offer_id: int) -> dict:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM fiches_entreprise WHERE offer_id = ?", (offer_id,)
+            "SELECT f.*, o.company FROM fiches_entreprise f "
+            "JOIN offers o ON o.id = f.offer_id WHERE f.offer_id = ?", (offer_id,),
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Pas de fiche pour cette offre")
-    fiche = _row_to_fiche(row)
+    fiche = _row_to_fiche(row, row["company"])
     if fiche["statut"] == "pending" and offer_id not in _running:
         # Génération orpheline (API redémarrée en cours de route) : l'exposer comme relançable.
         fiche["statut"] = "error"
         fiche["error_message"] = "Génération interrompue (API redémarrée). Relancer la fiche."
     return fiche
+
+
+@router.post("/{offer_id}/fiche/intermediaire", status_code=200)
+def add_intermediaire(offer_id: int) -> dict:
+    """Ajoute `offers.company` à `intermediaires.yaml`. N'écrit jamais depuis la génération ou le PATCH."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT company FROM offers WHERE id = ?", (offer_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Offre introuvable")
+    company = (row["company"] or "").strip()
+    if not company:
+        raise HTTPException(status_code=409, detail="L'offre n'a pas de nom d'entreprise à ajouter")
+    added = intermediaires.add(company)
+    return {"company": company, "added": added}
 
 
 def _update_point(offer_id: int, point_idx: int, mutate, expect_session: str | None = None) -> dict:

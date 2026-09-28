@@ -208,6 +208,16 @@
             <span><span class="text-gray-400">Mode</span> {{ fiche.mode === 'offre_seule' ? 'offre seule' : 'entreprise' }}</span>
           </div>
           <p v-if="fiche.presentation" class="text-sm text-gray-700 leading-relaxed">{{ fiche.presentation }}</p>
+
+          <div v-if="fiche.propose_intermediaire" class="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <span class="text-amber-800">« {{ offer?.company }} » ressemble à un intermédiaire (agence / agrégateur), pas à l'employeur.</span>
+            <button
+              @click="ajouterIntermediaire"
+              :disabled="addingIntermediaire"
+              class="ml-auto shrink-0 px-2.5 py-1 rounded-full bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+            >{{ addingIntermediaire ? '…' : `Ajouter ${offer?.company} aux intermédiaires` }}</button>
+          </div>
+
           <p v-if="!fiche.points.length" class="text-sm text-gray-400 italic">Aucun point restitué.</p>
 
           <div
@@ -285,7 +295,20 @@ const TAS: { value: FicheTas, label: string }[] = [
 ]
 const explaining = ref<number | null>(null)
 const explainError = ref<number | null>(null)
+const addingIntermediaire = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+async function ajouterIntermediaire() {
+  addingIntermediaire.value = true
+  try {
+    await $fetch(`${ficheUrl()}/intermediaire`, { method: 'POST' })
+    await chargerFiche() // recalcule propose_intermediaire côté back, masque le bandeau
+  } catch {
+    // silencieux : le bandeau reste, l'utilisateur peut réessayer
+  } finally {
+    addingIntermediaire.value = false
+  }
+}
 
 async function chargerFiche() {
   try {
@@ -321,7 +344,7 @@ function lienSur(url: string | null): string | null {
 }
 
 async function preparerFiche() {
-  const empty = { mode: null, presentation: null, employeur_nom: null, employeur_confiance: null, points: [], session_id: null, cost_usd: null }
+  const empty = { mode: null, presentation: null, employeur_nom: null, employeur_confiance: null, points: [], session_id: null, cost_usd: null, propose_intermediaire: false }
   try {
     await $fetch(ficheUrl(), { method: 'POST' })
   } catch {

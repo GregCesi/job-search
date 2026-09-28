@@ -72,6 +72,7 @@ export interface FicheEntreprise {
   session_id: string | null
   cost_usd: number | null
   error_message: string | null
+  propose_intermediaire: boolean
 }
 
 export interface Filters {

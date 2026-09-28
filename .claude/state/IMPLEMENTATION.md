@@ -328,6 +328,37 @@ directes, sans repasser par `/implementation`.
 
 ---
 
+### Corrections après essai — ajout intermédiaire (2026-09-28)
+
+**Objectif** : proposer d'ajouter `offers.company` à `profiles/intermediaires.yaml` depuis l'écran de la
+fiche, quand la fiche conclut à une agence/un agrégateur et que le nom n'y figure pas déjà.
+
+- [x] **`orchestrator/job_search/fiche/intermediaires.py`** (créer) : `normalize()`, `load_normalized()`,
+  `is_known()`, `add()` — round-trip `ruamel.yaml` (commentaires + indentation préservés), idempotent.
+  Source unique de la normalisation et de l'écriture ; `cascade.py` refactorisé pour importer ce module
+  au lieu de dupliquer sa propre lecture YAML.
+- [x] **`api/fiche.py`** : `GET /offers/{id}/fiche` calcule `propose_intermediaire` à la lecture (jamais
+  persisté) = `employeur_type_source ∈ {agence, agregateur}` ET `offers.company` non vide ET absent de
+  `intermediaires.yaml`. Nouvelle route `POST /offers/{id}/fiche/intermediaire` : ajoute `offers.company`
+  si absent, idempotente, ne touche jamais `fiches_entreprise`.
+- [x] **Écran** : bandeau ambre avec bouton « Ajouter {company} aux intermédiaires » si
+  `fiche.propose_intermediaire`, `GET` relancé après clic pour masquer le bandeau.
+
+✋ Verify before continuing:
+- [x] Aucune écriture dans `intermediaires.yaml` hors `intermediaires.py:add()` — grep de `.open("w"`/`_yaml.dump` sur `api/` et `orchestrator/job_search/` : une seule occurrence, dans `intermediaires.py`
+- [x] 2148 (EDITX BV, déjà listé) → `propose_intermediaire=false`
+- [x] 44 (`offers.company` vide) → `propose_intermediaire=false`
+- [x] 155 et 179 (`employeur_type_source=direct`) → `propose_intermediaire=false`
+- [x] Cas positif (`employeur_type_source=agence`, company non listé) → `propose_intermediaire=true` ; test réalisé sur l'offre 44 en modifiant temporairement `offers.company` par SQL direct (aucune fiche régénérée), valeur d'origine restaurée après coup
+- [x] Appel de la route sur un nom de test (« Test Formatting Co ») : une ligne ajoutée, commentaires et indentation intacts ; second appel : fichier inchangé (`added=false`) ; nom de test retiré après coup, fichier restauré à l'identique de l'original
+- [x] Après ajout d'un nom test, `identify_employer` sur une offre de ce `company` trace l'étape 1 comme intermédiaire — vérifié avec « Nouvelle Agence Test » sur une offre existante (`company` modifié temporairement par SQL direct puis restauré depuis la description de l'offre, qui nommait l'employeur d'origine — SOCOMEC)
+
+**Écart consigné** : la vérification du cas positif et de la trace cascade n'a pas pu s'appuyer sur une fiche
+réelle existante — les 6 fiches en base sont soit déjà listées (EDITX BV), soit `direct`, soit `company` vide.
+Vérifié par mutation SQL temporaire et réversible d'`offers.company`, jamais par régénération de fiche.
+
+---
+
 ## Livrables détaillés
 
 1. **L1 — `orchestrator/job_search/storage/db.py:init_db()`** : CREATE TABLE `fiches_entreprise`. Done = table présente. **XS**
