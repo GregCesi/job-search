@@ -75,6 +75,29 @@ export interface FicheEntreprise {
   propose_intermediaire: boolean
 }
 
+export interface CvSkillGroup {
+  label: string
+  items: string[]
+}
+
+export type CvStatut = 'pending' | 'done' | 'error'
+
+export interface Cv {
+  statut: CvStatut
+  html: string | null
+  titre: string | null
+  localisation: string | null
+  au_cv: string[]
+  groupes: CvSkillGroup[]
+  notions: string[]
+  demande_sans_y_etre: string[]
+  ajouts_permis: string[]
+  seuil_utilise: number | null
+  cost_usd: number | null
+  error_message: string | null
+  created_at: string
+}
+
 export interface Filters {
   category?: string
   exclude_category?: string

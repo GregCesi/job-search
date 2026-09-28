@@ -171,8 +171,106 @@
         </svg>
       </button>
     </div>
-    <div v-if="activeCard !== 'Entreprise'" class="flex-1 flex items-center justify-center text-sm text-gray-400 italic">
+    <div v-if="activeCard === 'Lettre de motivation'" class="flex-1 flex items-center justify-center text-sm text-gray-400 italic">
       Aucun contenu — à produire
+    </div>
+
+    <!-- CV adapté -->
+    <div v-else-if="activeCard === 'CV'" class="flex-1 overflow-y-auto p-6">
+      <div class="max-w-3xl mx-auto space-y-5">
+        <!-- Pas de CV / erreur -->
+        <div v-if="!cv || cv.statut === 'error'" class="space-y-3">
+          <p v-if="cv?.error_message" class="text-sm text-red-600">{{ cv.error_message }}</p>
+          <p v-if="!isRetenue" class="text-sm text-gray-400 italic">Le CV n'est généré que pour une offre retenue.</p>
+          <button
+            v-else
+            @click="genererCv"
+            class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+          >
+            Générer le CV
+          </button>
+        </div>
+
+        <!-- En cours -->
+        <div v-else-if="cv.statut === 'pending'" class="flex items-center gap-3 text-sm text-gray-500">
+          <svg class="w-5 h-5 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+          </svg>
+          Génération en cours…
+        </div>
+
+        <!-- CV prêt -->
+        <template v-else>
+          <div class="flex items-center justify-between gap-4">
+            <p class="text-xs text-gray-500">
+              <span class="text-gray-400">Titre</span> <span class="font-medium text-gray-700">{{ cv.titre ?? '—' }}</span>
+              <span class="text-gray-400 ml-3">Lieu</span> <span class="font-medium text-gray-700">{{ cv.localisation ?? '—' }}</span>
+            </p>
+            <a
+              v-if="cvHtmlUrl"
+              :href="cvHtmlUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-indigo-600 hover:underline font-medium text-sm flex-shrink-0"
+            >Ouvrir le CV ↗</a>
+          </div>
+
+          <!-- Au CV -->
+          <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-gray-700">Au CV</h3>
+            <p v-if="!cv.groupes.length && !cv.notions.length" class="text-sm text-gray-400 italic">Vide.</p>
+            <div v-for="grp in cv.groupes" :key="grp.label" class="space-y-1">
+              <p class="text-xs font-medium text-gray-500">{{ grp.label }}</p>
+              <ul class="flex flex-wrap gap-1.5">
+                <li
+                  v-for="item in grp.items" :key="item"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs"
+                >
+                  {{ item }}
+                  <button @click="retirerCompetence(item)" class="text-gray-400 hover:text-red-500" :aria-label="`Retirer ${item}`">×</button>
+                </li>
+              </ul>
+            </div>
+            <div v-if="cv.notions.length" class="space-y-1">
+              <p class="text-xs font-medium text-gray-500">Notions en :</p>
+              <ul class="flex flex-wrap gap-1.5">
+                <li
+                  v-for="item in cv.notions" :key="item"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-50 text-gray-600 text-xs ring-1 ring-gray-200"
+                >
+                  {{ item }}
+                  <button @click="retirerCompetence(item)" class="text-gray-400 hover:text-red-500" :aria-label="`Retirer ${item}`">×</button>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Demandé sans y être -->
+          <div class="space-y-2">
+            <h3 class="text-sm font-semibold text-gray-700">Demandé sans y être</h3>
+            <p v-if="!cv.demande_sans_y_etre.length" class="text-sm text-gray-400 italic">Vide.</p>
+            <ul v-else class="space-y-2">
+              <li
+                v-for="item in cv.demande_sans_y_etre" :key="item"
+                class="flex items-center gap-2 text-sm text-gray-700"
+              >
+                <span class="flex-1">{{ item }}</span>
+                <select v-model="ajoutChoix[item]" class="text-xs border border-gray-200 rounded px-1.5 py-1">
+                  <option value="">Non maîtrisée</option>
+                  <option v-for="grp in cv.groupes" :key="grp.label" :value="grp.label">Maîtrisée — {{ grp.label }}</option>
+                </select>
+                <button
+                  @click="ajouterCompetence(item)"
+                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 flex-shrink-0"
+                >Ajouter</button>
+              </li>
+            </ul>
+          </div>
+
+          <p v-if="cvActionError" class="text-xs text-red-600">{{ cvActionError }}</p>
+        </template>
+      </div>
     </div>
 
     <!-- Fiche entreprise -->
@@ -262,7 +360,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { FicheEntreprise, FicheTas, OfferDetail, TechInfo } from '~/stores/offers'
+import type { Cv, FicheEntreprise, FicheTas, OfferDetail, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -278,8 +376,14 @@ onMounted(async () => {
   offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
   await chargerFiche()
   if (fiche.value?.statut === 'pending') startPolling()
+  await chargerCv()
+  if (cv.value?.statut === 'pending') startCvPolling()
 })
-onBeforeUnmount(stopPolling)
+onBeforeUnmount(() => {
+  stopPolling()
+  stopCvPolling()
+  if (cvBlobUrl) URL.revokeObjectURL(cvBlobUrl)
+})
 
 async function retirerDesRetenues() {
   await $fetch(`${config.public.apiBase}/offers/${id.value}/verdict`, { method: 'DELETE' })
@@ -387,6 +491,11 @@ function cardBadge(title: string): { label: string, class: string } {
     if (fiche.value.statut === 'done') return { label: 'prête', class: 'bg-green-50 text-green-700' }
     return { label: 'erreur', class: 'bg-red-50 text-red-600' }
   }
+  if (title === 'CV' && cv.value) {
+    if (cv.value.statut === 'pending') return { label: 'en cours', class: 'bg-amber-50 text-amber-600' }
+    if (cv.value.statut === 'done') return { label: 'prêt', class: 'bg-green-50 text-green-700' }
+    return { label: 'erreur', class: 'bg-red-50 text-red-600' }
+  }
   return { label: 'à produire', class: 'bg-gray-100 text-gray-400' }
 }
 
@@ -394,8 +503,116 @@ function cardPreview(title: string): string {
   if (title === 'Entreprise' && fiche.value?.statut === 'done') {
     return `${fiche.value.employeur_nom ?? 'employeur non trouvé'} · ${fiche.value.points.length} points`
   }
+  if (title === 'CV' && cv.value?.statut === 'done') {
+    return `${cv.value.au_cv.length} compétences`
+  }
   return 'Vide'
 }
+
+// ── CV adapté ────────────────────────────────────────────────────────────
+const cv = ref<Cv | null>(null)
+const ajoutChoix = ref<Record<string, string>>({})
+const cvActionError = ref<string | null>(null)
+const cvHtmlUrl = ref<string | null>(null)
+let cvBlobUrl: string | null = null
+let cvPollTimer: ReturnType<typeof setInterval> | null = null
+
+const EMPTY_CV: Cv = {
+  statut: 'pending',
+  html: null,
+  titre: null,
+  localisation: null,
+  au_cv: [],
+  groupes: [],
+  notions: [],
+  demande_sans_y_etre: [],
+  ajouts_permis: [],
+  seuil_utilise: null,
+  cost_usd: null,
+  error_message: null,
+  created_at: '',
+}
+
+const cvUrl = () => `${config.public.apiBase}/offers/${id.value}/cv`
+
+async function chargerCv() {
+  try {
+    cv.value = await $fetch<Cv>(cvUrl())
+  } catch (e) {
+    // 404 = pas encore de CV ; toute autre erreur (réseau) garde l'état courant
+    if ((e as { statusCode?: number }).statusCode === 404) cv.value = null
+  }
+}
+
+function stopCvPolling() {
+  if (cvPollTimer) { clearInterval(cvPollTimer); cvPollTimer = null }
+}
+
+function startCvPolling() {
+  stopCvPolling()
+  let ticks = 0
+  cvPollTimer = setInterval(async () => {
+    await chargerCv()
+    ticks++
+    if (cv.value?.statut !== 'pending') stopCvPolling() // done ou error : on s'arrête
+    else if (ticks >= POLL_MAX) {
+      stopCvPolling()
+      cv.value = { ...cv.value, statut: 'error', error_message: 'Délai dépassé. Relancer le CV.' }
+    }
+  }, 5000)
+}
+
+async function genererCv() {
+  cvActionError.value = null
+  try {
+    const res = await $fetch<Cv>(cvUrl(), { method: 'POST' })
+    if (res.statut === 'done') {
+      cv.value = res // déjà terminé : rendu tel quel, aucun rappel du modèle
+    } else {
+      cv.value = { ...EMPTY_CV, statut: 'pending' }
+      startCvPolling()
+    }
+  } catch {
+    cv.value = { ...EMPTY_CV, statut: 'error', error_message: 'Impossible de lancer le CV.' }
+  }
+}
+
+function messageErreurCv(e: unknown): string {
+  const detail = (e as { data?: { detail?: string } })?.data?.detail
+  return detail ?? 'Action impossible.'
+}
+
+async function ajouterCompetence(competence: string) {
+  cvActionError.value = null
+  const groupe = ajoutChoix.value[competence] || null
+  try {
+    cv.value = await $fetch<Cv>(`${cvUrl()}/skills`, {
+      method: 'POST',
+      body: { action: 'ajout', competence, maitrisee: groupe !== null, groupe },
+    })
+    delete ajoutChoix.value[competence]
+  } catch (e) {
+    cvActionError.value = messageErreurCv(e)
+  }
+}
+
+async function retirerCompetence(competence: string) {
+  cvActionError.value = null
+  try {
+    cv.value = await $fetch<Cv>(`${cvUrl()}/skills`, {
+      method: 'POST',
+      body: { action: 'retrait', competence },
+    })
+  } catch (e) {
+    cvActionError.value = messageErreurCv(e)
+  }
+}
+
+watch(() => cv.value?.html, (html) => {
+  if (cvBlobUrl) { URL.revokeObjectURL(cvBlobUrl); cvBlobUrl = null }
+  if (html) cvBlobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+  cvHtmlUrl.value = cvBlobUrl
+})
 
 // ── Frise ────────────────────────────────────────────────────────────────
 const STEPS = ['Retenue', 'Prête à l\'envoi', 'Candidature envoyée', 'Entretien à préparer']
