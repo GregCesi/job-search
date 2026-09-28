@@ -48,6 +48,8 @@ def _row_to_cv(row) -> dict:
         "titre": row["titre"],
         "localisation": row["localisation"],
         "au_cv": json.loads(row["au_cv_json"] or "[]"),
+        "groupes": json.loads(row["groupes_json"] or "[]"),
+        "notions": json.loads(row["notions_json"] or "[]"),
         "demande_sans_y_etre": json.loads(row["demande_sans_y_etre_json"] or "[]"),
         "ajouts_permis": json.loads(row["ajouts_permis_json"] or "[]"),
         "seuil_utilise": row["seuil_utilise"],
