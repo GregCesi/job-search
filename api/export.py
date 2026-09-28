@@ -5,28 +5,45 @@ GET /export/calibration
 GET /export/offers
     → texte markdown, offres filtrées avec champs à la carte.
 """
+
 import json
 import math
-from datetime import timezone
-from typing import Literal
 
 from fastapi import APIRouter, Query
 from fastapi.responses import PlainTextResponse
 
+from orchestrator.job_search.calibration.disagreement import (
+    DisagreementScore,
+    disagreement,
+)
+from orchestrator.job_search.storage.reviews import HumanReview
+
 from .db import get_conn
 from .offers import _load_scoring_context
-from orchestrator.job_search.storage.reviews import HumanReview
-from orchestrator.job_search.calibration.disagreement import disagreement, DisagreementScore
 
 router = APIRouter()
 
-_VALID_INCLUDE = {"description", "techs", "role", "domain", "category", "location", "contract", "url", "company", "scores", "remarque", "verdict"}
+_VALID_INCLUDE = {
+    "description",
+    "techs",
+    "role",
+    "domain",
+    "category",
+    "location",
+    "contract",
+    "url",
+    "company",
+    "scores",
+    "remarque",
+    "verdict",
+}
 _DEFAULT_INCLUDE = {"company", "category", "techs"}
 
 
 # ---------------------------------------------------------------------------
 # GET /export/offers
 # ---------------------------------------------------------------------------
+
 
 @router.get("/export/offers", response_class=PlainTextResponse)
 def export_offers(
@@ -38,10 +55,15 @@ def export_offers(
     etat_review: str | None = Query(None),
     q: str | None = Query(None),
     exclude_category: str | None = Query(None),
-    hp_cause: str | None = Query(None, description="Filtre par cause HP : no_tech | mgmt_role | contrat"),
+    hp_cause: str | None = Query(
+        None, description="Filtre par cause HP : no_tech | mgmt_role | contrat"
+    ),
     sort: str = Query("category"),
     order: str = Query("desc"),
-    include: str | None = Query(None, description="Champs à inclure (comma-separated). Défaut: company,category,techs"),
+    include: str | None = Query(
+        None,
+        description="Champs à inclure (comma-separated). Défaut: company,category,techs",
+    ),
 ) -> str:
     # --- parse include ---
     if include:
@@ -83,11 +105,17 @@ def export_offers(
                 if e == "non_relue":
                     clauses.append("o.reviewed_at IS NULL")
                 elif e == "validee":
-                    clauses.append("(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))")
+                    clauses.append(
+                        "(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))"
+                    )
                 elif e == "corrigee":
-                    clauses.append("(o.categorie_corrigee IS NOT NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))")
+                    clauses.append(
+                        "(o.categorie_corrigee IS NOT NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))"
+                    )
                 elif e == "a_revoir":
-                    clauses.append("(o.reviewed_at IS NOT NULL AND o.rescored_at IS NOT NULL AND o.rescored_at > o.reviewed_at)")
+                    clauses.append(
+                        "(o.reviewed_at IS NOT NULL AND o.rescored_at IS NOT NULL AND o.rescored_at > o.reviewed_at)"
+                    )
             if clauses:
                 conditions.append(f"({' OR '.join(clauses)})")
     if q is not None:
@@ -98,7 +126,15 @@ def export_offers(
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     # Tri composite : sort=col1,col2 + order=dir1,dir2 (même logique que list_offers)
-    _sort_cols = {"fetched_at", "title", "company", "category", "seen_candidat", "location", "hors_perimetre_reason"}
+    _sort_cols = {
+        "fetched_at",
+        "title",
+        "company",
+        "category",
+        "seen_candidat",
+        "location",
+        "hors_perimetre_reason",
+    }
     sort_parts = [s.strip() for s in sort.split(",")]
     order_parts = [o.strip() for o in order.split(",")]
     while len(order_parts) < len(sort_parts):
@@ -183,7 +219,12 @@ def _format_export_md(rows: list, fields: set[str]) -> str:
 
         # Catégorie finale (corrigee > suggeree > category)
         if "category" in fields:
-            cat = r["categorie_corrigee"] or r["categorie_suggeree"] or r["category"] or "?"
+            cat = (
+                r["categorie_corrigee"]
+                or r["categorie_suggeree"]
+                or r["category"]
+                or "?"
+            )
             lines.append(f"- Catégorie : {cat}")
 
         # Scores désirabilité / atteignabilité (dérivés à la volée)
@@ -247,9 +288,9 @@ def _compute_scores_line(row, scoring_ctx: dict | None) -> str | None:
         return None
 
     try:
-        from orchestrator.job_search.sources.base import ExtractedFacts
-        from orchestrator.job_search.scoring.desirability import compute_desirability
         from orchestrator.job_search.scoring.attainability import compute_attainability
+        from orchestrator.job_search.scoring.desirability import compute_desirability
+        from orchestrator.job_search.sources.base import ExtractedFacts
 
         facts = ExtractedFacts.model_validate(data)
         desir = compute_desirability(facts, profile.search_criteria, profile, table)
@@ -283,6 +324,7 @@ def _format_techs(facts_json: str | None) -> str:
         else:
             parts.append(str(t))
     return ", ".join(parts)
+
 
 _PAGE_SIZE = 15
 
@@ -318,14 +360,19 @@ def export_calibration() -> str:
             created_at=row["created_at"],
         )
         score = disagreement(review)
-        scored.append((score, {
-            "title": row["title"] or f"offre #{row['offer_id']}",
-            "company": row["company"] or "?",
-            "review": review,
-            "extracted_facts_json": row["extracted_facts_json"],
-            "remarque": row["remarque"],
-            "category": row["category"],
-        }))
+        scored.append(
+            (
+                score,
+                {
+                    "title": row["title"] or f"offre #{row['offer_id']}",
+                    "company": row["company"] or "?",
+                    "review": review,
+                    "extracted_facts_json": row["extracted_facts_json"],
+                    "remarque": row["remarque"],
+                    "category": row["category"],
+                },
+            )
+        )
 
     scored.sort(key=lambda x: x[0].distance_total, reverse=True)
 
@@ -352,14 +399,25 @@ def export_calibration() -> str:
             lines.append(f"### {meta['title']} — {meta['company']}")
             lines.append(
                 f"distance_total={ds.distance_total:.2f}"
-                + (f"  désir={ds.distance_desirability:.2f}" if ds.distance_desirability is not None else "")
-                + (f"  attein={ds.distance_attainability:.2f}" if ds.distance_attainability is not None else "")
+                + (
+                    f"  désir={ds.distance_desirability:.2f}"
+                    if ds.distance_desirability is not None
+                    else ""
+                )
+                + (
+                    f"  attein={ds.distance_attainability:.2f}"
+                    if ds.distance_attainability is not None
+                    else ""
+                )
                 + f"  couverture={ds.n_criteria_rated} critère(s)"
                 + f"  date={review.created_at[:10]}"
             )
 
             # Scores désirabilité / atteignabilité (dérivés à la volée)
-            scores_row = {"extracted_facts_json": meta["extracted_facts_json"], "id": None}
+            scores_row = {
+                "extracted_facts_json": meta["extracted_facts_json"],
+                "id": None,
+            }
             scores_str = _compute_scores_line(scores_row, scoring_ctx)
             if scores_str:
                 lines.append(f"- {scores_str}")
@@ -377,7 +435,9 @@ def export_calibration() -> str:
                 if ai_c is None:
                     continue
                 ai_note = ai_c.get("note")
-                diff = abs(float(h_note) - float(ai_note)) if ai_note is not None else None
+                diff = (
+                    abs(float(h_note) - float(ai_note)) if ai_note is not None else None
+                )
                 diff_str = f"Δ={diff:.1f}" if diff is not None else "Δ=?"
                 h_justif = (human_val.get("justif") or "").strip()
                 lines.append(

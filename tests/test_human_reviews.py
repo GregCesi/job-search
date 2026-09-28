@@ -1,11 +1,15 @@
 """Round-trip tests for human_reviews — L2 validation."""
+
 import json
 import sqlite3
 
 import pytest
 
 from orchestrator.job_search.storage.db import init_db
-from orchestrator.job_search.storage.reviews import HumanReview, get_review, upsert_review
+from orchestrator.job_search.storage.reviews import (
+    get_review,
+    upsert_review,
+)
 
 
 @pytest.fixture
@@ -24,9 +28,19 @@ def test_get_missing_returns_none(conn):
 
 def test_upsert_then_get_round_trip(conn):
     ratings = json.dumps({"tech_fit": {"note": 8, "justif": "bon match"}})
-    snapshot = json.dumps([{"nom": "tech_fit", "note": 7, "justif": "IA note", "axe": "desirability"}])
+    snapshot = json.dumps(
+        [{"nom": "tech_fit", "note": 7, "justif": "IA note", "axe": "desirability"}]
+    )
 
-    upsert_review(conn, "offer-1", ratings, snapshot, global_audit_text="ok", global_score=7, seen_at_review=True)
+    upsert_review(
+        conn,
+        "offer-1",
+        ratings,
+        snapshot,
+        global_audit_text="ok",
+        global_score=7,
+        seen_at_review=True,
+    )
 
     review = get_review(conn, "offer-1")
     assert review is not None
@@ -51,7 +65,9 @@ def test_upsert_is_idempotent(conn):
     assert json.loads(review.ratings_json)["tech_fit"]["note"] == 9
     assert review.global_score == 9
     # Only one row
-    count = conn.execute("SELECT COUNT(*) FROM human_reviews WHERE offer_id = 'offer-2'").fetchone()[0]
+    count = conn.execute(
+        "SELECT COUNT(*) FROM human_reviews WHERE offer_id = 'offer-2'"
+    ).fetchone()[0]
     assert count == 1
 
 

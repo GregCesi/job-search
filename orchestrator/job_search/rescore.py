@@ -13,6 +13,7 @@ Ordre : vue candidat d'abord, puis parfait → reve → atteignable → le reste
     python -m orchestrator.job_search.rescore --re-extract-stale --categories parfait,reve,atteignable
     python -m orchestrator.job_search.rescore --re-extract-stale --random --limit 10
 """
+
 import argparse
 import os
 from collections import Counter
@@ -22,23 +23,51 @@ from orchestrator.job_search.paths import ALIAS_PATH, PROFILE_PATH, REPO_ROOT
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Re-categorize offers missing category")
+    parser = argparse.ArgumentParser(
+        description="Re-categorize offers missing category"
+    )
     parser.add_argument("--profile", default=str(PROFILE_PATH))
-    parser.add_argument("--dry-run", action="store_true", help="Affiche sans écrire en base")
-    parser.add_argument("--force", action="store_true", help="Recalcule toutes les offres (y compris déjà scorées)")
-    parser.add_argument("--re-extract", action="store_true", help="Force ré-extraction LLM (ignore les facts en cache)")
-    parser.add_argument("--re-extract-stale", action="store_true",
-                        help="Réextrait les offres dont extraction_version diffère de la version courante (TCK-211)")
-    parser.add_argument("--vue-candidat", action="store_true",
-                        help="Restreint aux zones de profiles/vue_candidat.yaml")
-    parser.add_argument("--categories", default=None,
-                        help="Catégories courantes à traiter, séparées par des virgules "
-                             "(parfait,reve,atteignable,hors,hors_perimetre)")
-    parser.add_argument("--limit", type=int, default=None, help="Nombre maximum d'offres traitées")
-    parser.add_argument("--random", action="store_true", help="Ordre aléatoire (avec --limit : un échantillon)")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Affiche sans écrire en base"
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Recalcule toutes les offres (y compris déjà scorées)",
+    )
+    parser.add_argument(
+        "--re-extract",
+        action="store_true",
+        help="Force ré-extraction LLM (ignore les facts en cache)",
+    )
+    parser.add_argument(
+        "--re-extract-stale",
+        action="store_true",
+        help="Réextrait les offres dont extraction_version diffère de la version courante (TCK-211)",
+    )
+    parser.add_argument(
+        "--vue-candidat",
+        action="store_true",
+        help="Restreint aux zones de profiles/vue_candidat.yaml",
+    )
+    parser.add_argument(
+        "--categories",
+        default=None,
+        help="Catégories courantes à traiter, séparées par des virgules "
+        "(parfait,reve,atteignable,hors,hors_perimetre)",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Nombre maximum d'offres traitées"
+    )
+    parser.add_argument(
+        "--random",
+        action="store_true",
+        help="Ordre aléatoire (avec --limit : un échantillon)",
+    )
     args = parser.parse_args()
 
     from dotenv import load_dotenv
+
     load_dotenv()
 
     from orchestrator.job_search.matching.profile import load_profile
@@ -46,9 +75,12 @@ def main() -> None:
     from orchestrator.job_search.scoring.attainability import compute_attainability
     from orchestrator.job_search.scoring.categorize import categorize
     from orchestrator.job_search.scoring.desirability import compute_desirability
-    from orchestrator.job_search.scoring.extractor import extract_facts, extraction_version
-    from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
+    from orchestrator.job_search.scoring.extractor import (
+        extract_facts,
+        extraction_version,
+    )
     from orchestrator.job_search.scoring.filters import apply_hard_filters
+    from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
     from orchestrator.job_search.sources.base import JobOffer
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.offers import save_offer
@@ -69,17 +101,28 @@ def main() -> None:
     # qui écraserait les faits existants. On refuse de démarrer.
     if args.re_extract or args.re_extract_stale:
         import ollama
+
         try:
             listed = ollama.Client(host=host).list()
         except Exception as exc:
-            raise SystemExit(f"[rescore] Ollama injoignable sur {host} ({exc}). Lance l'app Ollama ou `ollama serve`, puis relance.")
-        models = listed.get("models", []) if isinstance(listed, dict) else getattr(listed, "models", [])
+            raise SystemExit(
+                f"[rescore] Ollama injoignable sur {host} ({exc}). Lance l'app Ollama ou `ollama serve`, puis relance."
+            )
+        models = (
+            listed.get("models", [])
+            if isinstance(listed, dict)
+            else getattr(listed, "models", [])
+        )
         available = {
-            (m.get("model") or m.get("name")) if isinstance(m, dict) else (getattr(m, "model", None) or getattr(m, "name", None))
+            (m.get("model") or m.get("name"))
+            if isinstance(m, dict)
+            else (getattr(m, "model", None) or getattr(m, "name", None))
             for m in models
         }
         if model not in available and f"{model}:latest" not in available:
-            raise SystemExit(f"[rescore] modèle {model} absent d'Ollama (disponibles : {sorted(available)}).")
+            raise SystemExit(
+                f"[rescore] modèle {model} absent d'Ollama (disponibles : {sorted(available)})."
+            )
     conditions: list[str] = ["(o.filtered_out = 0 OR o.filtered_out IS NULL)"]
     params: list = []
     order_params: list = []
@@ -105,6 +148,7 @@ def main() -> None:
     zone_sql = "0"
     if args.vue_candidat or args.re_extract_stale:
         from api.view_profile import build_view_clauses
+
         zone_conds, zone_params = build_view_clauses()
         if zone_conds:
             zone_sql = "(" + " OR ".join(zone_conds) + ")"
@@ -148,10 +192,9 @@ def main() -> None:
         print("[rescore] --dry-run : aucune écriture")
 
     # Clés profil canonicalisées (pour exclure du rapport unmatched)
-    canonical_profile_keys = {
-        canonicalize(k, alias_table)
-        for k in profile.skills
-    } - {None}
+    canonical_profile_keys = {canonicalize(k, alias_table) for k in profile.skills} - {
+        None
+    }
 
     n_ok = n_fail = 0
     unmatched_counter: Counter[str] = Counter()
@@ -181,9 +224,14 @@ def main() -> None:
             else datetime.now(timezone.utc),
         )
 
-        print(f"[rescore] ({i}/{len(rows)}) [{r['category'] or '-'}] {offer.title[:55]}", flush=True)
+        print(
+            f"[rescore] ({i}/{len(rows)}) [{r['category'] or '-'}] {offer.title[:55]}",
+            flush=True,
+        )
 
-        filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria, profile.zones)
+        filtered_out, filter_reason = apply_hard_filters(
+            offer, profile.search_criteria, profile.zones
+        )
         if filtered_out:
             print(f"           → filtré : {filter_reason}")
             if not args.dry_run:
@@ -197,6 +245,7 @@ def main() -> None:
         if not (args.re_extract or args.re_extract_stale) and r["extracted_facts_json"]:
             try:
                 from orchestrator.job_search.sources.base import ExtractedFacts
+
                 facts = ExtractedFacts.model_validate_json(r["extracted_facts_json"])
             except Exception:
                 facts = None
@@ -211,7 +260,11 @@ def main() -> None:
         # Accumule les techs inconnues (ni alias, ni exclu, ni profil) pour le rapport
         for t in facts.techs_required:
             c = canonicalize(t.name, alias_table)
-            if c is not None and c not in alias_table._index and c not in canonical_profile_keys:
+            if (
+                c is not None
+                and c not in alias_table._index
+                and c not in canonical_profile_keys
+            ):
                 unmatched_counter[c] += 1
 
         d = compute_desirability(facts, profile.search_criteria, profile, alias_table)
@@ -233,10 +286,14 @@ def main() -> None:
             if facts.parse_failed:
                 n_fail += 1
             if not args.dry_run:
-                save_offer(conn, offer,
-                           perimetre_causes=causes_str,
-                           techs_matched=a.techs_matched, techs_missing=a.techs_missing,
-                           extraction_version=version)
+                save_offer(
+                    conn,
+                    offer,
+                    perimetre_causes=causes_str,
+                    techs_matched=a.techs_matched,
+                    techs_missing=a.techs_missing,
+                    extraction_version=version,
+                )
             n_ok += 1
             continue
 
@@ -248,10 +305,15 @@ def main() -> None:
         print(f"           → [{cat.value}]{flag}{moved}")
 
         if not args.dry_run:
-            save_offer(conn, offer, category=cat,
-                       perimetre_causes=[],
-                       techs_matched=a.techs_matched, techs_missing=a.techs_missing,
-                       extraction_version=version)
+            save_offer(
+                conn,
+                offer,
+                category=cat,
+                perimetre_causes=[],
+                techs_matched=a.techs_matched,
+                techs_missing=a.techs_missing,
+                extraction_version=version,
+            )
             n_ok += 1
         else:
             n_ok += 1
@@ -263,7 +325,9 @@ def main() -> None:
     unmatched_path = REPO_ROOT / "data" / "unmatched_techs.txt"
     unmatched_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{tech:<30s} {count}" for tech, count in unmatched_counter.most_common()]
-    unmatched_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    unmatched_path.write_text(
+        "\n".join(lines) + ("\n" if lines else ""), encoding="utf-8"
+    )
     print(f"[rescore] {len(lines)} techs inconnues → {unmatched_path}")
 
     if not args.dry_run:

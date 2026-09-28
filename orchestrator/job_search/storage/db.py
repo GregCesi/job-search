@@ -85,14 +85,20 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 def migrate_fiches_entreprise_schema(conn: sqlite3.Connection) -> None:
     """Colonnes ajoutées après la première livraison + migration de données (idempotentes)."""
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(fiches_entreprise)").fetchall()}
+    existing = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(fiches_entreprise)").fetchall()
+    }
     if "presentation" not in existing:
         conn.execute("ALTER TABLE fiches_entreprise ADD COLUMN presentation TEXT")
 
     # Corrections post-essai (2026-09-28) : tas 'ne_se_pretend_pas' → 'rien'. Les champs `reaction`
     # restent tels quels dans le JSON existant — plus lus ni écrits, mais non purgés (pas de perte).
     import json as _json
-    for row in conn.execute("SELECT offer_id, points_json FROM fiches_entreprise WHERE points_json IS NOT NULL"):
+
+    for row in conn.execute(
+        "SELECT offer_id, points_json FROM fiches_entreprise WHERE points_json IS NOT NULL"
+    ):
         points = _json.loads(row["points_json"])
         changed = False
         for p in points:
@@ -112,39 +118,39 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
     existing = {row[1] for row in conn.execute("PRAGMA table_info(offers)").fetchall()}
 
     add_cols = [
-        ("description",          "TEXT"),
-        ("seen_candidat",        "INTEGER NOT NULL DEFAULT 0"),
-        ("nature_contract",      "TEXT"),
-        ("alternance",           "INTEGER NOT NULL DEFAULT 0"),
-        ("full_time",            "INTEGER"),
-        ("company_size",         "TEXT"),
-        ("experience_required",  "TEXT"),
-        ("rome_code",            "TEXT"),
-        ("rome_label",           "TEXT"),
+        ("description", "TEXT"),
+        ("seen_candidat", "INTEGER NOT NULL DEFAULT 0"),
+        ("nature_contract", "TEXT"),
+        ("alternance", "INTEGER NOT NULL DEFAULT 0"),
+        ("full_time", "INTEGER"),
+        ("company_size", "TEXT"),
+        ("experience_required", "TEXT"),
+        ("rome_code", "TEXT"),
+        ("rome_label", "TEXT"),
         ("extracted_facts_json", "TEXT"),
-        ("filtered_out",         "INTEGER NOT NULL DEFAULT 0"),
-        ("filter_reason",        "TEXT"),
-        ("category",             "TEXT"),
+        ("filtered_out", "INTEGER NOT NULL DEFAULT 0"),
+        ("filter_reason", "TEXT"),
+        ("category", "TEXT"),
         # chantier hors-périmètre — dérivé, recalculé à chaque rescore
         ("hors_perimetre_reason", "TEXT"),
         # chantier review humaine — colonnes d'interaction (comme seen_candidat)
-        ("categorie_suggeree",  "TEXT"),
-        ("categorie_corrigee",  "TEXT"),
-        ("remarque",            "TEXT"),
-        ("reviewed_at",         "TEXT"),
+        ("categorie_suggeree", "TEXT"),
+        ("categorie_corrigee", "TEXT"),
+        ("remarque", "TEXT"),
+        ("reviewed_at", "TEXT"),
         # chantier HTML→Markdown — brut source conservé, description = dérivé MD
-        ("description_raw",     "TEXT"),
+        ("description_raw", "TEXT"),
         # chantier divergence front — matching techs persisté au (re)score
-        ("techs_matched_json",  "TEXT"),
-        ("techs_missing_json",  "TEXT"),
+        ("techs_matched_json", "TEXT"),
+        ("techs_missing_json", "TEXT"),
         # lot G — gates éliminatoires : causes multiples (JSON list)
-        ("perimetre_causes",    "TEXT"),
+        ("perimetre_causes", "TEXT"),
         # staleness : timestamp du dernier (re)score — comparé à reviewed_at
-        ("rescored_at",         "TEXT"),
+        ("rescored_at", "TEXT"),
         # chantier belge — langue de rédaction de l'annonce (fr|en|nl|other)
-        ("ad_language",         "TEXT"),
+        ("ad_language", "TEXT"),
         # TCK-211 — version de l'extraction (modèle + empreinte prompt + schéma)
-        ("extraction_version",  "TEXT"),
+        ("extraction_version", "TEXT"),
     ]
     for col, col_type in add_cols:
         if col not in existing:
@@ -161,9 +167,14 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
 
     # Chantier review humaine — drop scoring /10-/100 (L5)
     for col in (
-        "desirability", "desirability_detail",
-        "attainability", "attainability_detail",
-        "score_in_category", "attain_tech", "attain_role", "blocked_by",
+        "desirability",
+        "desirability_detail",
+        "attainability",
+        "attainability_detail",
+        "score_in_category",
+        "attain_tech",
+        "attain_role",
+        "blocked_by",
     ):
         if col in existing:
             conn.execute(f"ALTER TABLE offers DROP COLUMN {col}")

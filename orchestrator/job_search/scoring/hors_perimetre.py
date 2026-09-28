@@ -8,16 +8,17 @@ Une offre est hors-périmètre si elle cumule une ou plusieurs causes :
 
 Retourne une liste de causes (vide = offre dans le périmètre).
 """
-from enum import Enum
+
 import re
+from enum import Enum
 
 from orchestrator.job_search.sources.base import ExtractedFacts, RoleLevel
 
 
 class HorsPerimetreCause(str, Enum):
-    no_tech   = "no_tech"       # techs_required == [] (incertain — à inspecter)
-    mgmt_role = "mgmt_role"     # role_level == manager (décision tranchée)
-    contrat   = "contrat"        # stage/alternance/MIS
+    no_tech = "no_tech"  # techs_required == [] (incertain — à inspecter)
+    mgmt_role = "mgmt_role"  # role_level == manager (décision tranchée)
+    contrat = "contrat"  # stage/alternance/MIS
 
 
 # Valeurs contract_type / nature_contract éliminatoires

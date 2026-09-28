@@ -7,6 +7,7 @@ Usage non-interactif :
 Usage interactif (liste les offres récentes, demande id + statut) :
     python -m job_search.verdict
 """
+
 import argparse
 from datetime import datetime, timezone
 
@@ -35,7 +36,9 @@ def _list_recent(conn) -> list:
 
 def _record_verdict(conn, offer_id: int, status: str) -> None:
     # Vérifie que l'offre existe
-    row = conn.execute("SELECT id, title FROM offers WHERE id = ?", (offer_id,)).fetchone()
+    row = conn.execute(
+        "SELECT id, title FROM offers WHERE id = ?", (offer_id,)
+    ).fetchone()
     if row is None:
         raise ValueError(f"Offre id={offer_id} introuvable.")
 
@@ -53,7 +56,9 @@ def _record_verdict(conn, offer_id: int, status: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Enregistrer un verdict sur une offre")
     parser.add_argument("--offer-id", type=int, help="ID SQLite de l'offre")
-    parser.add_argument("--status", choices=list(_VALID_STATUSES), help="retenu | rejeté | candidaté")
+    parser.add_argument(
+        "--status", choices=list(_VALID_STATUSES), help="retenu | rejeté | candidaté"
+    )
     args = parser.parse_args()
 
     from orchestrator.job_search.storage.db import get_connection, init_db

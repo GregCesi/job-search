@@ -14,17 +14,24 @@ load_dotenv()
 _TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token"
 _SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
 
-_REMOTE_KEYWORDS = {"télétravail", "teletravail", "remote", "full remote", "full-remote"}
+_REMOTE_KEYWORDS = {
+    "télétravail",
+    "teletravail",
+    "remote",
+    "full remote",
+    "full-remote",
+}
 
 
 def _detect_remote(raw: dict) -> bool:
-    text = " ".join([
-        raw.get("intitule", ""),
-        raw.get("description", ""),
-        raw.get("lieuTravail", {}).get("libelle", ""),
-    ]).lower()
+    text = " ".join(
+        [
+            raw.get("intitule", ""),
+            raw.get("description", ""),
+            raw.get("lieuTravail", {}).get("libelle", ""),
+        ]
+    ).lower()
     return any(kw in text for kw in _REMOTE_KEYWORDS)
-
 
 
 class FranceTravailSource(Source):
@@ -84,16 +91,22 @@ class FranceTravailSource(Source):
             if resp.status_code == 204:
                 return []
             if resp.status_code in (400, 500):
-                warnings.warn(f"FT API {resp.status_code} pour {params} range={start}-{end} — ignoré")
+                warnings.warn(
+                    f"FT API {resp.status_code} pour {params} range={start}-{end} — ignoré"
+                )
                 return []
             if resp.status_code == 429:
-                retry_after = int(resp.headers.get("Retry-After", 2 ** attempt))
-                warnings.warn(f"FT API 429 — attente {retry_after}s (tentative {attempt + 1}/{max_retries})")
+                retry_after = int(resp.headers.get("Retry-After", 2**attempt))
+                warnings.warn(
+                    f"FT API 429 — attente {retry_after}s (tentative {attempt + 1}/{max_retries})"
+                )
                 time.sleep(retry_after)
                 continue
             resp.raise_for_status()
             return resp.json().get("resultats", [])
-        warnings.warn(f"FT API 429 persistant pour {params} range={start}-{end} — ignoré")
+        warnings.warn(
+            f"FT API 429 persistant pour {params} range={start}-{end} — ignoré"
+        )
         return []
 
     def _fetch_all(self, params: dict, limit: int | None = None) -> list[dict]:
@@ -172,6 +185,8 @@ class FranceTravailSource(Source):
             try:
                 offers.append(self._map(raw))
             except Exception as exc:
-                warnings.warn(f"[FranceTravailSource] skipped offer {raw.get('id', '?')}: {exc}")
+                warnings.warn(
+                    f"[FranceTravailSource] skipped offer {raw.get('id', '?')}: {exc}"
+                )
 
         return offers

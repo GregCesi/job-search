@@ -1,4 +1,5 @@
 """Construction du prompt fiche entreprise — source unique : .claude/commands/fiche-entreprise.md."""
+
 import re
 import sqlite3
 

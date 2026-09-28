@@ -1,9 +1,8 @@
 """Endpoints offres + verdicts."""
+
 import json
 import logging
-import sys
 from datetime import datetime, timezone
-from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -69,9 +68,9 @@ def _derive_score_breakdown(row) -> str | None:
         return None
 
     try:
-        from orchestrator.job_search.sources.base import ExtractedFacts
-        from orchestrator.job_search.scoring.desirability import compute_desirability
         from orchestrator.job_search.scoring.attainability import compute_attainability
+        from orchestrator.job_search.scoring.desirability import compute_desirability
+        from orchestrator.job_search.sources.base import ExtractedFacts
 
         facts = ExtractedFacts.model_validate(data)
         desir = compute_desirability(facts, profile.search_criteria, profile, table)
@@ -85,18 +84,21 @@ def _derive_score_breakdown(row) -> str | None:
 
     # Blockers atteignabilité
     attain_parts: list[str] = []
-    if attain.blocked_by == "role" or (attain.blocked_by is None and attain.attain_role < attain.attain_tech):
+    if attain.blocked_by == "role" or (
+        attain.blocked_by is None and attain.attain_role < attain.attain_tech
+    ):
         attain_parts.append(
             f"poste {facts.role_level.value}, ta cible est {profile.role_ceiling.value}"
         )
     if attain.seniority_malus > 0:
-        ceiling_label = profile.seniority_ceiling.value if profile.seniority_ceiling else "?"
+        ceiling_label = (
+            profile.seniority_ceiling.value if profile.seniority_ceiling else "?"
+        )
         attain_parts.append(
             f"séniorité {facts.seniority_required.value}, cible {ceiling_label} (−{attain.seniority_malus:.0f})"
         )
     if attain.techs_missing:
         # Top 3 missing, importance core/required seulement
-        from orchestrator.job_search.scoring.aliases import canonicalize
         top_missing: list[str] = []
         for t in facts.techs_required:
             if t.name in attain.techs_missing and t.importance in ("core", "required"):
@@ -133,9 +135,18 @@ def _derive_score_breakdown(row) -> str | None:
     if parts:
         return f"Hors — {' ; '.join(parts)}"
     return "Hors — scoring insuffisant."
+
+
 router = APIRouter()
 
-_SORT_COLS = {"fetched_at", "title", "company", "category", "seen_candidat", "hors_perimetre_reason"}
+_SORT_COLS = {
+    "fetched_at",
+    "title",
+    "company",
+    "category",
+    "seen_candidat",
+    "hors_perimetre_reason",
+}
 
 
 def _derive_review_fields(row) -> dict:
@@ -185,18 +196,34 @@ def _derive_review_fields(row) -> dict:
 # GET /offers
 # ---------------------------------------------------------------------------
 
+
 @router.get("/offers", response_model=list[OfferRow])
 def list_offers(
     remote: bool | None = Query(None),
     source: str | None = Query(None),
     verdict: str | None = Query(None),
     seen_candidat: bool | None = Query(None),
-    filtered_out: bool | None = Query(None, description="None=exclut les filtrées, True=seulement les filtrées, False=non filtrées"),
-    category: str | None = Query(None, description="parfait | reve | atteignable | hors"),
-    exclude_category: str | None = Query(None, description="Exclut les offres de cette catégorie (ex: hors)"),
-    hors_perimetre: bool | None = Query(None, description="True=seulement hors-périmètre, False=exclut hors-périmètre, None=tout"),
-    hp_cause: str | None = Query(None, description="Filtre par cause HP : no_tech | mgmt_role | contrat"),
-    exclude_ad_language: str | None = Query(None, description="Exclut les offres dont ad_language est dans cette liste (comma-separated, ex: nl)"),
+    filtered_out: bool | None = Query(
+        None,
+        description="None=exclut les filtrées, True=seulement les filtrées, False=non filtrées",
+    ),
+    category: str | None = Query(
+        None, description="parfait | reve | atteignable | hors"
+    ),
+    exclude_category: str | None = Query(
+        None, description="Exclut les offres de cette catégorie (ex: hors)"
+    ),
+    hors_perimetre: bool | None = Query(
+        None,
+        description="True=seulement hors-périmètre, False=exclut hors-périmètre, None=tout",
+    ),
+    hp_cause: str | None = Query(
+        None, description="Filtre par cause HP : no_tech | mgmt_role | contrat"
+    ),
+    exclude_ad_language: str | None = Query(
+        None,
+        description="Exclut les offres dont ad_language est dans cette liste (comma-separated, ex: nl)",
+    ),
     etat_review: str | None = Query(None, description="non_relue | validee | corrigee"),
     q: str | None = Query(None, description="Recherche texte sur title + company"),
     view_profile: bool | None = Query(None),
@@ -241,10 +268,14 @@ def list_offers(
         conditions.append("o.perimetre_causes LIKE ?")
         params.append(f'%"{hp_cause}"%')
     if exclude_ad_language is not None:
-        langs = [l.strip() for l in exclude_ad_language.split(",") if l.strip()]
+        langs = [
+            lang.strip() for lang in exclude_ad_language.split(",") if lang.strip()
+        ]
         if langs:
             placeholders = ",".join("?" * len(langs))
-            conditions.append(f"(o.ad_language IS NULL OR o.ad_language NOT IN ({placeholders}))")
+            conditions.append(
+                f"(o.ad_language IS NULL OR o.ad_language NOT IN ({placeholders}))"
+            )
             params.extend(langs)
     if etat_review is not None:
         etats = [e.strip() for e in etat_review.split(",") if e.strip()]
@@ -254,11 +285,17 @@ def list_offers(
                 if e == "non_relue":
                     clauses.append("o.reviewed_at IS NULL")
                 elif e == "validee":
-                    clauses.append("(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))")
+                    clauses.append(
+                        "(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))"
+                    )
                 elif e == "corrigee":
-                    clauses.append("(o.categorie_corrigee IS NOT NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))")
+                    clauses.append(
+                        "(o.categorie_corrigee IS NOT NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))"
+                    )
                 elif e == "a_revoir":
-                    clauses.append("(o.reviewed_at IS NOT NULL AND o.rescored_at IS NOT NULL AND o.rescored_at > o.reviewed_at)")
+                    clauses.append(
+                        "(o.reviewed_at IS NOT NULL AND o.rescored_at IS NOT NULL AND o.rescored_at > o.reviewed_at)"
+                    )
             if clauses:
                 conditions.append(f"({' OR '.join(clauses)})")
     if q is not None:
@@ -267,6 +304,7 @@ def list_offers(
         params.extend([like, like])
     if view_profile is True:
         from api.view_profile import build_view_clauses
+
         zone_conds, zone_params = build_view_clauses()
         zone_conds = list(zone_conds)
         if include_remote is True:
@@ -325,7 +363,7 @@ def list_offers(
         elif s in _SORT_COLS:
             order_clauses.append(f"o.{s} {d} NULLS LAST")
         else:
-            order_clauses.append(f"o.category DESC")
+            order_clauses.append("o.category DESC")
     order_clause = ", ".join(order_clauses) if order_clauses else "o.category DESC"
     sql = f"""
         SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
@@ -356,7 +394,9 @@ def list_offers(
             category=r["category"],
             verdict=r["verdict"],
             hors_perimetre_reason=r["hors_perimetre_reason"],
-            perimetre_causes=json.loads(r["perimetre_causes"]) if r["perimetre_causes"] else [],
+            perimetre_causes=json.loads(r["perimetre_causes"])
+            if r["perimetre_causes"]
+            else [],
             seen_candidat=bool(r["seen_candidat"]),
             fetched_at=r["fetched_at"] or "",
             **_derive_review_fields(r),
@@ -407,6 +447,7 @@ def check_known(items: list[_CheckKnownItem]) -> dict:
 # GET /offers/{id}  (effet de bord : seen_candidat = 1)
 # ---------------------------------------------------------------------------
 
+
 @router.get("/offers/{offer_id}", response_model=OfferDetail)
 def get_offer(offer_id: int) -> OfferDetail:
     conn = get_conn()
@@ -439,7 +480,9 @@ def get_offer(offer_id: int) -> OfferDetail:
         category=row["category"],
         verdict=row["verdict"],
         hors_perimetre_reason=row["hors_perimetre_reason"],
-        perimetre_causes=json.loads(row["perimetre_causes"]) if row["perimetre_causes"] else [],
+        perimetre_causes=json.loads(row["perimetre_causes"])
+        if row["perimetre_causes"]
+        else [],
         seen_candidat=True,
         fetched_at=row["fetched_at"] or "",
         filtered_out=bool(row["filtered_out"]),
@@ -449,8 +492,12 @@ def get_offer(offer_id: int) -> OfferDetail:
         url=row["url"],
         source=row["source"],
         extracted_facts=_parse_facts(row["extracted_facts_json"], offer_id),
-        techs_matched=json.loads(row["techs_matched_json"]) if row["techs_matched_json"] else [],
-        techs_missing=json.loads(row["techs_missing_json"]) if row["techs_missing_json"] else [],
+        techs_matched=json.loads(row["techs_matched_json"])
+        if row["techs_matched_json"]
+        else [],
+        techs_missing=json.loads(row["techs_missing_json"])
+        if row["techs_missing_json"]
+        else [],
         score_breakdown=_derive_score_breakdown(row),
     )
 
@@ -460,6 +507,7 @@ def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:
         return None
     try:
         from .schemas import TechSchema
+
         data = json.loads(raw)
         techs_raw = data.get("techs_required", [])
         techs = [
@@ -486,11 +534,14 @@ def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:
 # DELETE /offers/{id}/verdict
 # ---------------------------------------------------------------------------
 
+
 @router.put("/offers/{offer_id}/verdict", status_code=204)
 def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
     conn = get_conn()
     try:
-        offer = conn.execute("SELECT id FROM offers WHERE id = ?", (offer_id,)).fetchone()
+        offer = conn.execute(
+            "SELECT id FROM offers WHERE id = ?", (offer_id,)
+        ).fetchone()
         if offer is None:
             raise HTTPException(status_code=404, detail="offer not found")
 
@@ -522,8 +573,14 @@ _VALID_CATEGORIES = {"parfait", "reve", "atteignable", "hors", "hors_perimetre"}
 
 @router.put("/offers/{offer_id}/category-review", status_code=204)
 def upsert_category_review(offer_id: int, body: CategoryReviewIn) -> None:
-    if body.categorie_corrigee is not None and body.categorie_corrigee not in _VALID_CATEGORIES:
-        raise HTTPException(status_code=422, detail=f"categorie_corrigee must be one of {_VALID_CATEGORIES}")
+    if (
+        body.categorie_corrigee is not None
+        and body.categorie_corrigee not in _VALID_CATEGORIES
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=f"categorie_corrigee must be one of {_VALID_CATEGORIES}",
+        )
 
     conn = get_conn()
     try:
@@ -561,6 +618,7 @@ def upsert_category_review(offer_id: int, body: CategoryReviewIn) -> None:
 # GET /offers/{id}/review   — lecture review calibration (legacy, lecture seule)
 # ---------------------------------------------------------------------------
 
+
 @router.get("/offers/{offer_id}/review", response_model=ReviewOut)
 def get_review(offer_id: int) -> ReviewOut:
     conn = get_conn()
@@ -588,7 +646,9 @@ def get_review(offer_id: int) -> ReviewOut:
 def delete_verdict(offer_id: int) -> None:
     conn = get_conn()
     try:
-        offer = conn.execute("SELECT id FROM offers WHERE id = ?", (offer_id,)).fetchone()
+        offer = conn.execute(
+            "SELECT id FROM offers WHERE id = ?", (offer_id,)
+        ).fetchone()
         if offer is None:
             raise HTTPException(status_code=404, detail="offer not found")
         conn.execute("DELETE FROM verdicts WHERE offer_id = ?", (offer_id,))

@@ -5,6 +5,7 @@ Retourne "fr" | "en" | "nl" | "other".
 - Texte < 100 caractères → "other" (trop court pour langdetect)
 - Toute exception langdetect → "other"
 """
+
 import logging
 import warnings
 
@@ -24,6 +25,7 @@ def detect_ad_language(text: str) -> str:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             from langdetect import detect
+
             lang = detect(text)
         return lang if lang in _SUPPORTED else "other"
     except Exception:

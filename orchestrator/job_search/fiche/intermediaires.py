@@ -3,13 +3,16 @@
 Source unique de la normalisation et de l'écriture : `cascade.py` (lecture) et l'écran fiche
 (ajout, via `api/fiche.py`) passent tous les deux par ce module.
 """
+
 from ruamel.yaml import YAML
 
 from orchestrator.job_search.paths import INTERMEDIAIRES_PATH
 
 _yaml = YAML()
 _yaml.preserve_quotes = True
-_yaml.indent(mapping=2, sequence=4, offset=2)  # items indentés à 2 (comme le fichier d'origine)
+_yaml.indent(
+    mapping=2, sequence=4, offset=2
+)  # items indentés à 2 (comme le fichier d'origine)
 
 
 def normalize(name: str) -> str:

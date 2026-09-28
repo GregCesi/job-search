@@ -1,4 +1,5 @@
 """Tests unitaires — canonicalize() + load_alias_table()."""
+
 import pytest
 
 from orchestrator.job_search.paths import ALIAS_PATH
@@ -15,86 +16,116 @@ TABLE = load_alias_table(ALIAS_PATH)
 
 # --- Cas 1 : variante connue → forme canonique ---
 
-@pytest.mark.parametrize("raw, expected", [
-    ("c#", "csharp"),
-    ("CSharp", "csharp"),          # case-insensitive
-    ("c++", "cpp"),
-    ("cplusplus", "cpp"),
-    ("golang", "go"),
-    ("js", "javascript"),
-    ("postgres", "postgresql"),
-    ("sql server", "sql_server"),
-    ("sqlserver", "sql_server"),
-    ("mongo", "mongodb"),
-    ("ne4j", "neo4j"),             # typo LLM
-    ("llama_index", "llamaindex"),
-    (".net", "dotnet"),
-    ("net", "dotnet"),
-    ("asp.net", "aspnet"),
-    ("doctrine_orm", "doctrine"),
-    ("open_cv", "opencv"),
-    ("ci/cd", "ci_cd"),
-    ("gitlab ci", "gitlab_ci"),
-    ("palo alto", "palo_alto"),
-    ("paloalto", "palo_alto"),
-    ("azure ad", "azure_ad"),
-    ("microsoft_entrada_id", "azure_ad"),
-    ("microsoft copilot", "outils_dev_ia"),
-    ("vmware esxi", "vmware"),
-    ("esx", "vmware"),
-    ("vsphere", "vmware"),
-    ("esxi", "vmware"),
-    ("vision-language", "vision_language_models"),
-    ("vision-language models", "vision_language_models"),
-    ("visual studio", "visual_studio"),
-    ("shellscript", "shell"),
-    ("sh", "shell"),
-])
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("c#", "csharp"),
+        ("CSharp", "csharp"),  # case-insensitive
+        ("c++", "cpp"),
+        ("cplusplus", "cpp"),
+        ("golang", "go"),
+        ("js", "javascript"),
+        ("postgres", "postgresql"),
+        ("sql server", "sql_server"),
+        ("sqlserver", "sql_server"),
+        ("mongo", "mongodb"),
+        ("ne4j", "neo4j"),  # typo LLM
+        ("llama_index", "llamaindex"),
+        (".net", "dotnet"),
+        ("net", "dotnet"),
+        ("asp.net", "aspnet"),
+        ("doctrine_orm", "doctrine"),
+        ("open_cv", "opencv"),
+        ("ci/cd", "ci_cd"),
+        ("gitlab ci", "gitlab_ci"),
+        ("palo alto", "palo_alto"),
+        ("paloalto", "palo_alto"),
+        ("azure ad", "azure_ad"),
+        ("microsoft_entrada_id", "azure_ad"),
+        ("microsoft copilot", "outils_dev_ia"),
+        ("vmware esxi", "vmware"),
+        ("esx", "vmware"),
+        ("vsphere", "vmware"),
+        ("esxi", "vmware"),
+        ("vision-language", "vision_language_models"),
+        ("vision-language models", "vision_language_models"),
+        ("visual studio", "visual_studio"),
+        ("shellscript", "shell"),
+        ("sh", "shell"),
+    ],
+)
 def test_known_variant(raw, expected):
     assert canonicalize(raw, TABLE) == expected
 
 
 # Forme canonique se mappe à elle-même
-@pytest.mark.parametrize("canonical", [
-    "csharp", "cpp", "go", "javascript", "postgresql", "mongodb",
-    "dotnet", "aspnet", "opencv", "ci_cd", "vmware", "shell",
-])
+@pytest.mark.parametrize(
+    "canonical",
+    [
+        "csharp",
+        "cpp",
+        "go",
+        "javascript",
+        "postgresql",
+        "mongodb",
+        "dotnet",
+        "aspnet",
+        "opencv",
+        "ci_cd",
+        "vmware",
+        "shell",
+    ],
+)
 def test_canonical_identity(canonical):
     assert canonicalize(canonical, TABLE) == canonical
 
 
 # --- Cas 2 : exclu → None ---
 
-@pytest.mark.parametrize("raw", [
-    "none", "None", "NONE",
-    "os", "OS",
-    "cloud", "Cloud",
-    "microsoft",
-    "german",
-    "solutions",
-    "development",
-    "happy horse",
-    "devbooster",
-])
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "none",
+        "None",
+        "NONE",
+        "os",
+        "OS",
+        "cloud",
+        "Cloud",
+        "microsoft",
+        "german",
+        "solutions",
+        "development",
+        "happy horse",
+        "devbooster",
+    ],
+)
 def test_excluded(raw):
     assert canonicalize(raw, TABLE) is None
 
 
 # --- Cas 3 : inconnu → auto-canonicalisation (lower + strip) ---
 
-@pytest.mark.parametrize("raw, expected", [
-    ("wallix", "wallix"),
-    ("Wallix", "wallix"),
-    ("  WALLIX  ", "wallix"),
-    ("pl/sql", "pl/sql"),
-    ("someunknowntech", "someunknowntech"),
-])
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("wallix", "wallix"),
+        ("Wallix", "wallix"),
+        ("  WALLIX  ", "wallix"),
+        ("pl/sql", "pl/sql"),
+        ("someunknowntech", "someunknowntech"),
+    ],
+)
 def test_unknown_passthrough(raw, expected):
     assert canonicalize(raw, TABLE) == expected
 
 
 # --- Convergence deux côtés (piège central) ---
 # L'offre et le profil doivent converger sur la même forme.
+
 
 def test_convergence_vuejs():
     """vuejs dans le profil, vuejs dans l'offre → même forme (pas de réécriture ici,
@@ -111,6 +142,7 @@ def test_convergence_postgresql_stays_postgresql():
 
 # --- pl/sql passthrough (auto-canonicalise, pas dans alias.yaml) ---
 
+
 def test_plsql_passthrough():
     """pl/sql n'est pas dans alias.yaml, auto-canonicalise en 'pl/sql'."""
     assert canonicalize("pl/sql", TABLE) == "pl/sql"
@@ -124,16 +156,17 @@ def test_plsql_passthrough():
 
 _OLD_ALIASES = {
     "postgresql": "sql",
-    "postgres":   "sql",
-    "mysql":      "sql",
-    "mariadb":    "sql",
-    "mssql":      "sql",
-    "bigquery":   "sql",
-    "snowflake":  "sql",
-    "supabase":   "sql",
-    "sqlite3":    "sqlite",
-    "langsmith":  "langchain",
+    "postgres": "sql",
+    "mysql": "sql",
+    "mariadb": "sql",
+    "mssql": "sql",
+    "bigquery": "sql",
+    "snowflake": "sql",
+    "supabase": "sql",
+    "sqlite3": "sqlite",
+    "langsmith": "langchain",
 }
+
 
 def test_old_aliases_handled():
     """Chaque ancienne variante produit un résultat non-None (pas exclu, pas perdu).
@@ -147,19 +180,16 @@ def test_old_aliases_handled():
 
 # --- Détection de doublons ---
 
+
 def test_duplicate_variant_raises(tmp_path):
     bad_yaml = tmp_path / "bad.yaml"
-    bad_yaml.write_text(
-        "aliases:\n"
-        "  python: [py]\n"
-        "  cpython: [py]\n"
-        "exclude: []\n"
-    )
+    bad_yaml.write_text("aliases:\n  python: [py]\n  cpython: [py]\nexclude: []\n")
     with pytest.raises(DuplicateAliasError, match="py"):
         load_alias_table(bad_yaml)
 
 
 # --- Chargement basique ---
+
 
 def test_load_produces_alias_table():
     assert isinstance(TABLE, AliasTable)

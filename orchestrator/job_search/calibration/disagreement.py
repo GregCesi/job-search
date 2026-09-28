@@ -8,6 +8,7 @@ Règle : seuls les critères co-notés (note humaine non-None ET note IA présen
 contribuent à la distance. Les critères non renseignés sont ignorés, jamais
 comptés 0.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel
@@ -18,9 +19,9 @@ from orchestrator.job_search.storage.reviews import HumanReview
 class DisagreementScore(BaseModel):
     offer_id: str
     distance_desirability: float | None  # None si aucun critère co-noté axe désir
-    distance_attainability: float | None # None si aucun critère co-noté axe attein.
-    distance_total: float                # agrégat des deux axes (None = absent)
-    n_criteria_rated: int                # couverture — métadonnée, n'influence pas le tri
+    distance_attainability: float | None  # None si aucun critère co-noté axe attein.
+    distance_total: float  # agrégat des deux axes (None = absent)
+    n_criteria_rated: int  # couverture — métadonnée, n'influence pas le tri
     created_at: str
 
 
@@ -63,7 +64,9 @@ def disagreement(review: HumanReview) -> DisagreementScore:
     distance_desirability = (sum(desr_diffs) / len(desr_diffs)) if desr_diffs else None
     distance_attainability = (sum(att_diffs) / len(att_diffs)) if att_diffs else None
 
-    components = [d for d in (distance_desirability, distance_attainability) if d is not None]
+    components = [
+        d for d in (distance_desirability, distance_attainability) if d is not None
+    ]
     distance_total = (sum(components) / len(components)) if components else 0.0
 
     return DisagreementScore(

@@ -3,13 +3,19 @@
 Frontière (architecture.md §4) : un appel SDK ne part que d'une action explicite
 (POST /offers/{id}/fiche), jamais d'un changement de profil.
 """
+
 import asyncio
 import json
 import sqlite3
 from datetime import datetime, timezone
 
 from claude_agent_sdk import (
-    AssistantMessage, ClaudeAgentOptions, ResultMessage, SystemMessage, ToolUseBlock, query,
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ResultMessage,
+    SystemMessage,
+    ToolUseBlock,
+    query,
 )
 
 from orchestrator.job_search.fiche.cascade import identify_employer
@@ -27,14 +33,27 @@ _FICHE_SCHEMA = {
         "employeur": {
             "type": "object",
             "properties": {
-                "nom":            {"type": ["string", "null"]},
+                "nom": {"type": ["string", "null"]},
                 "entite_precise": {"type": ["string", "null"]},
-                "type_source":    {"type": "string", "enum": ["direct", "agence", "agregateur", "inconnu"]},
-                "methode":        {"type": "string"},
-                "confiance":      {"type": "string", "enum": ["sur", "probable", "non_trouve"]},
-                "urls":           {"type": "array", "items": {"type": "string"}},
+                "type_source": {
+                    "type": "string",
+                    "enum": ["direct", "agence", "agregateur", "inconnu"],
+                },
+                "methode": {"type": "string"},
+                "confiance": {
+                    "type": "string",
+                    "enum": ["sur", "probable", "non_trouve"],
+                },
+                "urls": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["nom", "entite_precise", "type_source", "methode", "confiance", "urls"],
+            "required": [
+                "nom",
+                "entite_precise",
+                "type_source",
+                "methode",
+                "confiance",
+                "urls",
+            ],
         },
         "points": {
             "type": "array",
@@ -44,7 +63,7 @@ _FICHE_SCHEMA = {
                 "properties": {
                     "position": {"type": "string"},
                     "citation": {"type": ["string", "null"]},
-                    "url":      {"type": ["string", "null"]},
+                    "url": {"type": ["string", "null"]},
                 },
                 "required": ["position"],
             },
@@ -106,7 +125,8 @@ async def run_fiche(offer_id: int) -> None:
         try:
             offer = conn.execute(
                 "SELECT title, company, location, url, description, description_raw "
-                "FROM offers WHERE id = ?", (offer_id,),
+                "FROM offers WHERE id = ?",
+                (offer_id,),
             ).fetchone()
             if offer is None:
                 raise ValueError(f"offre {offer_id} introuvable")
@@ -134,13 +154,17 @@ async def run_fiche(offer_id: int) -> None:
                 if isinstance(msg, SystemMessage) and msg.subtype == "init":
                     api_key_source = msg.data.get("apiKeySource")
                 elif isinstance(msg, AssistantMessage):
-                    tools_called += [b.name for b in msg.content if isinstance(b, ToolUseBlock)]
+                    tools_called += [
+                        b.name for b in msg.content if isinstance(b, ToolUseBlock)
+                    ]
                 elif isinstance(msg, ResultMessage):
                     result = msg
             if result is None:
                 raise RuntimeError("aucun ResultMessage reçu du SDK")
             if result.is_error:
-                raise RuntimeError(f"SDK en erreur ({result.subtype}): {(result.result or '')[:500]}")
+                raise RuntimeError(
+                    f"SDK en erreur ({result.subtype}): {(result.result or '')[:500]}"
+                )
 
             out = _parse_output(result)
             employeur = out.get("employeur") or {}
@@ -164,12 +188,21 @@ async def run_fiche(offer_id: int) -> None:
                 WHERE offer_id=?
                 """,
                 (
-                    out.get("mode"), out.get("presentation"), employeur.get("nom"), employeur.get("entite_precise"),
-                    employeur.get("type_source"), employeur.get("confiance"), employeur.get("methode"),
+                    out.get("mode"),
+                    out.get("presentation"),
+                    employeur.get("nom"),
+                    employeur.get("entite_precise"),
+                    employeur.get("type_source"),
+                    employeur.get("confiance"),
+                    employeur.get("methode"),
                     json.dumps(employeur.get("urls") or [], ensure_ascii=False),
                     json.dumps(points, ensure_ascii=False),
-                    result.session_id, result.total_cost_usd,
-                    json.dumps(tools_called), api_key_source, prompt, offer_id,
+                    result.session_id,
+                    result.total_cost_usd,
+                    json.dumps(tools_called),
+                    api_key_source,
+                    prompt,
+                    offer_id,
                 ),
             )
             conn.commit()

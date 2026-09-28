@@ -1,4 +1,5 @@
 """Endpoints traces viewer."""
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 # ── Migration ─────────────────────────────────────────────────────────────────
+
 
 def _ensure_trace_notes_table() -> None:
     """Crée trace_notes si absente + ajoute colonnes manquantes (idempotent)."""
@@ -41,6 +43,7 @@ def _ensure_trace_notes_table() -> None:
 _ensure_trace_notes_table()
 
 # ── Helpers DB ────────────────────────────────────────────────────────────────
+
 
 def _upsert_note(
     trace_key: str,
@@ -114,6 +117,7 @@ def list_traces() -> list[TraceOut]:
 
 # ── PUT /traces/{trace_key}/note ──────────────────────────────────────────────
 
+
 @router.put("/traces/{trace_key}/note", response_model=dict)
 def upsert_trace_note(trace_key: str, body: TraceNoteIn) -> dict:
     """Persiste (ou efface) la note d'error analysis pour une trace.
@@ -135,7 +139,9 @@ def upsert_trace_note(trace_key: str, body: TraceNoteIn) -> dict:
 
     # Récupère offer_id depuis les traces lues (nécessaire pour la FK)
     raws = read_traces_raw()
-    raw = next((r for r in raws if f"{r['offer_id']}::{r['timestamp']}" == trace_key), None)
+    raw = next(
+        (r for r in raws if f"{r['offer_id']}::{r['timestamp']}" == trace_key), None
+    )
     if raw is None:
         raise HTTPException(status_code=404, detail="trace_key introuvable")
 
@@ -149,6 +155,7 @@ def upsert_trace_note(trace_key: str, body: TraceNoteIn) -> dict:
 
 
 # ── GET /traces/export ───────────────────────────────────────────────────────
+
 
 @router.get("/traces/export")
 def export_traces_jsonl():

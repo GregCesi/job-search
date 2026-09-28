@@ -4,6 +4,7 @@ Extraction LLM des faits intrinsèques d'une offre (architecture.md §4).
 Un seul appel par offre, à l'ingestion. Résultat persisté sur `offers`.
 Jamais recalculé sauf si l'offre change.
 """
+
 import hashlib
 import json
 import os
@@ -110,8 +111,14 @@ _SENIORITY_VALID = {s.value for s in SeniorityLevel}
 _ROLE_VALID = {r.value for r in RoleLevel}
 _IMPORTANCE_VALID = {"core", "required", "nice_to_have"}
 _DOMAIN_VALID = {
-    "ai_engineering", "data_engineering", "data_science",
-    "backend", "devops", "fullstack", "embedded", "other",
+    "ai_engineering",
+    "data_engineering",
+    "data_science",
+    "backend",
+    "devops",
+    "fullstack",
+    "embedded",
+    "other",
 }
 _EXPERIENCE_HINT = {"D": "Débutant accepté", "S": "Souhaitée", "E": "Exigée"}
 
@@ -137,7 +144,9 @@ def extract_facts(
 
     hints: list[str] = []
     if offer.experience_required:
-        hints.append(f"Experience hint: {_EXPERIENCE_HINT.get(offer.experience_required, offer.experience_required)}")
+        hints.append(
+            f"Experience hint: {_EXPERIENCE_HINT.get(offer.experience_required, offer.experience_required)}"
+        )
     if offer.rome_label:
         hints.append(f"ROME classification: {offer.rome_label}")
     if offer.alternance:
@@ -200,9 +209,13 @@ def extract_facts(
                     importance = str(item.get("importance", "")).lower()
                     if name:
                         if importance in _IMPORTANCE_VALID:
-                            techs.append(TechRequirement(name=name, importance=importance))
+                            techs.append(
+                                TechRequirement(name=name, importance=importance)
+                            )
                         else:
-                            techs.append(TechRequirement(name=name, importance="required"))
+                            techs.append(
+                                TechRequirement(name=name, importance="required")
+                            )
                             _degraded = True
 
             domain_raw = str(data.get("domain", "")).lower()
@@ -222,7 +235,11 @@ def extract_facts(
             raw_langues = data.get("langues_requises", [])
             langues_requises: list[str] = []
             if isinstance(raw_langues, list):
-                langues_requises = [str(l).strip() for l in raw_langues if isinstance(l, str) and l.strip()]
+                langues_requises = [
+                    str(lang).strip()
+                    for lang in raw_langues
+                    if isinstance(lang, str) and lang.strip()
+                ]
 
             facts = ExtractedFacts(
                 seniority_required=seniority,
@@ -232,18 +249,21 @@ def extract_facts(
                 langues_requises=langues_requises,
                 parse_failed=_degraded,
             )
-            _write_trace(LLMTrace(
-                offer_id=offer.source_id,
-                model=model,
-                extraction_version=extraction_version(model),
-                temperature=_TEMPERATURE,
-                prompt_system=_SYSTEM_PROMPT,
-                prompt_user=user_prompt,
-                raw_response=_last_raw,
-                parsed_facts=facts.model_dump(),
-                parse_failed=_degraded,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-            ), TRACE_PATH)
+            _write_trace(
+                LLMTrace(
+                    offer_id=offer.source_id,
+                    model=model,
+                    extraction_version=extraction_version(model),
+                    temperature=_TEMPERATURE,
+                    prompt_system=_SYSTEM_PROMPT,
+                    prompt_user=user_prompt,
+                    raw_response=_last_raw,
+                    parsed_facts=facts.model_dump(),
+                    parse_failed=_degraded,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                ),
+                TRACE_PATH,
+            )
             return facts
         except Exception as exc:
             if attempt == retries:
@@ -252,16 +272,19 @@ def extract_facts(
                 )
 
     fallback = _fallback()
-    _write_trace(LLMTrace(
-        offer_id=offer.source_id,
-        model=model,
-        extraction_version=extraction_version(model),
-        temperature=_TEMPERATURE,
-        prompt_system=_SYSTEM_PROMPT,
-        prompt_user=user_prompt,
-        raw_response=_last_raw,
-        parsed_facts=fallback.model_dump(),
-        parse_failed=True,
-        timestamp=datetime.now(timezone.utc).isoformat(),
-    ), TRACE_PATH)
+    _write_trace(
+        LLMTrace(
+            offer_id=offer.source_id,
+            model=model,
+            extraction_version=extraction_version(model),
+            temperature=_TEMPERATURE,
+            prompt_system=_SYSTEM_PROMPT,
+            prompt_user=user_prompt,
+            raw_response=_last_raw,
+            parsed_facts=fallback.model_dump(),
+            parse_failed=True,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        ),
+        TRACE_PATH,
+    )
     return fallback

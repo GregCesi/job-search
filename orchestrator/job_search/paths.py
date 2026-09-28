@@ -4,6 +4,7 @@ REPO_ROOT ancré sur __file__ (orchestrator/job_search/paths.py → repo/).
 Tous les modules qui ont besoin d'un chemin vers data/, profiles/, etc.
 importent depuis ici au lieu de recalculer localement.
 """
+
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent

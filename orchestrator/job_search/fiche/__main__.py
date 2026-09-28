@@ -1,4 +1,5 @@
 """python -m orchestrator.job_search.fiche <offer_id> — imprime le prompt complet (lecture seule)."""
+
 import sqlite3
 import sys
 

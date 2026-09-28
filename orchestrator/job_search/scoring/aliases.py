@@ -4,6 +4,7 @@ Chargement de alias.yaml et canonicalisation déterministe des technologies.
 Transformation à la lecture (scoring), jamais à l'ingestion.
 La trace LLM garde le vocabulaire brut. Python pur, 0 LLM (architecture.md §4).
 """
+
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,8 +19,11 @@ class DuplicateAliasError(Exception):
 @dataclass(frozen=True)
 class AliasTable:
     """Index inverse variante→canonique + set d'exclusions."""
-    _index: dict[str, str] = field(default_factory=dict)    # variante.lower() → canonique
-    _exclude: frozenset[str] = field(default_factory=frozenset)  # termes exclus du calcul
+
+    _index: dict[str, str] = field(default_factory=dict)  # variante.lower() → canonique
+    _exclude: frozenset[str] = field(
+        default_factory=frozenset
+    )  # termes exclus du calcul
 
 
 def _key(term: str) -> str:
@@ -60,7 +64,7 @@ def load_alias_table(path: str | Path) -> AliasTable:
             )
         _register(index, canonical_lower, canonical_lower)
 
-        for variant in (variants or []):
+        for variant in variants or []:
             _register(index, variant, canonical_lower)
 
     exclude = frozenset(_key(e) for e in exclude_raw)

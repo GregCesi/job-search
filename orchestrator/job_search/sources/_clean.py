@@ -31,12 +31,12 @@ def html_to_markdown(raw: str) -> str:
     )
 
     h = html2text.HTML2Text()
-    h.ignore_images = True       # supprime toute <img> résiduelle (décorative, etc.)
-    h.body_width = 0             # pas de wrapping artificiel
-    h.ignore_links = False       # conserve les liens utiles
-    h.protect_links = True       # ne pas couper les URLs
-    h.unicode_snob = True        # caractères Unicode plutôt qu'entités HTML
-    h.skip_internal_links = True # ignore les ancres internes (#...)
+    h.ignore_images = True  # supprime toute <img> résiduelle (décorative, etc.)
+    h.body_width = 0  # pas de wrapping artificiel
+    h.ignore_links = False  # conserve les liens utiles
+    h.protect_links = True  # ne pas couper les URLs
+    h.unicode_snob = True  # caractères Unicode plutôt qu'entités HTML
+    h.skip_internal_links = True  # ignore les ancres internes (#...)
 
     md = h.handle(cleaned)
 

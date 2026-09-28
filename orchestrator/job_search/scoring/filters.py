@@ -8,6 +8,7 @@ Règles :
              si contract_types renseigné, seuls les types listés passent
 - location : remote OK OU zone matching (depuis profil.zones) → passe ; sinon out
 """
+
 from __future__ import annotations
 
 from orchestrator.job_search.matching.profile import SearchCriteria, Zone

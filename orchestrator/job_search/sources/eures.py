@@ -7,6 +7,7 @@ employeur, description complète et localisation. Le détail n'est pas nécessai
 EURES API base : https://europa.eu/eures/api/jv-searchengine
 URL candidature : portail construit depuis l'id (pas de webProfiles dans search).
 """
+
 import time
 import warnings
 from datetime import datetime, timezone
@@ -70,7 +71,9 @@ class EuresSource(Source):
     ) -> None:
         self.keywords = keywords
         # be1 = Bruxelles, be3 = Wallonie (codes NUTS-1 EURES)
-        self.location_codes = location_codes if location_codes is not None else ["be1", "be3"]
+        self.location_codes = (
+            location_codes if location_codes is not None else ["be1", "be3"]
+        )
         self.max_per_keyword = max_per_keyword
 
     def fetch(self) -> list[JobOffer]:
@@ -111,7 +114,9 @@ class EuresSource(Source):
                 resp.raise_for_status()
                 jvs = resp.json().get("jvs", [])
             except Exception as exc:
-                warnings.warn(f"[EuresSource] search error (kw={keyword!r} p={page}): {exc}")
+                warnings.warn(
+                    f"[EuresSource] search error (kw={keyword!r} p={page}): {exc}"
+                )
                 break
 
             if not jvs:

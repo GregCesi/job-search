@@ -5,6 +5,7 @@ Canal séparé (architecture.md §Persistance) : n'écrit que dans data/traces/*
 jamais dans offers/verdicts/human_reviews.
 Effet de bord non bloquant : _write_trace ne propage aucune exception.
 """
+
 import warnings
 from pathlib import Path
 
@@ -16,16 +17,16 @@ TRACE_PATH = TRACES_PATH
 
 
 class LLMTrace(BaseModel):
-    offer_id: str        # offer.source_id
-    model: str           # $OLLAMA_MODEL effectif
+    offer_id: str  # offer.source_id
+    model: str  # $OLLAMA_MODEL effectif
     extraction_version: str | None = None  # TCK-211 — absent des traces antérieures
-    temperature: float   # 0.1 attendu
-    prompt_system: str   # system prompt exact
-    prompt_user: str     # user prompt exact (titre + description[:1500] + hints)
-    raw_response: str    # réponse brute AVANT tout parsing
-    parsed_facts: dict   # ExtractedFacts.model_dump()
-    parse_failed: bool   # True si fallback activé
-    timestamp: str       # ISO8601
+    temperature: float  # 0.1 attendu
+    prompt_system: str  # system prompt exact
+    prompt_user: str  # user prompt exact (titre + description[:1500] + hints)
+    raw_response: str  # réponse brute AVANT tout parsing
+    parsed_facts: dict  # ExtractedFacts.model_dump()
+    parse_failed: bool  # True si fallback activé
+    timestamp: str  # ISO8601
 
 
 def _write_trace(trace: LLMTrace, path: Path = TRACE_PATH) -> None:

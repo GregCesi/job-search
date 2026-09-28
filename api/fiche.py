@@ -3,6 +3,7 @@
 Seules deux routes appellent le SDK : POST /fiche (génération, action explicite) et
 POST /fiche/points/{idx}/explain (reprise de session). PATCH ne touche que la base.
 """
+
 import asyncio
 import json
 from typing import Literal
@@ -27,7 +28,9 @@ Tas = Literal["lettre", "entretien", "rien"]
 
 
 class PointPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")  # `reaction` n'existe plus : un champ inconnu doit échouer, pas être ignoré
+    model_config = ConfigDict(
+        extra="forbid"
+    )  # `reaction` n'existe plus : un champ inconnu doit échouer, pas être ignoré
 
     tas: Tas | None = None
 
@@ -76,12 +79,18 @@ async def create_fiche(offer_id: int) -> dict:
             "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
         ).fetchone()
         if v is None or v["status"] != "retenu":
-            raise HTTPException(status_code=409, detail="La fiche n'est produite que pour une offre retenue")
+            raise HTTPException(
+                status_code=409,
+                detail="La fiche n'est produite que pour une offre retenue",
+            )
         f = conn.execute(
             "SELECT statut FROM fiches_entreprise WHERE offer_id = ?", (offer_id,)
         ).fetchone()
         if f is not None and f["statut"] == "done":
-            raise HTTPException(status_code=409, detail="Fiche déjà produite : la relancer effacerait les annotations")
+            raise HTTPException(
+                status_code=409,
+                detail="Fiche déjà produite : la relancer effacerait les annotations",
+            )
         if offer_id not in _running:
             reset_pending(conn, offer_id)
     if offer_id not in _running:
@@ -97,7 +106,8 @@ def get_fiche(offer_id: int) -> dict:
     with get_conn() as conn:
         row = conn.execute(
             "SELECT f.*, o.company FROM fiches_entreprise f "
-            "JOIN offers o ON o.id = f.offer_id WHERE f.offer_id = ?", (offer_id,),
+            "JOIN offers o ON o.id = f.offer_id WHERE f.offer_id = ?",
+            (offer_id,),
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Pas de fiche pour cette offre")
@@ -105,7 +115,9 @@ def get_fiche(offer_id: int) -> dict:
     if fiche["statut"] == "pending" and offer_id not in _running:
         # Génération orpheline (API redémarrée en cours de route) : l'exposer comme relançable.
         fiche["statut"] = "error"
-        fiche["error_message"] = "Génération interrompue (API redémarrée). Relancer la fiche."
+        fiche["error_message"] = (
+            "Génération interrompue (API redémarrée). Relancer la fiche."
+        )
     return fiche
 
 
@@ -113,28 +125,37 @@ def get_fiche(offer_id: int) -> dict:
 def add_intermediaire(offer_id: int) -> dict:
     """Ajoute `offers.company` à `intermediaires.yaml`. N'écrit jamais depuis la génération ou le PATCH."""
     with get_conn() as conn:
-        row = conn.execute("SELECT company FROM offers WHERE id = ?", (offer_id,)).fetchone()
+        row = conn.execute(
+            "SELECT company FROM offers WHERE id = ?", (offer_id,)
+        ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Offre introuvable")
     company = (row["company"] or "").strip()
     if not company:
-        raise HTTPException(status_code=409, detail="L'offre n'a pas de nom d'entreprise à ajouter")
+        raise HTTPException(
+            status_code=409, detail="L'offre n'a pas de nom d'entreprise à ajouter"
+        )
     added = intermediaires.add(company)
     return {"company": company, "added": added}
 
 
-def _update_point(offer_id: int, point_idx: int, mutate, expect_session: str | None = None) -> dict:
+def _update_point(
+    offer_id: int, point_idx: int, mutate, expect_session: str | None = None
+) -> dict:
     """Read-modify-write de points_json sous verrou d'écriture (BEGIN IMMEDIATE) : pas de mise à jour perdue."""
     conn = get_conn()
     try:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            "SELECT points_json, session_id FROM fiches_entreprise WHERE offer_id = ?", (offer_id,)
+            "SELECT points_json, session_id FROM fiches_entreprise WHERE offer_id = ?",
+            (offer_id,),
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Pas de fiche pour cette offre")
         if expect_session is not None and row["session_id"] != expect_session:
-            raise HTTPException(status_code=409, detail="La fiche a été régénérée pendant l'appel")
+            raise HTTPException(
+                status_code=409, detail="La fiche a été régénérée pendant l'appel"
+            )
         points = json.loads(row["points_json"] or "[]")
         if not 0 <= point_idx < len(points):
             raise HTTPException(status_code=404, detail="Point inconnu")
@@ -167,7 +188,9 @@ def _load_points(conn, offer_id: int, point_idx: int) -> list[dict]:
 @router.patch("/{offer_id}/fiche/points/{point_idx}")
 def patch_point(offer_id: int, point_idx: int, body: PointPatch) -> dict:
     def mutate(point: dict) -> None:
-        for field in body.model_fields_set:  # un champ explicitement null efface la valeur
+        for (
+            field
+        ) in body.model_fields_set:  # un champ explicitement null efface la valeur
             point[field] = getattr(body, field)
 
     return _update_point(offer_id, point_idx, mutate)
@@ -181,7 +204,9 @@ async def explain_point(offer_id: int, point_idx: int) -> str:
             (offer_id,),
         ).fetchone()
         if row is None or not row["session_id"]:
-            raise HTTPException(status_code=409, detail="Fiche non terminée ou sans session")
+            raise HTTPException(
+                status_code=409, detail="Fiche non terminée ou sans session"
+            )
         position = _load_points(conn, offer_id, point_idx)[point_idx]["position"]
 
     FICHE_CWD.mkdir(parents=True, exist_ok=True)
@@ -198,14 +223,23 @@ async def explain_point(offer_id: int, point_idx: int) -> str:
             max_turns=2,
             tools=[],
             allowed_tools=[],
-            disallowed_tools=["WebSearch", "WebFetch", "Bash", "Write", "Edit", "NotebookEdit"],
+            disallowed_tools=[
+                "WebSearch",
+                "WebFetch",
+                "Bash",
+                "Write",
+                "Edit",
+                "NotebookEdit",
+            ],
             setting_sources=[],
             cwd=str(FICHE_CWD),
         ),
     ):
         if isinstance(msg, ResultMessage):
             if msg.is_error:
-                raise HTTPException(status_code=502, detail=f"SDK en erreur ({msg.subtype})")
+                raise HTTPException(
+                    status_code=502, detail=f"SDK en erreur ({msg.subtype})"
+                )
             explication = (msg.result or "").strip()
     if not explication:
         raise HTTPException(status_code=502, detail="Explication vide")

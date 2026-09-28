@@ -7,6 +7,7 @@ Aucun appel LLM. Recalculable sans coût si le profil change (architecture.md §
 Phase 1 : contract / location / full_time retirés — traités comme filtres durs en amont.
 Phase 2 : domain passe de binaire à gradué par distance au cœur-cible.
 """
+
 from pydantic import BaseModel
 
 from orchestrator.job_search.matching.profile import Profile, SearchCriteria
@@ -18,20 +19,20 @@ from orchestrator.job_search.sources.base import ExtractedFacts
 # Calculé côté code, jamais produit en bloc par le LLM (architecture.md §3).
 # 1.0 = cœur-cible, 0.0 = hors-domaine.
 _DOMAIN_GRADIENT: dict[str, float] = {
-    "ai_engineering":   1.0,   # cœur — AI/ML Engineer, LLM, agents, RAG
-    "data_science":     0.4,   # adjacent — ML/stats, overlap mais pas cœur-cible
-    "data_engineering": 0.5,   # adjacent — Python pipelines, SQL, data infra
-    "backend":          0.5,   # adjacent — FastAPI/Python back, APIs REST
-    "fullstack":        0.25,  # éloigné — charge frontend non désirable
-    "devops":           0.2,   # périphérique — infra/cloud, peu de code métier
-    "embedded":         0.1,   # très éloigné
-    "other":            0.0,   # hors-domaine — commercial, management, support
+    "ai_engineering": 1.0,  # cœur — AI/ML Engineer, LLM, agents, RAG
+    "data_science": 0.4,  # adjacent — ML/stats, overlap mais pas cœur-cible
+    "data_engineering": 0.5,  # adjacent — Python pipelines, SQL, data infra
+    "backend": 0.5,  # adjacent — FastAPI/Python back, APIs REST
+    "fullstack": 0.25,  # éloigné — charge frontend non désirable
+    "devops": 0.2,  # périphérique — infra/cloud, peu de code métier
+    "embedded": 0.1,  # très éloigné
+    "other": 0.0,  # hors-domaine — commercial, management, support
 }
 
 
 class Desirability(BaseModel):
-    score: float        # 0-100, agrégé côté code
-    detail: dict        # détail par critère — observable
+    score: float  # 0-100, agrégé côté code
+    detail: dict  # détail par critère — observable
 
 
 # Facteur minimal quand desire=0 sur toutes les technos connues (calibrable)
@@ -82,7 +83,11 @@ def compute_desirability(
     profile=None : modulation désactivée (desire_factor=1.0).
     """
     d = _domain_score(facts.domain)
-    factor = _desire_factor(facts, profile, table) if (profile is not None and table is not None) else 1.0
+    factor = (
+        _desire_factor(facts, profile, table)
+        if (profile is not None and table is not None)
+        else 1.0
+    )
     score = round(d * factor * 100, 1)
 
     return Desirability(

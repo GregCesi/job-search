@@ -1,4 +1,5 @@
 """Tests unitaires — module gate hors_perimetre (Lot G)."""
+
 import pytest
 
 from orchestrator.job_search.scoring.hors_perimetre import (
@@ -33,6 +34,7 @@ def _facts(
 
 # ── Règle no_tech ──────────────────────────────────────────────
 
+
 class TestNoTech:
     def test_empty_techs_triggers(self):
         causes = derive_hors_perimetre(_facts(techs=[]))
@@ -44,6 +46,7 @@ class TestNoTech:
 
 
 # ── Règle mgmt_role ────────────────────────────────────────────
+
 
 class TestMgmtRole:
     def test_manager_triggers(self):
@@ -61,52 +64,63 @@ class TestMgmtRole:
 
 # ── Règle contrat ──────────────────────────────────────────────
 
+
 class TestContrat:
     def test_contract_type_internship(self):
         causes = derive_hors_perimetre(
-            _facts(), contract_type="Internship",
+            _facts(),
+            contract_type="Internship",
         )
         assert HorsPerimetreCause.contrat in causes
 
     def test_contract_type_mis(self):
         causes = derive_hors_perimetre(
-            _facts(), contract_type="MIS",
+            _facts(),
+            contract_type="MIS",
         )
         assert HorsPerimetreCause.contrat in causes
 
     def test_contract_type_cdi_does_not_trigger(self):
         causes = derive_hors_perimetre(
-            _facts(), contract_type="CDI",
+            _facts(),
+            contract_type="CDI",
         )
         assert HorsPerimetreCause.contrat not in causes
 
     def test_nature_contract_apprentissage(self):
         causes = derive_hors_perimetre(
-            _facts(), nature_contract="Contrat apprentissage",
+            _facts(),
+            nature_contract="Contrat apprentissage",
         )
         assert HorsPerimetreCause.contrat in causes
 
     def test_nature_contract_professionnalisation(self):
         causes = derive_hors_perimetre(
-            _facts(), nature_contract="Cont. professionnalisation",
+            _facts(),
+            nature_contract="Cont. professionnalisation",
         )
         assert HorsPerimetreCause.contrat in causes
 
     def test_alternance_flag(self):
         causes = derive_hors_perimetre(
-            _facts(), alternance=True,
+            _facts(),
+            alternance=True,
         )
         assert HorsPerimetreCause.contrat in causes
 
-    @pytest.mark.parametrize("title", [
-        "Alternance Data Engineer",
-        "Stage développeur Python",
-        "Apprentissage DevOps",
-        "ML Intern",
-    ])
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Alternance Data Engineer",
+            "Stage développeur Python",
+            "Apprentissage DevOps",
+            "ML Intern",
+        ],
+    )
     def test_titre_pattern(self, title: str):
         causes = derive_hors_perimetre(
-            _facts(), title=title,
+            _facts(),
+            title=title,
         )
         assert HorsPerimetreCause.contrat in causes
 
@@ -121,6 +135,7 @@ class TestContrat:
 
 
 # ── Cumul de causes ────────────────────────────────────────────
+
 
 class TestCumul:
     def test_no_tech_plus_mgmt(self):
@@ -145,6 +160,7 @@ class TestCumul:
 
 
 # ── Non-régression ─────────────────────────────────────────────
+
 
 class TestNonRegression:
     def test_cdi_fr_no_langue_returns_empty(self):

@@ -16,7 +16,7 @@ class RoleCeiling(str, Enum):
 
 
 class SkillEntry(BaseModel):
-    level: int = Field(ge=1, le=10)   # compréhension / capacité à en parler
+    level: int = Field(ge=1, le=10)  # compréhension / capacité à en parler
     desire: int = Field(ge=0, le=10)  # envie de bosser dessus
 
 
@@ -50,7 +50,6 @@ class Profile(BaseModel):
         """Desire (0-10) for a tech (case-insensitive). None = not in profile = neutral."""
         entry = self.skills.get(tech.lower())
         return entry.desire if entry else None
-
 
 
 def load_profile(path: str | Path) -> tuple[Profile, str]:

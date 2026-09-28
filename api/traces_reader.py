@@ -3,13 +3,14 @@
 Le fichier est lu, jamais muté.
 Chemin résolu depuis __file__ (pattern api/db.py).
 """
+
 import json
 import logging
 
 from orchestrator.job_search.paths import TRACES_PATH
 
 from .db import get_conn
-from .schemas import TraceParsedFacts, TraceOut
+from .schemas import TraceOut, TraceParsedFacts
 
 log = logging.getLogger(__name__)
 
@@ -24,9 +25,7 @@ def read_traces_raw() -> list[dict]:
     - Renvoie les dicts bruts, sans transformation.
     """
     if not _TRACES_PATH.exists():
-        log.warning(
-            "traces file not found: %s — returning empty list", _TRACES_PATH
-        )
+        log.warning("traces file not found: %s — returning empty list", _TRACES_PATH)
         return []
 
     traces: list[dict] = []

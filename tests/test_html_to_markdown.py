@@ -7,14 +7,13 @@ import pytest
 
 from orchestrator.job_search.sources._clean import html_to_markdown
 
-
 # ── Fixtures réelles ─────────────────────────────────────────────────────
 
 # Offre « Assistant Accounts Payable » — classes Google OOyDTc/ejCXj + pixel de tracking
 ACCOUNTS_PAYABLE_HTML = (
     '<p><strong><span class="OOyDTc" style="line-height: 22px; color: #474747;">'
     "This role may require you to be on site at times.</span></strong></p>\n"
-    '<p> </p>\n'
+    "<p> </p>\n"
     '<p><span class="OOyDTc" style="line-height: 22px; color: #474747;">'
     "The Accounts Payable Assistant performs accounting and clerical tasks.</span>"
     '<span class="ejCXj" id="tsuid_3" style="overflow: hidden;">'
@@ -55,7 +54,9 @@ FT_PLAIN = (
 class TestNoResidualHTML:
     """Aucune balise HTML ne survit à la conversion."""
 
-    @pytest.mark.parametrize("html", [ACCOUNTS_PAYABLE_HTML, HEAD_OF_SALES_HTML, INSIDE_SALES_HTML])
+    @pytest.mark.parametrize(
+        "html", [ACCOUNTS_PAYABLE_HTML, HEAD_OF_SALES_HTML, INSIDE_SALES_HTML]
+    )
     def test_no_html_tags(self, html):
         md = html_to_markdown(html)
         assert "<" not in md, f"Balise résiduelle trouvée dans:\n{md}"

@@ -5,6 +5,7 @@ Usage:
     python -m orchestrator.job_search.run
     python -m orchestrator.job_search.run --profile profiles/gregoire.yaml --max 150
 """
+
 import argparse
 import os
 from datetime import datetime, timedelta, timezone
@@ -17,22 +18,30 @@ def main() -> None:
     parser.add_argument("--profile", default=str(PROFILE_PATH))
     parser.add_argument("--max", type=int, default=150, dest="max_results")
     parser.add_argument("--since-hours", type=int, default=24)
-    parser.add_argument("--no-remotive", action="store_true", help="Disable Remotive source")
-    parser.add_argument("--no-indeed", action="store_true", help="Disable Indeed file source")
+    parser.add_argument(
+        "--no-remotive", action="store_true", help="Disable Remotive source"
+    )
+    parser.add_argument(
+        "--no-indeed", action="store_true", help="Disable Indeed file source"
+    )
     parser.add_argument("--no-eures", action="store_true", help="Disable EURES source")
     args = parser.parse_args()
 
     from dotenv import load_dotenv
+
     load_dotenv()
 
     from orchestrator.job_search.digest.formatter import generate_digest
     from orchestrator.job_search.matching.profile import load_profile
+    from orchestrator.job_search.scoring.ad_language import detect_ad_language
     from orchestrator.job_search.scoring.aliases import load_alias_table
     from orchestrator.job_search.scoring.attainability import compute_attainability
     from orchestrator.job_search.scoring.categorize import categorize
     from orchestrator.job_search.scoring.desirability import compute_desirability
-    from orchestrator.job_search.scoring.ad_language import detect_ad_language
-    from orchestrator.job_search.scoring.extractor import extract_facts, extraction_version
+    from orchestrator.job_search.scoring.extractor import (
+        extract_facts,
+        extraction_version,
+    )
     from orchestrator.job_search.scoring.filters import apply_hard_filters
     from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
     from orchestrator.job_search.sources.base import JobOffer, Source
@@ -53,7 +62,9 @@ def main() -> None:
     # 1. Profil + alias
     profile, profile_hash = load_profile(args.profile)
     alias_table = load_alias_table(ALIAS_PATH)
-    print(f"[run] profil : {profile.profile_id} role_ceiling={profile.role_ceiling.value} (hash={profile_hash[:8]}…)")
+    print(
+        f"[run] profil : {profile.profile_id} role_ceiling={profile.role_ceiling.value} (hash={profile_hash[:8]}…)"
+    )
 
     # 2. DB
     conn = get_connection()
@@ -90,16 +101,26 @@ def main() -> None:
 
     # 4. Dédup
     new_offers = filter_new(conn, all_offers)
-    print(f"[run] {len(new_offers)} nouvelles ({len(all_offers) - len(new_offers)} déjà vues)")
+    print(
+        f"[run] {len(new_offers)} nouvelles ({len(all_offers) - len(new_offers)} déjà vues)"
+    )
 
     # 5. Filtre dur + Extract (LLM, 1 appel/offre) + Score (Python) + Persist
     for i, offer in enumerate(new_offers, 1):
         print(f"[run] ({i}/{len(new_offers)}) {offer.title[:55]}", flush=True)
 
-        filtered_out, filter_reason = apply_hard_filters(offer, profile.search_criteria, profile.zones)
+        filtered_out, filter_reason = apply_hard_filters(
+            offer, profile.search_criteria, profile.zones
+        )
         if filtered_out:
             ad_lang = detect_ad_language(offer.description or "")
-            save_offer(conn, offer, filtered_out=True, filter_reason=filter_reason, ad_language=ad_lang)
+            save_offer(
+                conn,
+                offer,
+                filtered_out=True,
+                filter_reason=filter_reason,
+                ad_language=ad_lang,
+            )
             print(f"         → filtré : {filter_reason}")
             continue
 
@@ -122,19 +143,32 @@ def main() -> None:
         if hp_causes:
             flag = " ⚠ parse_failed" if facts.parse_failed else ""
             causes_str = [c.value for c in hp_causes]
-            save_offer(conn, offer,
-                       perimetre_causes=causes_str,
-                       techs_matched=a.techs_matched, techs_missing=a.techs_missing,
-                       ad_language=ad_lang,
-                   extraction_version=None if facts.parse_failed else extraction_version(model))
+            save_offer(
+                conn,
+                offer,
+                perimetre_causes=causes_str,
+                techs_matched=a.techs_matched,
+                techs_missing=a.techs_missing,
+                ad_language=ad_lang,
+                extraction_version=None
+                if facts.parse_failed
+                else extraction_version(model),
+            )
             print(f"         → hors_perimetre: {','.join(causes_str)}{flag}")
             continue
 
         cat = categorize(d.score, a.score)
-        save_offer(conn, offer, category=cat,
-                   techs_matched=a.techs_matched, techs_missing=a.techs_missing,
-                   ad_language=ad_lang,
-                   extraction_version=None if facts.parse_failed else extraction_version(model))
+        save_offer(
+            conn,
+            offer,
+            category=cat,
+            techs_matched=a.techs_matched,
+            techs_missing=a.techs_missing,
+            ad_language=ad_lang,
+            extraction_version=None
+            if facts.parse_failed
+            else extraction_version(model),
+        )
 
         flag = " ⚠ parse_failed" if facts.parse_failed else ""
         print(f"         → [{cat.value}]{flag}")

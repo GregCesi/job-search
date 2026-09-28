@@ -4,13 +4,16 @@ Calcul d'atteignabilité — puis-je décrocher cette offre maintenant ?
 Fonction pure (faits + profil) → Attainability.
 Matching = recouvrement de listes (architecture.md §4). Aucun LLM.
 """
-from enum import Enum
 
 from pydantic import BaseModel
 
 from orchestrator.job_search.matching.profile import Profile
 from orchestrator.job_search.scoring.aliases import AliasTable, canonicalize
-from orchestrator.job_search.sources.base import ExtractedFacts, SeniorityLevel, TechRequirement
+from orchestrator.job_search.sources.base import (
+    ExtractedFacts,
+    SeniorityLevel,
+    TechRequirement,
+)
 
 _SENIORITY_ORDER: dict[SeniorityLevel, int] = {
     SeniorityLevel.junior: 0,
@@ -29,14 +32,15 @@ SENIORITY_MALUS_PER_STEP = 20
 
 # Poids par importance — calibrables (cf. architecture.md §3 + DECISIONS.md)
 _IMPORTANCE_WEIGHTS: dict[str, float] = {
-    "core":         3.0,
-    "required":     2.0,
+    "core": 3.0,
+    "required": 2.0,
     "nice_to_have": 0.5,
 }
 
 
 def _canonical_profile_skills(
-    profile: Profile, table: AliasTable,
+    profile: Profile,
+    table: AliasTable,
 ) -> dict[str, int]:
     """Index canonicalisé des skills du profil : {canonical_form: level}."""
     result: dict[str, int] = {}
@@ -48,7 +52,8 @@ def _canonical_profile_skills(
 
 
 def _canonical_profile_desires(
-    profile: Profile, table: AliasTable,
+    profile: Profile,
+    table: AliasTable,
 ) -> dict[str, int]:
     """Index canonicalisé des desires du profil : {canonical_form: desire}."""
     result: dict[str, int] = {}
@@ -80,7 +85,9 @@ def _compute_attain_tech(
     canonical_levels = _canonical_profile_skills(profile, table)
 
     # Phase 1 : grouper par canonical, garder max importance + tous les raws
-    seen: dict[str, tuple[float, bool, list[str]]] = {}  # canonical → (max_weight, has_level, raw_names)
+    seen: dict[
+        str, tuple[float, bool, list[str]]
+    ] = {}  # canonical → (max_weight, has_level, raw_names)
     matched: list[str] = []
     missing: list[str] = []
 
@@ -100,7 +107,11 @@ def _compute_attain_tech(
 
         if canonical in seen:
             prev_weight, prev_has, prev_raws = seen[canonical]
-            seen[canonical] = (max(prev_weight, weight), prev_has or has_level, prev_raws)
+            seen[canonical] = (
+                max(prev_weight, weight),
+                prev_has or has_level,
+                prev_raws,
+            )
         else:
             seen[canonical] = (weight, has_level, [])
 
@@ -141,13 +152,13 @@ def _compute_attain_role(role_level: str, profile: Profile) -> float:
 
 
 class Attainability(BaseModel):
-    score: float                           # 0-100 = max(0, min(attain_tech, attain_role) − seniority_malus)
-    attain_tech: float                     # moyenne pondérée par importance
-    attain_role: float                     # portail gradué IC/lead/manager
-    seniority_malus: float = 0.0          # malus gradué séniorité (0/20/40)
-    techs_matched: list[str]              # observable (conservé)
-    techs_missing: list[str]              # observable (conservé)
-    blocked_by: str | None                # "tech" | "role" | None — quel axe gouverne
+    score: float  # 0-100 = max(0, min(attain_tech, attain_role) − seniority_malus)
+    attain_tech: float  # moyenne pondérée par importance
+    attain_role: float  # portail gradué IC/lead/manager
+    seniority_malus: float = 0.0  # malus gradué séniorité (0/20/40)
+    techs_matched: list[str]  # observable (conservé)
+    techs_missing: list[str]  # observable (conservé)
+    blocked_by: str | None  # "tech" | "role" | None — quel axe gouverne
 
 
 def _compute_seniority_malus(facts: ExtractedFacts, profile: Profile) -> float:
@@ -168,13 +179,17 @@ def _compute_seniority_malus(facts: ExtractedFacts, profile: Profile) -> float:
     return gap * SENIORITY_MALUS_PER_STEP
 
 
-def compute_attainability(facts: ExtractedFacts, profile: Profile, table: AliasTable) -> Attainability:
+def compute_attainability(
+    facts: ExtractedFacts, profile: Profile, table: AliasTable
+) -> Attainability:
     """
     Atteignabilité refondue : max(0, min(attain_tech, attain_role) − seniority_malus).
     0 LLM (architecture.md §4).
     Non-compensation : un bon axe ne rachète jamais un axe disqualifiant.
     """
-    attain_tech, matched, missing = _compute_attain_tech(facts.techs_required, profile, table)
+    attain_tech, matched, missing = _compute_attain_tech(
+        facts.techs_required, profile, table
+    )
     attain_role = _compute_attain_role(facts.role_level.value, profile)
     seniority_malus = _compute_seniority_malus(facts, profile)
 

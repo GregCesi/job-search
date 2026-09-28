@@ -1,4 +1,5 @@
 """FastAPI — Zone A job-search."""
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,7 +16,9 @@ def _migrate_db() -> None:
     """Ajoute les colonnes manquantes à la DB (idempotent)."""
     conn = get_conn()
     try:
-        existing = {row[1] for row in conn.execute("PRAGMA table_info(offers)").fetchall()}
+        existing = {
+            row[1] for row in conn.execute("PRAGMA table_info(offers)").fetchall()
+        }
         for col, col_type in [
             ("rescored_at", "TEXT"),
         ]:

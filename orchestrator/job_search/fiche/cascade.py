@@ -3,6 +3,7 @@
 Les 3 étapes s'exécutent toujours dans l'ordre (de la moins chère à la plus chère) ;
 le résultat agrège les trois, `methode` trace ce que chacune a observé.
 """
+
 import hashlib
 import json
 import os
@@ -31,16 +32,20 @@ You read a job posting and say who really recruits. Reply with a single JSON obj
 class CascadeResult(BaseModel):
     nom: str | None
     entite: str | None
-    confiance: str        # sur|probable|non_trouve
-    type_source: str      # direct|agence|agregateur|inconnu
+    confiance: str  # sur|probable|non_trouve
+    type_source: str  # direct|agence|agregateur|inconnu
     methode: str
-    etape: int            # 1|2|3 — étape identifiante (0 = fallback)
+    etape: int  # 1|2|3 — étape identifiante (0 = fallback)
 
 
 def _fallback(reason: str = "fallback") -> CascadeResult:
     return CascadeResult(
-        nom=None, entite=None, confiance="non_trouve", type_source="inconnu",
-        methode=reason, etape=0,
+        nom=None,
+        entite=None,
+        confiance="non_trouve",
+        type_source="inconnu",
+        methode=reason,
+        etape=0,
     )
 
 
@@ -59,10 +64,13 @@ def _step3_llm(row: sqlite3.Row, model: str, host: str) -> tuple[str, str | None
         model=model,
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": (
-                f"Title: {row['title']}\nCompany shown: {row['company']}\n"
-                f"Description: {_text(row)[:6000]}\nAnswer now:"
-            )},
+            {
+                "role": "user",
+                "content": (
+                    f"Title: {row['title']}\nCompany shown: {row['company']}\n"
+                    f"Description: {_text(row)[:6000]}\nAnswer now:"
+                ),
+            },
         ],
         options={"temperature": 0, "num_ctx": _NUM_CTX},
         format="json",
@@ -73,7 +81,11 @@ def _step3_llm(row: sqlite3.Row, model: str, host: str) -> tuple[str, str | None
     if type_source not in _TYPES:
         type_source = "inconnu"
     employeur = data.get("employeur")
-    if not isinstance(employeur, str) or not employeur.strip() or employeur.strip().lower() == "null":
+    if (
+        not isinstance(employeur, str)
+        or not employeur.strip()
+        or employeur.strip().lower() == "null"
+    ):
         employeur = None
     return type_source, (employeur.strip() if employeur else None)
 
@@ -89,7 +101,8 @@ def identify_employer(
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             "SELECT id, source, title, company, description, description_raw "
-            "FROM offers WHERE id = ?", (offer_id,),
+            "FROM offers WHERE id = ?",
+            (offer_id,),
         ).fetchone()
         if row is None:
             return _fallback("offre introuvable")
@@ -101,7 +114,9 @@ def identify_employer(
         # Étape 1 — company vs liste d'intermédiaires connus
         is_intermediaire = normalize(company) in intermediaires
         if is_intermediaire:
-            trace.append(f"1: « {company} » ∈ intermediaires.yaml → type_source=agregateur")
+            trace.append(
+                f"1: « {company} » ∈ intermediaires.yaml → type_source=agregateur"
+            )
         else:
             trace.append(f"1: « {company or '∅'} » absent de intermediaires.yaml")
 
@@ -112,7 +127,8 @@ def identify_employer(
             target = _digest(text)
             for o in conn.execute(
                 "SELECT id, company, description, description_raw FROM offers "
-                "WHERE source != ? AND id != ?", (row["source"], offer_id),
+                "WHERE source != ? AND id != ?",
+                (row["source"], offer_id),
             ):
                 if _digest(_text(o)) != target:
                     continue
@@ -155,8 +171,12 @@ def identify_employer(
             nom, etape, confiance = None, 3, "non_trouve"
 
         return CascadeResult(
-            nom=nom, entite=None, confiance=confiance, type_source=type_source,
-            methode=" | ".join(trace), etape=etape,
+            nom=nom,
+            entite=None,
+            confiance=confiance,
+            type_source=type_source,
+            methode=" | ".join(trace),
+            etape=etape,
         )
     except Exception as exc:  # noqa: BLE001
         return _fallback(f"fallback ({type(exc).__name__})")

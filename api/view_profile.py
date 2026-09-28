@@ -3,6 +3,7 @@
 Charge vue_candidat.yaml (liste de noms de zones), résout les définitions
 depuis gregoire.yaml, et construit les conditions SQL pour GET /offers.
 """
+
 from __future__ import annotations
 
 import yaml
