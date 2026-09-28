@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 DB_PATH = REPO_ROOT / "data" / "job_search.sqlite"
 TRACES_PATH = REPO_ROOT / "data" / "traces" / "extract_facts.jsonl"
+CV_REFERENCE_PATH = REPO_ROOT / "data" / "cv" / "cv_reference.html"
 PROFILE_PATH = REPO_ROOT / "profiles" / "gregoire.yaml"
 VUE_CANDIDAT_PATH = REPO_ROOT / "profiles" / "vue_candidat.yaml"
 ALIAS_PATH = REPO_ROOT / "profiles" / "alias.yaml"
@@ -19,3 +20,6 @@ FICHE_COMMAND_PATH = REPO_ROOT / ".claude" / "commands" / "fiche-entreprise.md"
 # cwd stable des sessions Claude Agent SDK de la fiche entreprise : `resume` retrouve une session
 # par son répertoire de travail, run_fiche et la route explain doivent donc partager le même.
 FICHE_CWD = Path.home() / ".cache" / "job-search" / "fiche_cwd"
+# cwd dédié à la génération de CV (EXE-58) : pas de `resume` ici (un seul appel, pas de suite),
+# mais un répertoire propre évite de mêler ses sessions à celles de la fiche entreprise.
+CV_CWD = Path.home() / ".cache" / "job-search" / "cv_cwd"

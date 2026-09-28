@@ -78,6 +78,25 @@ def init_db(conn: sqlite3.Connection) -> None:
             created_at            TEXT NOT NULL,
             UNIQUE(offer_id)
         );
+
+        CREATE TABLE IF NOT EXISTS cvs (
+            id                       INTEGER PRIMARY KEY,
+            offer_id                 INTEGER NOT NULL REFERENCES offers(id),
+            statut                   TEXT NOT NULL DEFAULT 'pending', -- pending|done|error
+            html                     TEXT,
+            titre                    TEXT,
+            localisation             TEXT,
+            au_cv_json               TEXT,  -- JSON array : compétences du bloc généré (critère 19)
+            demande_sans_y_etre_json TEXT,  -- JSON array : technos offre absentes du CV (critère 20)
+            ajouts_permis_json       TEXT,  -- JSON array : ajouts calculés côté code (audit)
+            seuil_utilise            INTEGER, -- seuil de niveau au moment de ce calcul (critère 16)
+            session_id               TEXT,
+            cost_usd                 REAL,
+            prompt_text              TEXT,  -- prompt envoyé (audit invariant)
+            error_message            TEXT,
+            created_at               TEXT NOT NULL,
+            UNIQUE(offer_id)
+        );
     """)
     migrate_offers_schema(conn)
     migrate_fiches_entreprise_schema(conn)
