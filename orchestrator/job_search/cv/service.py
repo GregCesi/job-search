@@ -136,50 +136,70 @@ async def run_cv(offer_id: int) -> None:
 
             title = clean_title(offer["title"] or "")
             location = detect_location(offer["location"], profile)
-            prompt_text = cv_prompt.build_prompt(title, ref.groupes, additions)
 
-            api_key_source: str | None = None
-            tools_called: list[str] = []
-            result: ResultMessage | None = None
-            # cwd stable et vide + aucune source de settings (même isolation que fiche/service.py).
-            CV_CWD.mkdir(parents=True, exist_ok=True)
-            options = ClaudeAgentOptions(
-                tools=_TOOLS,
-                allowed_tools=_TOOLS,
-                disallowed_tools=_FORBIDDEN_TOOLS,
-                output_format={"type": "json_schema", "schema": cv_prompt.SCHEMA},
-                setting_sources=[],
-                cwd=str(CV_CWD),
-                max_turns=10,
-            )
+            # EXE-63 critères 3-5 : une offre qui nomme des technos toutes déjà couvertes
+            # (ou sous le seuil) n'a rien à faire placer par le modèle — l'appeler ne
+            # changerait rien au bloc compétences (architecture.md §4) et ne coûterait
+            # que pour rien (cas réel : offre 2874, 1,00 $ pour 0 ajout). Une offre sans
+            # aucune tech exigée (`techs_required` vide) reste sur l'ancien chemin : ce
+            # n'est pas le cas documenté par le ticket.
+            if techs_required and not additions:
+                prompt_text = None
+                session_id = None
+                cost_usd = 0.0
+                final_groups = list(ref.groupes)
+            else:
+                prompt_text = cv_prompt.build_prompt(title, ref.groupes, additions)
 
-            async def _consume() -> None:
-                nonlocal api_key_source, result
-                async for msg in query(prompt=prompt_text, options=options):
-                    if isinstance(msg, SystemMessage) and msg.subtype == "init":
-                        api_key_source = msg.data.get("apiKeySource")
-                    elif isinstance(msg, AssistantMessage):
-                        tools_called.extend(
-                            b.name for b in msg.content if isinstance(b, ToolUseBlock)
-                        )
-                    elif isinstance(msg, ResultMessage):
-                        result = msg
-
-            await asyncio.wait_for(_consume(), timeout=TIMEOUT_S)
-
-            if result is None:
-                raise RuntimeError("aucun ResultMessage reçu du SDK")
-            if result.is_error:
-                raise RuntimeError(
-                    f"SDK en erreur ({result.subtype}): {(result.result or '')[:500]}"
+                api_key_source: str | None = None
+                tools_called: list[str] = []
+                result: ResultMessage | None = None
+                # cwd stable et vide + aucune source de settings (même isolation que fiche/service.py).
+                CV_CWD.mkdir(parents=True, exist_ok=True)
+                options = ClaudeAgentOptions(
+                    tools=_TOOLS,
+                    allowed_tools=_TOOLS,
+                    disallowed_tools=_FORBIDDEN_TOOLS,
+                    output_format={"type": "json_schema", "schema": cv_prompt.SCHEMA},
+                    setting_sources=[],
+                    cwd=str(CV_CWD),
+                    max_turns=10,
                 )
 
-            out = _parse_output(result)
-            model_groups = [
-                SkillGroup(label=g.get("label", ""), items=list(g.get("items") or []))
-                for g in (out.get("groupes") or [])
-            ]
-            final_groups = filter_model_groups(ref.groupes, model_groups, additions)
+                async def _consume() -> None:
+                    nonlocal api_key_source, result
+                    async for msg in query(prompt=prompt_text, options=options):
+                        if isinstance(msg, SystemMessage) and msg.subtype == "init":
+                            api_key_source = msg.data.get("apiKeySource")
+                        elif isinstance(msg, AssistantMessage):
+                            tools_called.extend(
+                                b.name
+                                for b in msg.content
+                                if isinstance(b, ToolUseBlock)
+                            )
+                        elif isinstance(msg, ResultMessage):
+                            result = msg
+
+                await asyncio.wait_for(_consume(), timeout=TIMEOUT_S)
+
+                if result is None:
+                    raise RuntimeError("aucun ResultMessage reçu du SDK")
+                if result.is_error:
+                    raise RuntimeError(
+                        f"SDK en erreur ({result.subtype}): {(result.result or '')[:500]}"
+                    )
+
+                out = _parse_output(result)
+                model_groups = [
+                    SkillGroup(
+                        label=g.get("label", ""), items=list(g.get("items") or [])
+                    )
+                    for g in (out.get("groupes") or [])
+                ]
+                final_groups = filter_model_groups(ref.groupes, model_groups, additions)
+                session_id = result.session_id
+                cost_usd = result.total_cost_usd
+
             cv_html = generate_cv_html(
                 cv_html_ref, title, location, final_groups, ref.notions
             )
@@ -209,8 +229,8 @@ async def run_cv(offer_id: int) -> None:
                     _groupes_to_json(final_groups),
                     json.dumps(ref.notions, ensure_ascii=False),
                     threshold,
-                    result.session_id,
-                    result.total_cost_usd,
+                    session_id,
+                    cost_usd,
                     prompt_text,
                     offer_id,
                 ),

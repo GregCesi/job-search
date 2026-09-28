@@ -102,8 +102,12 @@ def parse_reference_block(cv_html: str) -> ReferenceBlock:
 
 
 def clean_title(raw: str) -> str:
-    """Retire le suffixe H/F sous ses formes usuelles (« H/F », « (H/F) », « - H/F »)."""
-    t = re.sub(r"\s*[\(\-]\s*[HhFf]/[HhFf]\s*[)]?", "", raw or "")
+    """Retire ce qui suit un premier « | » — nom de l'employeur ou de l'agrégateur
+    (EXE-63 H2) — puis le suffixe H/F sous ses formes usuelles (« H/F », « (H/F) »,
+    « - H/F »).
+    """
+    t = (raw or "").split("|", 1)[0]
+    t = re.sub(r"\s*[\(\-]\s*[HhFf]/[HhFf]\s*[)]?", "", t)
     t = re.sub(r"\s+[HhFf]/[HhFf]\s*$", "", t)
     return t.strip()
 

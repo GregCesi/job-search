@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from orchestrator.job_search.storage.db import init_db
+
 from .cv import router as cv_router
 from .db import get_conn
 from .export import router as export_router
@@ -14,18 +16,13 @@ from .traces import router as traces_router
 
 
 def _migrate_db() -> None:
-    """Ajoute les colonnes manquantes à la DB (idempotent)."""
+    """Crée les tables manquantes et ajoute les colonnes manquantes (idempotent) —
+    la même fonction que le pipeline, pour que l'API n'attende plus un run
+    orchestrator avant de pouvoir servir `cvs` / `cv_corrections` (EXE-63 critères 7-8).
+    """
     conn = get_conn()
     try:
-        existing = {
-            row[1] for row in conn.execute("PRAGMA table_info(offers)").fetchall()
-        }
-        for col, col_type in [
-            ("rescored_at", "TEXT"),
-        ]:
-            if col not in existing:
-                conn.execute(f"ALTER TABLE offers ADD COLUMN {col} {col_type}")
-        conn.commit()
+        init_db(conn)
     finally:
         conn.close()
 
