@@ -7,6 +7,7 @@ brute, mappée vers JobOffer ici et nulle part ailleurs (architecture.md §1).
 0 appel réseau, 0 LLM (architecture.md §4).
 """
 
+import hashlib
 import json
 import warnings
 from datetime import datetime, timezone
@@ -33,7 +34,9 @@ class IndeedFileSource(Source):
 
         offers: list[JobOffer] = []
         for path in files:
-            for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for line_no, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1
+            ):
                 line = line.strip()
                 if not line:
                     continue
