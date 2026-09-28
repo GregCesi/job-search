@@ -22,6 +22,7 @@ from claude_agent_sdk import (
 
 from orchestrator.job_search.cv import prompt as cv_prompt
 from orchestrator.job_search.cv.config import skill_threshold
+from orchestrator.job_search.cv.corrections import add_skill, remove_skill
 from orchestrator.job_search.cv.skills import (
     SkillGroup,
     block_canonicals,
@@ -52,8 +53,25 @@ _TOOLS: list[str] = []
 _FORBIDDEN_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebSearch", "WebFetch"]
 
 
+class CvNotReadyError(RuntimeError):
+    """Aucun CV `done` pour cette offre : rien à corriger (EXE-59)."""
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _groupes_to_json(groupes: list[SkillGroup]) -> str:
+    return json.dumps(
+        [{"label": g.label, "items": g.items} for g in groupes], ensure_ascii=False
+    )
+
+
+def _groupes_from_json(raw: str | None) -> list[SkillGroup]:
+    return [
+        SkillGroup(label=g["label"], items=list(g["items"]))
+        for g in json.loads(raw or "[]")
+    ]
 
 
 def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
@@ -64,6 +82,7 @@ def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
         ON CONFLICT(offer_id) DO UPDATE SET
             statut='pending', html=NULL, titre=NULL, localisation=NULL,
             au_cv_json=NULL, demande_sans_y_etre_json=NULL, ajouts_permis_json=NULL,
+            groupes_json=NULL, notions_json=NULL,
             seuil_utilise=NULL, session_id=NULL, cost_usd=NULL, prompt_text=NULL,
             error_message=NULL, created_at=excluded.created_at
         """,
@@ -176,6 +195,7 @@ async def run_cv(offer_id: int) -> None:
                 UPDATE cvs SET
                     statut='done', html=?, titre=?, localisation=?,
                     au_cv_json=?, demande_sans_y_etre_json=?, ajouts_permis_json=?,
+                    groupes_json=?, notions_json=?,
                     seuil_utilise=?, session_id=?, cost_usd=?, prompt_text=?, error_message=NULL
                 WHERE offer_id=?
                 """,
@@ -186,6 +206,8 @@ async def run_cv(offer_id: int) -> None:
                     json.dumps(au_cv, ensure_ascii=False),
                     json.dumps(demande_sans_y_etre, ensure_ascii=False),
                     json.dumps([a.raw_name for a in additions], ensure_ascii=False),
+                    _groupes_to_json(final_groups),
+                    json.dumps(ref.notions, ensure_ascii=False),
                     threshold,
                     result.session_id,
                     result.total_cost_usd,
@@ -204,3 +226,79 @@ async def run_cv(offer_id: int) -> None:
                 raise
     finally:
         conn.close()
+
+
+def apply_correction(
+    conn: sqlite3.Connection,
+    offer_id: int,
+    action: str,
+    competence: str,
+    maitrisee: bool | None,
+    groupe: str | None,
+) -> None:
+    """Applique une correction manuelle (ajout/retrait) au CV déjà généré de
+    l'offre et journalise l'entrée d'historique (EXE-59). Calcul 100% Python
+    (critère 13) : aucun appel modèle, la connexion `conn` est fournie par
+    l'appelant (route API).
+    """
+    init_db(conn)
+    row = conn.execute("SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)).fetchone()
+    if row is None or row["statut"] != "done":
+        raise CvNotReadyError(f"aucun CV terminé pour l'offre {offer_id}")
+
+    groupes = _groupes_from_json(row["groupes_json"])
+    notions = json.loads(row["notions_json"] or "[]")
+
+    if action == "ajout":
+        if maitrisee is None:
+            raise ValueError("`maitrisee` est requis pour un ajout")
+        outcome = add_skill(groupes, notions, competence, maitrisee, groupe)
+    elif action == "retrait":
+        outcome = remove_skill(groupes, notions, competence)
+    else:
+        raise ValueError(f"action inconnue : {action}")
+
+    offer = conn.execute(
+        "SELECT extracted_facts_json FROM offers WHERE id = ?", (offer_id,)
+    ).fetchone()
+    techs_required = (
+        json.loads(offer["extracted_facts_json"] or "{}").get("techs_required") or []
+    )
+    alias_table = load_alias_table(ALIAS_PATH)
+    present = block_canonicals(outcome.groupes, outcome.notions, alias_table)
+    demande_sans_y_etre = compute_requested_missing(
+        techs_required, alias_table, present
+    )
+    au_cv = compute_au_cv(outcome.groupes, outcome.notions)
+
+    if not CV_REFERENCE_PATH.exists():
+        raise FileNotFoundError(f"CV de référence manquant : {CV_REFERENCE_PATH}")
+    cv_html_ref = CV_REFERENCE_PATH.read_text(encoding="utf-8")
+    html = generate_cv_html(
+        cv_html_ref, row["titre"], row["localisation"], outcome.groupes, outcome.notions
+    )
+
+    conn.execute(
+        """
+        UPDATE cvs SET
+            html=?, au_cv_json=?, demande_sans_y_etre_json=?,
+            groupes_json=?, notions_json=?
+        WHERE offer_id=?
+        """,
+        (
+            html,
+            json.dumps(au_cv, ensure_ascii=False),
+            json.dumps(demande_sans_y_etre, ensure_ascii=False),
+            _groupes_to_json(outcome.groupes),
+            json.dumps(outcome.notions, ensure_ascii=False),
+            offer_id,
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO cv_corrections (offer_id, action, competence, maitrisee, groupe, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (offer_id, action, competence, int(outcome.maitrisee), outcome.groupe, _now()),
+    )
+    conn.commit()

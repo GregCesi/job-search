@@ -89,6 +89,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             au_cv_json               TEXT,  -- JSON array : compétences du bloc généré (critère 19)
             demande_sans_y_etre_json TEXT,  -- JSON array : technos offre absentes du CV (critère 20)
             ajouts_permis_json       TEXT,  -- JSON array : ajouts calculés côté code (audit)
+            groupes_json             TEXT,  -- JSON [{label, items}] : état courant du bloc (EXE-59)
+            notions_json             TEXT,  -- JSON array : notions courantes (EXE-59)
             seuil_utilise            INTEGER, -- seuil de niveau au moment de ce calcul (critère 16)
             session_id               TEXT,
             cost_usd                 REAL,
@@ -97,9 +99,29 @@ def init_db(conn: sqlite3.Connection) -> None:
             created_at               TEXT NOT NULL,
             UNIQUE(offer_id)
         );
+
+        CREATE TABLE IF NOT EXISTS cv_corrections (
+            id         INTEGER PRIMARY KEY,
+            offer_id   INTEGER NOT NULL REFERENCES offers(id),
+            action     TEXT NOT NULL, -- ajout|retrait (EXE-59)
+            competence TEXT NOT NULL,
+            maitrisee  INTEGER NOT NULL, -- 1 si dans un groupe, 0 si dans « Notions en : »
+            groupe     TEXT, -- groupe touché ; NULL si l'action porte sur les notions
+            created_at TEXT NOT NULL
+        );
     """)
     migrate_offers_schema(conn)
     migrate_fiches_entreprise_schema(conn)
+    migrate_cvs_schema(conn)
+
+
+def migrate_cvs_schema(conn: sqlite3.Connection) -> None:
+    """Colonnes ajoutées après la première livraison (EXE-58) — idempotent."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(cvs)").fetchall()}
+    for col in ("groupes_json", "notions_json"):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE cvs ADD COLUMN {col} TEXT")
+    conn.commit()
 
 
 def migrate_fiches_entreprise_schema(conn: sqlite3.Connection) -> None:

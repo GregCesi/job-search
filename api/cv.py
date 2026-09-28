@@ -6,10 +6,22 @@ Si un CV est déjà `done`, POST le rend tel quel sans rappeler le modèle (crit
 
 import asyncio
 import json
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Response
+from pydantic import BaseModel, ConfigDict
 
-from orchestrator.job_search.cv.service import reset_pending, run_cv
+from orchestrator.job_search.cv.corrections import (
+    SkillAlreadyPresentError,
+    SkillNotFoundError,
+    UnknownGroupError,
+)
+from orchestrator.job_search.cv.service import (
+    CvNotReadyError,
+    apply_correction,
+    reset_pending,
+    run_cv,
+)
 
 from .db import get_conn
 
@@ -18,6 +30,15 @@ router = APIRouter(prefix="/offers")
 # Références fortes sur les tâches de fond (l'event loop ne garde que des références faibles).
 _tasks: set[asyncio.Task] = set()
 _running: set[int] = set()
+
+
+class SkillCorrectionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["ajout", "retrait"]
+    competence: str
+    maitrisee: bool | None = None
+    groupe: str | None = None
 
 
 def _row_to_cv(row) -> dict:
@@ -85,3 +106,49 @@ def get_cv(offer_id: int) -> dict:
         cv["statut"] = "error"
         cv["error_message"] = "Génération interrompue (API redémarrée). Relancer le CV."
     return cv
+
+
+@router.post("/{offer_id}/cv/skills")
+def correct_cv_skill(offer_id: int, body: SkillCorrectionIn) -> dict:
+    with get_conn() as conn:
+        try:
+            apply_correction(
+                conn,
+                offer_id,
+                body.action,
+                body.competence,
+                body.maitrisee,
+                body.groupe,
+            )
+        except CvNotReadyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SkillAlreadyPresentError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SkillNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (UnknownGroupError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        row = conn.execute(
+            "SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+    return _row_to_cv(row)
+
+
+@router.get("/{offer_id}/cv/corrections")
+def get_cv_corrections(offer_id: int) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT action, competence, maitrisee, groupe, created_at FROM cv_corrections "
+            "WHERE offer_id = ? ORDER BY id ASC",
+            (offer_id,),
+        ).fetchall()
+    return [
+        {
+            "action": r["action"],
+            "competence": r["competence"],
+            "maitrisee": bool(r["maitrisee"]),
+            "groupe": r["groupe"],
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
