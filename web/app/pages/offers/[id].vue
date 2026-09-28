@@ -179,7 +179,7 @@
     <div v-else-if="activeCard === 'CV'" class="flex-1 overflow-y-auto p-6">
       <div class="max-w-3xl mx-auto space-y-5">
         <!-- Pas de CV / erreur -->
-        <div v-if="!cv || cv.statut === 'error'" class="space-y-3">
+        <div v-if="!cv || cv.statut === 'error'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
           <p v-if="cv?.error_message" class="text-sm text-red-600">{{ cv.error_message }}</p>
           <p v-if="!isRetenue" class="text-sm text-gray-400 italic">Le CV n'est généré que pour une offre retenue.</p>
           <button
@@ -192,7 +192,7 @@
         </div>
 
         <!-- En cours -->
-        <div v-else-if="cv.statut === 'pending'" class="flex items-center gap-3 text-sm text-gray-500">
+        <div v-else-if="cv.statut === 'pending'" class="rounded-lg border border-gray-200 bg-white p-6 flex items-center justify-center gap-3 text-sm text-gray-500">
           <svg class="w-5 h-5 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
@@ -202,7 +202,7 @@
 
         <!-- CV prêt -->
         <template v-else>
-          <div class="flex items-center justify-between gap-4">
+          <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 flex items-center justify-between gap-4">
             <p class="text-xs text-gray-500">
               <span class="text-gray-400">Titre</span> <span class="font-medium text-gray-700">{{ cv.titre ?? '—' }}</span>
               <span class="text-gray-400 ml-3">Lieu</span> <span class="font-medium text-gray-700">{{ cv.localisation ?? '—' }}</span>
@@ -217,8 +217,8 @@
           </div>
 
           <!-- Au CV -->
-          <div class="space-y-3">
-            <h3 class="text-sm font-semibold text-gray-700">Au CV</h3>
+          <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Au CV</h3>
             <p v-if="!cv.groupes.length && !cv.notions.length" class="text-sm text-gray-400 italic">Vide.</p>
             <div v-for="grp in cv.groupes" :key="grp.label" class="space-y-1">
               <p class="text-xs font-medium text-gray-500">{{ grp.label }}</p>
@@ -244,11 +244,11 @@
                 </li>
               </ul>
             </div>
-          </div>
+          </section>
 
           <!-- Demandé sans y être -->
-          <div class="space-y-2">
-            <h3 class="text-sm font-semibold text-gray-700">Demandé sans y être</h3>
+          <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Demandé sans y être</h3>
             <p v-if="!cv.demande_sans_y_etre.length" class="text-sm text-gray-400 italic">Vide.</p>
             <ul v-else class="space-y-2">
               <li
@@ -266,7 +266,7 @@
                 >Ajouter</button>
               </li>
             </ul>
-          </div>
+          </section>
 
           <p v-if="cvActionError" class="text-xs text-red-600">{{ cvActionError }}</p>
         </template>
@@ -277,7 +277,7 @@
     <div v-else class="flex-1 overflow-y-auto p-6">
       <div class="max-w-3xl mx-auto space-y-4">
         <!-- Pas de fiche / erreur -->
-        <div v-if="!fiche || fiche.statut === 'error'" class="space-y-3">
+        <div v-if="!fiche || fiche.statut === 'error'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
           <p v-if="fiche?.error_message" class="text-sm text-red-600">{{ fiche.error_message }}</p>
           <p v-if="!isRetenue" class="text-sm text-gray-400 italic">La fiche n'est produite que pour une offre retenue.</p>
           <button
@@ -290,7 +290,7 @@
         </div>
 
         <!-- En cours -->
-        <div v-else-if="fiche.statut === 'pending'" class="flex items-center gap-3 text-sm text-gray-500">
+        <div v-else-if="fiche.statut === 'pending'" class="rounded-lg border border-gray-200 bg-white p-6 flex items-center justify-center gap-3 text-sm text-gray-500">
           <svg class="w-5 h-5 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
@@ -300,12 +300,14 @@
 
         <!-- Fiche prête -->
         <template v-else>
-          <div class="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
-            <span><span class="text-gray-400">Employeur</span> <span class="font-medium text-gray-700">{{ fiche.employeur_nom ?? 'non trouvé' }}</span></span>
-            <span v-if="fiche.employeur_confiance"><span class="text-gray-400">Confiance</span> {{ fiche.employeur_confiance }}</span>
-            <span><span class="text-gray-400">Mode</span> {{ fiche.mode === 'offre_seule' ? 'offre seule' : 'entreprise' }}</span>
+          <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
+            <div class="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+              <span><span class="text-gray-400">Employeur</span> <span class="font-medium text-gray-700">{{ fiche.employeur_nom ?? 'non trouvé' }}</span></span>
+              <span v-if="fiche.employeur_confiance"><span class="text-gray-400">Confiance</span> {{ fiche.employeur_confiance }}</span>
+              <span><span class="text-gray-400">Mode</span> {{ fiche.mode === 'offre_seule' ? 'offre seule' : 'entreprise' }}</span>
+            </div>
+            <p v-if="fiche.presentation" class="text-sm text-gray-700 leading-relaxed">{{ fiche.presentation }}</p>
           </div>
-          <p v-if="fiche.presentation" class="text-sm text-gray-700 leading-relaxed">{{ fiche.presentation }}</p>
 
           <div v-if="fiche.propose_intermediaire" class="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             <span class="text-amber-800">« {{ offer?.company }} » ressemble à un intermédiaire (agence / agrégateur), pas à l'employeur.</span>
