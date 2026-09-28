@@ -47,3 +47,7 @@ Trois tables d'interaction, jamais fusionnées :
 **Interdit** : écrire dans `offers` (score, criteria_json) depuis un avis humain, ou recalculer le scoring depuis `verdicts` / `human_reviews`. Ce sont des données d'interaction (même statut que `seen`), pas des intrants de recalcul. Leur écart avec le score IA est le signal d'apprentissage — le fusionner le détruit.
 
 Le snapshot dans `human_reviews` rend chaque review auto-portante : la distance de désaccord se calcule contre l'IA _telle qu'elle était_ au moment de l'avis, et survit aux évolutions du scoring (refonte profil, nouveaux critères). Une review n'est jamais invalidée par un changement de grille ultérieur.
+
+## Exception encadrée — fiche entreprise (TCK-224)
+
+La fiche entreprise est le seul appel LLM hors extraction à l'ingestion : elle part **uniquement** d'un POST explicite (`/offers/{id}/fiche`, offre `retenue`) ou d'une explication de point (`.../explain`). Jamais d'un changement de `profile.yaml`, jamais d'un rescore. Elle tourne dans `fiches_entreprise` (4e table d'interaction, jamais mêlée à `offers`) ; réactions et tas humains y sont stockés et ne recalculent rien.

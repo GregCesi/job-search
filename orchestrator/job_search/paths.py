@@ -13,3 +13,8 @@ TRACES_PATH = REPO_ROOT / "data" / "traces" / "extract_facts.jsonl"
 PROFILE_PATH = REPO_ROOT / "profiles" / "gregoire.yaml"
 VUE_CANDIDAT_PATH = REPO_ROOT / "profiles" / "vue_candidat.yaml"
 ALIAS_PATH = REPO_ROOT / "profiles" / "alias.yaml"
+INTERMEDIAIRES_PATH = REPO_ROOT / "profiles" / "intermediaires.yaml"
+FICHE_COMMAND_PATH = REPO_ROOT / ".claude" / "commands" / "fiche-entreprise.md"
+# cwd stable des sessions Claude Agent SDK de la fiche entreprise : `resume` retrouve une session
+# par son répertoire de travail, run_fiche et la route explain doivent donc partager le même.
+FICHE_CWD = Path.home() / ".cache" / "job-search" / "fiche_cwd"

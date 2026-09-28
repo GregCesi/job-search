@@ -1,0 +1,5 @@
+# Intermédiaires de recrutement (agences, portages, agrégateurs) : la valeur de
+# `offers.company` n'est alors pas l'employeur final.
+# Ajouter ici les cas rencontrés (comparaison insensible à la casse).
+intermediaires:
+  - EDITX BV

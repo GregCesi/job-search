@@ -14,7 +14,7 @@
 - Profil ré-embeddé uniquement au changement de hash (cf. architecture.md §2).
 
 ## Persistance — SQLite
-- 2 tables : `offers`, `verdicts`. Léger, requêtable, dataset V2-ready.
+- Tables : `offers`, `verdicts`, `human_reviews`, `fiches_entreprise` (TCK-224), `trace_notes`. Léger, requêtable, dataset V2-ready.
 - Fichier : `data/job_search.sqlite` à la racine du repo, partagé entre `orchestrator/` (écriture) et `api/` (lecture/écriture verdicts). Chaque brique résout le chemin depuis `Path(__file__).parent...` ou depuis le CWD.
 
 ## Source externe — API France Travail (Offres d'emploi v2)
@@ -27,3 +27,8 @@
 - Livré dans `web/`. Tailwind CSS, Pinia v3, `@nuxtjs/tailwindcss`.
 - API base : `http://localhost:8000` (configurable via `runtimeConfig.public.apiBase` dans `nuxt.config.ts`).
 - Lancé via `cd web && npm run dev` (port 3000 par défaut).
+
+## Fiche entreprise — Claude Agent SDK
+- `claude-agent-sdk` (login Claude, `api_key_source` attendu `none`), jamais `subprocess`/`claude -p` en applicatif. Chaque appel déclare `tools`, `allowed_tools` et `disallowed_tools` (seul `tools` fixe les outils disponibles).
+- `cwd` de session fixe (`paths.FICHE_CWD`) : la reprise de session (`resume`) retrouve la session par répertoire.
+- Le prompt vit dans `.claude/commands/fiche-entreprise.md` (source unique, commande manuelle + service).

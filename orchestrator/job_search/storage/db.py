@@ -55,8 +55,56 @@ def init_db(conn: sqlite3.Connection) -> None:
             seen_at_review    INTEGER NOT NULL DEFAULT 0,
             created_at        TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS fiches_entreprise (
+            id                    INTEGER PRIMARY KEY,
+            offer_id              INTEGER NOT NULL REFERENCES offers(id),
+            statut                TEXT NOT NULL DEFAULT 'pending', -- pending|done|error
+            mode                  TEXT,   -- entreprise|offre_seule
+            presentation          TEXT,   -- paragraphe de présentation de l'entreprise
+            employeur_nom         TEXT,
+            employeur_entite      TEXT,
+            employeur_type_source TEXT,   -- direct|agence|agregateur|inconnu
+            employeur_confiance   TEXT,   -- sur|probable|non_trouve
+            employeur_methode     TEXT,
+            employeur_urls_json   TEXT,   -- JSON array de strings
+            points_json           TEXT,   -- JSON array [{position,citation,url,tas,explication}]
+            session_id            TEXT,
+            cost_usd              REAL,
+            tools_called_json     TEXT,   -- JSON array des outils effectivement appelés
+            api_key_source        TEXT,
+            prompt_text           TEXT,   -- prompt envoyé (audit invariant)
+            error_message         TEXT,
+            created_at            TEXT NOT NULL,
+            UNIQUE(offer_id)
+        );
     """)
     migrate_offers_schema(conn)
+    migrate_fiches_entreprise_schema(conn)
+
+
+def migrate_fiches_entreprise_schema(conn: sqlite3.Connection) -> None:
+    """Colonnes ajoutées après la première livraison + migration de données (idempotentes)."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(fiches_entreprise)").fetchall()}
+    if "presentation" not in existing:
+        conn.execute("ALTER TABLE fiches_entreprise ADD COLUMN presentation TEXT")
+
+    # Corrections post-essai (2026-09-28) : tas 'ne_se_pretend_pas' → 'rien'. Les champs `reaction`
+    # restent tels quels dans le JSON existant — plus lus ni écrits, mais non purgés (pas de perte).
+    import json as _json
+    for row in conn.execute("SELECT offer_id, points_json FROM fiches_entreprise WHERE points_json IS NOT NULL"):
+        points = _json.loads(row["points_json"])
+        changed = False
+        for p in points:
+            if p.get("tas") == "ne_se_pretend_pas":
+                p["tas"] = "rien"
+                changed = True
+        if changed:
+            conn.execute(
+                "UPDATE fiches_entreprise SET points_json = ? WHERE offer_id = ?",
+                (_json.dumps(points, ensure_ascii=False), row["offer_id"]),
+            )
+    conn.commit()
 
 
 def migrate_offers_schema(conn: sqlite3.Connection) -> None:

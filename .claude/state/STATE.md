@@ -1,11 +1,12 @@
 # STATE — job-search
 
 ## Maintenant
-- Dernière action : 2026-09-22 — TCK-162 Vue candidat filtre géographique : LIVRÉ ✓ (L0→L8). `api/view_profile.py` + 2 params `view_profile`/`include_remote` sur `GET /offers` + `vue_candidat.yaml` + toggle+case dans `index.vue` + fermeture fuite `operateur.vue`. 18 conditions SQL, 0 écart SQL/Python, 0 cas liège.
-- Prochaine action : handoff — entrée Journal Notion pour ce chantier.
-- Bloquant : aucun.
+- Dernière action : 2026-09-28 — TCK-224 Fiche entreprise : LIVRÉ ✓ (L1→L4b + corrections post-essai). Revue code-reviewer passée, 4 bloquants corrigés. Après essai réel par Grégoire (155, 2074 produites) : tri à un seul choix `tas ∈ {lettre, entretien, rien}` (réaction retirée, PATCH `extra="forbid"`), « Expliquer » disponible sur tous les points, paragraphe `presentation` ajouté (schéma SDK + colonne + écran), migration de données `ne_se_pretend_pas`→`rien`. Vérifié sur 155 depuis le bouton : `presentation` non vide, 8 points, mode `entreprise`. 179 et 2148 non régénérées, écran OK avec `presentation` vide.
+- Prochaine action : observer une fiche en mode `offre_seule` sur une offre réelle (aucune à ce jour, y compris 155) ; fermer les connexions `get_conn()` ouvertes en `with` dans `api/fiche.py` ; installer `ruff` dans l'environnement ; handoff (commit + entrée Journal Notion).
+- Bloquant : aucun. Hors chantier : `tests/test_zones_filters.py` a 2 échecs préexistants (`test_zone_without_dept_raises`, `test_zone_without_insee_raises`), non liés à TCK-224.
 
 ## Phase en cours
+- TCK-224 Fiche entreprise sur offre retenue : LIVRÉ ✓ (2026-09-25, L1→L4b)
 - TCK-162 Vue candidat filtre géographique : LIVRÉ ✓ (2026-09-22, L0→L8)
 - TCK-200 Expérience extraction 6 variantes : LIVRÉ ✓ (2026-09-21, L1→L2)
 - Chantier Belge dans le périmètre (gate langue + ad_language + EURES) : LIVRÉ ✓ (2026-09-09→10, L1a→L8)

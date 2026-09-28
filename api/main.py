@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .db import get_conn
 from .export import router as export_router
+from .fiche import router as fiche_router
 from .offers import router as offers_router
 from .traces import router as traces_router
 
@@ -45,6 +46,7 @@ app.add_middleware(
 app.include_router(offers_router)
 app.include_router(export_router)
 app.include_router(traces_router)
+app.include_router(fiche_router)
 
 
 @app.get("/health")

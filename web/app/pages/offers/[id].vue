@@ -135,10 +135,10 @@
           >
             <div class="flex items-center justify-between">
               <span class="text-sm font-medium text-gray-700">{{ card.title }}</span>
-              <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 font-medium">à produire</span>
+              <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="cardBadge(card.title).class">{{ cardBadge(card.title).label }}</span>
             </div>
             <div class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
-              <span class="text-xs text-gray-300 italic">Vide</span>
+              <span class="text-xs text-gray-300 italic">{{ cardPreview(card.title) }}</span>
             </div>
           </div>
 
@@ -171,8 +171,80 @@
         </svg>
       </button>
     </div>
-    <div class="flex-1 flex items-center justify-center text-sm text-gray-400 italic">
+    <div v-if="activeCard !== 'Entreprise'" class="flex-1 flex items-center justify-center text-sm text-gray-400 italic">
       Aucun contenu — à produire
+    </div>
+
+    <!-- Fiche entreprise -->
+    <div v-else class="flex-1 overflow-y-auto p-6">
+      <div class="max-w-3xl mx-auto space-y-4">
+        <!-- Pas de fiche / erreur -->
+        <div v-if="!fiche || fiche.statut === 'error'" class="space-y-3">
+          <p v-if="fiche?.error_message" class="text-sm text-red-600">{{ fiche.error_message }}</p>
+          <p v-if="!isRetenue" class="text-sm text-gray-400 italic">La fiche n'est produite que pour une offre retenue.</p>
+          <button
+            v-else
+            @click="preparerFiche"
+            class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+          >
+            Préparer la fiche
+          </button>
+        </div>
+
+        <!-- En cours -->
+        <div v-else-if="fiche.statut === 'pending'" class="flex items-center gap-3 text-sm text-gray-500">
+          <svg class="w-5 h-5 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+          </svg>
+          Recherche en cours…
+        </div>
+
+        <!-- Fiche prête -->
+        <template v-else>
+          <div class="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+            <span><span class="text-gray-400">Employeur</span> <span class="font-medium text-gray-700">{{ fiche.employeur_nom ?? 'non trouvé' }}</span></span>
+            <span v-if="fiche.employeur_confiance"><span class="text-gray-400">Confiance</span> {{ fiche.employeur_confiance }}</span>
+            <span><span class="text-gray-400">Mode</span> {{ fiche.mode === 'offre_seule' ? 'offre seule' : 'entreprise' }}</span>
+          </div>
+          <p v-if="fiche.presentation" class="text-sm text-gray-700 leading-relaxed">{{ fiche.presentation }}</p>
+          <p v-if="!fiche.points.length" class="text-sm text-gray-400 italic">Aucun point restitué.</p>
+
+          <div
+            v-for="(point, idx) in fiche.points" :key="idx"
+            class="rounded-lg border border-gray-200 bg-white p-4 space-y-3"
+          >
+            <div class="space-y-1">
+              <p class="text-sm text-gray-800">{{ point.position }}</p>
+              <p v-if="point.citation" class="text-xs text-gray-500 italic border-l-2 border-gray-200 pl-2">« {{ point.citation }} »</p>
+              <a
+                v-if="lienSur(point.url)" :href="lienSur(point.url)!" target="_blank" rel="noopener noreferrer"
+                class="text-xs text-indigo-600 hover:underline break-all"
+              >{{ point.url }} ↗</a>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="text-[10px] text-gray-400 mr-1 w-16">Tas</span>
+              <button
+                v-for="t in TAS" :key="t.value"
+                @click="annoter(idx, t.value)"
+                class="px-2.5 py-1 rounded-full border text-xs transition-colors"
+                :class="point.tas === t.value ? 'bg-teal-600 border-teal-600 text-white' : 'border-gray-200 text-gray-600 hover:border-teal-300'"
+              >{{ t.label }}</button>
+            </div>
+
+            <div class="space-y-2">
+              <button
+                @click="expliquer(idx)"
+                :disabled="explaining === idx"
+                class="text-xs text-indigo-600 hover:underline disabled:text-gray-400"
+              >{{ explaining === idx ? 'Explication en cours…' : 'Expliquer' }}</button>
+              <p v-if="explainError === idx" class="text-xs text-red-600">L'explication a échoué.</p>
+              <div v-if="point.explication" class="text-xs text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-wrap">{{ point.explication }}</div>
+            </div>
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 </template>
@@ -180,7 +252,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { OfferDetail, TechInfo } from '~/stores/offers'
+import type { FicheEntreprise, FicheTas, OfferDetail, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -189,13 +261,117 @@ const route = useRoute()
 const id = computed(() => Number(route.params.id))
 const offer = ref<OfferDetail | null>(null)
 
+const fiche = ref<FicheEntreprise | null>(null)
+const isRetenue = computed(() => offer.value?.verdict === 'retenu')
+
 onMounted(async () => {
   offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
+  await chargerFiche()
+  if (fiche.value?.statut === 'pending') startPolling()
 })
+onBeforeUnmount(stopPolling)
 
 async function retirerDesRetenues() {
   await $fetch(`${config.public.apiBase}/offers/${id.value}/verdict`, { method: 'DELETE' })
   router.back()
+}
+
+// ── Fiche entreprise ──────────────────────────────────────────────────────
+const ficheUrl = () => `${config.public.apiBase}/offers/${id.value}/fiche`
+const TAS: { value: FicheTas, label: string }[] = [
+  { value: 'lettre', label: 'Lettre' },
+  { value: 'entretien', label: 'Entretien' },
+  { value: 'rien', label: 'Rien' },
+]
+const explaining = ref<number | null>(null)
+const explainError = ref<number | null>(null)
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+async function chargerFiche() {
+  try {
+    fiche.value = await $fetch<FicheEntreprise>(ficheUrl())
+  } catch (e) {
+    // 404 = pas encore de fiche ; toute autre erreur (réseau) garde l'état courant
+    if ((e as { statusCode?: number }).statusCode === 404) fiche.value = null
+  }
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
+const POLL_MAX = 180 // 15 min à 5 s : au-delà, la génération est considérée perdue
+
+function startPolling() {
+  stopPolling()
+  let ticks = 0
+  pollTimer = setInterval(async () => {
+    await chargerFiche()
+    ticks++
+    if (fiche.value?.statut !== 'pending') stopPolling() // done ou error : on s'arrête
+    else if (ticks >= POLL_MAX) {
+      stopPolling()
+      fiche.value = { ...fiche.value, statut: 'error', error_message: 'Délai dépassé. Relancer la fiche.' }
+    }
+  }, 5000)
+}
+
+function lienSur(url: string | null): string | null {
+  return url && /^https?:\/\//i.test(url) ? url : null // contenu issu du web : http(s) seulement
+}
+
+async function preparerFiche() {
+  const empty = { mode: null, presentation: null, employeur_nom: null, employeur_confiance: null, points: [], session_id: null, cost_usd: null }
+  try {
+    await $fetch(ficheUrl(), { method: 'POST' })
+  } catch {
+    fiche.value = { ...empty, statut: 'error', error_message: 'Impossible de lancer la fiche.' }
+    return
+  }
+  fiche.value = { ...empty, statut: 'pending', error_message: null }
+  startPolling()
+}
+
+async function annoter(idx: number, value: FicheTas) {
+  const point = fiche.value?.points[idx]
+  if (!point) return
+  const next = point.tas === value ? null : value // re-clic = effacer
+  point.tas = next
+  try {
+    await $fetch(`${ficheUrl()}/points/${idx}`, { method: 'PATCH', body: { tas: next } })
+  } catch {
+    await chargerFiche()
+  }
+}
+
+async function expliquer(idx: number) {
+  const point = fiche.value?.points[idx]
+  if (!point) return
+  explaining.value = idx
+  explainError.value = null
+  try {
+    point.explication = await $fetch<string>(`${ficheUrl()}/points/${idx}/explain`, { method: 'POST' })
+  } catch {
+    explainError.value = idx
+  } finally {
+    explaining.value = null
+  }
+}
+
+function cardBadge(title: string): { label: string, class: string } {
+  if (title === 'Entreprise' && fiche.value) {
+    if (fiche.value.statut === 'pending') return { label: 'en cours', class: 'bg-amber-50 text-amber-600' }
+    if (fiche.value.statut === 'done') return { label: 'prête', class: 'bg-green-50 text-green-700' }
+    return { label: 'erreur', class: 'bg-red-50 text-red-600' }
+  }
+  return { label: 'à produire', class: 'bg-gray-100 text-gray-400' }
+}
+
+function cardPreview(title: string): string {
+  if (title === 'Entreprise' && fiche.value?.statut === 'done') {
+    return `${fiche.value.employeur_nom ?? 'employeur non trouvé'} · ${fiche.value.points.length} points`
+  }
+  return 'Vide'
 }
 
 // ── Frise ────────────────────────────────────────────────────────────────

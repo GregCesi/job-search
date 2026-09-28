@@ -49,6 +49,29 @@ export interface OfferDetail extends OfferRow {
   techs_matched: string[]
   techs_missing: string[]
   score_breakdown?: string | null
+  fiche?: FicheEntreprise | null
+}
+
+export type FicheTas = 'lettre' | 'entretien' | 'rien'
+
+export interface FichePoint {
+  position: string
+  citation: string | null
+  url: string | null
+  tas: FicheTas | null
+  explication: string | null
+}
+
+export interface FicheEntreprise {
+  statut: 'pending' | 'done' | 'error'
+  mode: 'entreprise' | 'offre_seule' | null
+  presentation: string | null
+  employeur_nom: string | null
+  employeur_confiance: string | null
+  points: FichePoint[]
+  session_id: string | null
+  cost_usd: number | null
+  error_message: string | null
 }
 
 export interface Filters {
