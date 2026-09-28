@@ -42,3 +42,6 @@ audit-profil.md
 rescore-p-report.md
 CARTE.md
 .claude/worktrees/
+
+# Réglages locaux de Claude Code, propres à chaque machine
+.claude/settings.local.json

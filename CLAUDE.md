@@ -20,116 +20,30 @@ job-search/
 - `orchestrator/` et `api/` lisent/écrivent tous deux `data/job_search.sqlite` — chemin absolu résolu depuis la racine du repo dans chaque brique.
 - `web/` ne dépend que de l'URL `http://localhost:8000` (api/).
 
-## Docs .claude/
-- STATE.md (`.claude/state/STATE.md`) — état courant (lecture obligatoire au début de chaque session)
-- IMPLEMENTATION-*.md (`.claude/state/`) — plans d'exécution par chantier, état d'avancement
-- CODEMAP.md (`.claude/docs/CODEMAP.md`) — carte de retrieval du code (régénérable)
-- Rules (`.claude/rules/`) — règles de dev modulaires, lues automatiquement
-- Commands (`.claude/commands/`) — `/status`, `/handoff`
+## Où sont les règles
 
-## Workflow (rappel — détails dans rules/workflow.md)
-- Une étape à la fois, validation explicite avant la suivante
-- str_replace ciblé, pas de réécriture
-- Pas de préambule, pas de récap final
-- Mettre à jour IMPLEMENTATION.md + STATE.md après chaque livrable (cf. rules/update-protocol.md — NON négociable)
+- `.claude/rules/quality-gate.md` — la barre de fin de ticket, passée par `bash scripts/barre.sh`.
+- `.claude/rules/workflow.md` — le régime d'exécution : lecture du ticket, points d'arrêt, verdict et entrée Journal.
+- Règles d'architecture — `architecture.md`, `pipeline.md`, `scoring.md`, `sources.md`, `stack.md`, `frontend.md`.
 
-## Journal — écriture dans Notion
+Les outils ECC (skills, agents, commandes) sont des moyens. Ils ne remplacent
+aucune de ces règles, et une note d'évaluation ECC n'est pas un verdict.
 
-Le journal de ce projet vit dans la base Journal de l'espace Notion « Cockpit - IA Engineer ».
-Tu y écris. Tu n'y lis jamais : ton état de démarrage reste `.claude/state/STATE.md`.
-`state/journal.md` et `state/DECISIONS.md` sont gelés — archives, plus aucune écriture.
+`.claude/state/` (STATE.md, IMPLEMENTATION*.md, DECISIONS.md, JOURNAL.md) est
+l'archive du flow précédent, gelée depuis le 28 septembre 2026 (TCK-235) : tu ne
+la lis pas pour savoir quoi faire, et tu n'y écris pas. Ce que tu dois produire est
+dans ton ticket.
 
-### Quand écrire
-Une entrée = **un chantier terminé**. Pas une session.
-- Chantier étalé sur quatre sessions → une entrée, à la fin.
-- Deux chantiers clos le même jour → deux entrées.
-- Fin de session en milieu de chantier → aucune entrée, seulement `STATE.md` mis à jour.
+## Ce que tu ne décides pas
 
-### Pour qui
-Pour le chat, qui ne lit pas ce repo : ni les fichiers, ni les numéros de phase, ni `git log`.
-Trois tests avant d'écrire une ligne :
-1. Un lecteur sans le code comprend-il ce qui a changé dans le comportement du système ?
-2. `git log` le dit-il déjà ? Si oui, ne l'écris pas.
-3. Cette entrée rend-elle fausse une entrée antérieure ? Si oui, dis-le explicitement.
+Tu décides *comment*, jamais *quoi*. Le périmètre d'un ticket vient du ticket.
 
-### Ce qu'on tait
-Noms de fichiers, numéros de phase, listes de fichiers touchés, comptes de tests,
-formulations de commit. Le journal dit ce que le système fait désormais, pas ce que tu as tapé.
+Tu n'écris jamais dans `.claude/rules/`, `.claude/settings.json`, `.claude/agents/`,
+`.claude/skills/`, `scripts/`, `pyproject.toml`, `requirements-dev.txt`, ni dans ce
+fichier. Ce sont la barre contre laquelle tu es jugé et le périmètre dans lequel tu
+travailles.
 
-### Format du corps — trois sections, dans cet ordre
-**## Ce qui change** — le comportement du système avant / après. Obligatoire.
-**## Ce que ça révèle** — l'arbitrage rendu et l'alternative écartée, quand il y en a eu un.
-  Si l'arbitrage décrit le code et changera avec lui, il va dans `.claude/rules/`, pas ici.
-**## Ce que ça invalide** — ce qu'une entrée antérieure affirmait et qui est maintenant faux.
-  Omets la section s'il n'y a rien. N'invente jamais son contenu.
-
-### Verdict — obligatoire sur toute entrée Journal écrite par Claude Code
-
-Discriminant : `Auteur` = `Claude Code`. Aucune autre entrée ne porte ce
-bloc. Le verdict vit dans le corps de l'entrée, pas en propriétés.
-
-Le verdict précède le récit. Un récit écrit en premier fixe une version des
-faits que le verdict n'a plus qu'à ratifier.
-
-#### 1. Barre
-Une ligne. Ce qui avait été demandé, et où c'est écrit : `EXE-n`, ou
-`IMPLEMENTATION.md` étape N. Sans ce pointeur, les trois sections suivantes
-ne confrontent rien et produisent un second récit.
-
-#### 2. Confrontation
-Une ligne par item de la barre, dans l'ordre de la barre, préfixée
-`tenu` / `non tenu` / `non abordé`.
-
-L'item est cité tel qu'il est écrit, jamais reformulé. Une reformulation
-déplace la cible. Un item impossible à citer signale que la barre était mal
-écrite : c'est une information, pas une gêne.
-
-Une ligne `tenu` nomme le fait qui le prouve — commande passée, fichier
-produit, test vert, commit. Sans fait, c'est un avis, et l'avis d'un agent
-sur son propre travail ne vaut rien.
-
-Un `non tenu` dit ce qui manque, en termes observables. Pas pourquoi : le
-pourquoi est du récit.
-
-#### 3. Hors demande
-Ce qui a été fait que la barre ne demandait pas. Section obligatoire :
-`aucun` s'écrit. Une section absente est ambiguë entre *rien à signaler* et
-*pas regardé*.
-
-#### 4. Hypothèses tombées
-Celles déclarées au cadrage que l'exécution a invalidées. En régime
-spécifié : le champ `Hypothèses déclarées` de `EXE-n`. En implémentation :
-celles prises faute d'information. `aucune` s'écrit.
-
-### Titre des entrées
-
-Toute entrée écrite par Claude Code porte le suffixe `— exécution` : `Titre du chantier — exécution`.
-Systématique, sans condition. Tu ne consultes pas Notion et tu ne peux pas savoir si une entrée `— conception` existe déjà pour ce chantier — c'est voulu. Le suffixe `— conception` est porté par le chat ; aucune coordination entre les deux côtés n'est requise.
-
-### Propriété des champs
-
-À la **création**, tous les champs du contrat ci-dessous sont autorisés, dont `Projet`.
-En **modification** d'une entrée existante, `Tickets` et `Projet` sont interdits : ils appartiennent au chat. Ne pas les écrire, même s'ils semblent vides.
-
-### Appel
-
-Utilise `notion-create-pages` avec :
-
-parent: { "data_source_id": "8c11bcb6-13f7-4aab-a3db-63d48cf09412" }
-
-properties:
-- "Titre"            — phrase qui dit le changement, pas le sujet.
-                       « Le matching techs passe côté back », pas « Chantier matching ».
-- "date:Date:start"  — YYYY-MM-DD, jour de clôture du chantier
-- "date:Date:is_datetime" — 0
-- "Type"             — "Session"
-- "Auteur"           — "Claude Code"
-- "Projet"           — ["https://app.notion.com/3b2268d8af348137b1f4f7960e55e224"]
-- "Résumé"           — 2 lignes max. Doit se suffire en vue liste.
-- "Reste à faire"    — une ligne par item, format `- {P0|P1|P2} · {< 1h|Demi-journée|Journée} · {libellé}`
-                       séparateur `<br>`. Vide si rien. Chaque ligne doit pouvoir devenir un ticket
-                       sans réécriture. Pas de "continuer X".
-- "Tickets"          — ne pas renseigner. Le chat rattache.
-
-content: le corps en Markdown, sections ci-dessus. Pas de titre H1 en tête.
-
+Tu t'arrêtes et tu le dis dans trois cas :
+- un objet nommé par ton ticket est absent du terrain ;
+- il est présent mais n'est pas de la nature supposée ;
+- une prémisse explicite de ton prompt est fausse sur le terrain.

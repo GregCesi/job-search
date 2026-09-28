@@ -1,48 +1,44 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "includeCoAuthoredBy": true,
+  "enabledPlugins": {
+    "ecc@ecc": true
+  },
+  "env": {
+    "ECC_HOOK_PROFILE": "standard",
+    "ECC_DISABLED_HOOKS": "pre:bash:dispatcher,pre:edit-write:gateguard-fact-force,stop:desktop-notify"
+  },
   "permissions": {
+    "defaultMode": "dontAsk",
     "allow": [
-      "Read",
-      "Write",
-      "Edit",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git branch:*)",
-      "Bash(git checkout:*)",
-      "Bash(ls:*)",
-      "Bash(cat:*)",
-      "Bash(grep:*)",
-      "Bash(find:*)",
-      "Bash(python:*)",
-      "Bash(python3:*)",
-      "Bash(pip:*)",
-      "Bash(uv:*)",
-      "Bash(pytest:*)",
-      "Bash(ollama:*)",
-      "Bash(sqlite3 data/job_search.sqlite \"SELECT source, count\\(*\\) FROM offers GROUP BY source\")"
+      "Bash",
+      "Read(./**)",
+      "Edit(./**)",
+      "Skill",
+      "Task",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "mcp__claude_ai_Notion__notion-query-data-sources",
+      "mcp__claude_ai_Notion__notion-update-page"
     ],
     "deny": [
-      "Bash(rm -rf:*)",
-      "Bash(git push --force:*)",
-      "Bash(git reset --hard:*)",
-      "Bash(sudo:*)"
-    ]
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "ruff check --fix $CLAUDE_FILE_PATH && ruff format $CLAUDE_FILE_PATH",
-            "if": "Edit(*.py)|Write(*.py)"
-          }
-        ]
-      }
+      "mcp__claude_ai_Notion__notion-create-pages",
+      "Bash(git push:*)",
+      "Bash(git merge:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git branch:*)",
+      "Bash(git worktree:*)",
+      "Bash(git reset:*)",
+      "Bash(git rebase:*)",
+      "Bash(git -C:*)",
+      "Edit(./scripts/**)",
+      "Edit(./.claude/rules/**)",
+      "Edit(./.claude/settings.json)",
+      "Edit(./.claude/agents/**)",
+      "Edit(./.claude/skills/**)",
+      "Edit(./pyproject.toml)",
+      "Edit(./requirements-dev.txt)",
+      "Edit(./CLAUDE.md)"
     ]
   }
 }

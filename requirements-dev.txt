@@ -1,0 +1,4 @@
+# Outils de la barre, versions figées : une version qui bouge change la barre.
+# TCK-235, 28 septembre 2026.
+ruff==0.16.9
+pytest==9.1.1

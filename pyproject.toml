@@ -1,0 +1,19 @@
+# Configuration des outils de la barre (quality-gate.md). Pas un paquet : aucun
+# [project] ici, les dépendances restent dans requirements.txt.
+# Figée le 28 septembre 2026, TCK-235 : sans ce fichier, ruff appliquait les règles
+# par défaut de la version installée, et deux machines rendaient deux barres.
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = [".claude", ".history", "web", "data"]
+
+[tool.ruff.lint]
+# E4, E7, E9, F : le jeu par défaut historique de ruff. I : ordre des imports.
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.pytest.ini_options]
+# Sans pythonpath, un `pytest` nu ne trouve pas le paquet orchestrator.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
