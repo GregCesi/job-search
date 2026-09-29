@@ -28,7 +28,7 @@
         <p class="font-semibold" :class="TITRES[notif.statut].classe">
           {{ TITRES[notif.statut].libelle }}
         </p>
-        <p class="text-xs text-gray-400 truncate" :title="notif.url">{{ notif.url }}</p>
+        <p v-if="notif.url" class="text-xs text-gray-400 truncate" :title="notif.url">{{ notif.url }}</p>
 
         <p v-if="notif.statut === 'termine'" class="mt-1 text-gray-700">
           Catégorie : <span class="font-medium">{{ (notif as Ajout).categorie }}</span>
@@ -48,9 +48,16 @@
             Coller le texte de l'offre
           </button>
         </template>
-        <p v-else-if="notif.statut === 'echec'" class="mt-1 text-gray-700">
-          {{ notif.message }}
-        </p>
+        <template v-else-if="notif.statut === 'echec'">
+          <p class="mt-1 text-gray-700">{{ notif.message }}</p>
+          <button
+            v-if="typeof notif.id === 'number'"
+            class="mt-2 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            @click.stop="ajouts.coller(notif as Ajout)"
+          >
+            Rouvrir le formulaire
+          </button>
+        </template>
       </div>
     </div>
   </Teleport>

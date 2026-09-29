@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 
-// Ajout à la main d'une offre par son URL (EXE-81), sur les routes /ajouts (EXE-79).
-// Le store envoie, suit et restitue l'état rendu par l'API, tel quel.
+// Ajout à la main d'une offre par son URL ou son texte (EXE-81, EXE-83), sur les
+// routes /ajouts (EXE-79, EXE-82). Le store envoie, suit et restitue l'état rendu
+// par l'API, tel quel.
 
 export type AjoutStatut =
   | 'en_cours'
@@ -14,7 +15,8 @@ export type AjoutStatut =
 
 export interface Ajout {
   id: number
-  url: string
+  url: string | null
+  texte: string | null
   statut: AjoutStatut
   offer_id: number | null
   categorie: string | null
@@ -26,7 +28,7 @@ export interface Ajout {
 }
 
 export interface AjoutForm {
-  url: string
+  url?: string
   texte?: string
   titre?: string
   entreprise?: string
@@ -36,7 +38,7 @@ export interface AjoutForm {
 // Échec de l'envoi lui-même : pas d'ajout créé, seulement le message rendu.
 export interface EnvoiEchoue {
   id: string
-  url: string
+  url: string | null
   statut: 'echec'
   message: string
 }
@@ -52,10 +54,9 @@ export const useAjoutsStore = defineStore('ajouts', () => {
   const ajouts = ref<Record<number, Ajout>>({})
   const envois = ref(0)
   const envoisEchoues = ref<EnvoiEchoue[]>([])
-  const formulaire = ref<{ ouvert: boolean; initial: AjoutForm; texte: boolean }>({
+  const formulaire = ref<{ ouvert: boolean; initial: AjoutForm }>({
     ouvert: false,
-    initial: { url: '' },
-    texte: false,
+    initial: {},
   })
   // Incrémenté à chaque ajout fini : la page affichée recharge sa liste.
   const termines = ref(0)
@@ -142,8 +143,8 @@ export const useAjoutsStore = defineStore('ajouts', () => {
     if (suivis.value.some(id => !isFinished(id))) schedule()
   }
 
-  function ouvrirFormulaire(initial: AjoutForm = { url: '' }, texte = false) {
-    formulaire.value = { ouvert: true, initial, texte }
+  function ouvrirFormulaire(initial: AjoutForm = {}) {
+    formulaire.value = { ouvert: true, initial }
   }
 
   function fermerFormulaire() {
@@ -154,7 +155,7 @@ export const useAjoutsStore = defineStore('ajouts', () => {
     fermerFormulaire()
     envois.value++
     try {
-      const cree = await $fetch<{ id: number; statut: AjoutStatut; url: string }>(
+      const cree = await $fetch<{ id: number; statut: AjoutStatut; url: string | null }>(
         `${config.public.apiBase}/ajouts`,
         { method: 'POST', body: form },
       )
@@ -163,6 +164,7 @@ export const useAjoutsStore = defineStore('ajouts', () => {
       ajouts.value[cree.id] = {
         id: cree.id,
         url: cree.url,
+        texte: form.texte ?? null,
         statut: cree.statut,
         offer_id: null,
         categorie: null,
@@ -176,7 +178,7 @@ export const useAjoutsStore = defineStore('ajouts', () => {
     } catch (err) {
       envoisEchoues.value = [
         ...envoisEchoues.value,
-        { id: `envoi-${Date.now()}`, url: form.url, statut: 'echec', message: messageErreur(err) },
+        { id: `envoi-${Date.now()}`, url: form.url ?? null, statut: 'echec', message: messageErreur(err) },
       ]
     } finally {
       envois.value--
@@ -193,9 +195,10 @@ export const useAjoutsStore = defineStore('ajouts', () => {
     save()
   }
 
+  // Rouvre le formulaire avec l'URL et le texte envoyés, tels que l'API les rend.
   function coller(ajout: Ajout) {
     fermer(ajout.id)
-    ouvrirFormulaire({ url: ajout.url }, true)
+    ouvrirFormulaire({ url: ajout.url ?? '', texte: ajout.texte ?? '' })
   }
 
   return {
