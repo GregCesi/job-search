@@ -23,3 +23,8 @@ FICHE_CWD = Path.home() / ".cache" / "job-search" / "fiche_cwd"
 # cwd dédié à la génération de CV (EXE-58) : pas de `resume` ici (un seul appel, pas de suite),
 # mais un répertoire propre évite de mêler ses sessions à celles de la fiche entreprise.
 CV_CWD = Path.home() / ".cache" / "job-search" / "cv_cwd"
+# Fichiers de la lettre de motivation (EXE-65) : hors git comme tout data/, posés à part
+# (H3 du ticket). Aucun `resume` ici non plus : un seul appel par génération.
+LETTRE_PREFERENCES_PATH = REPO_ROOT / "data" / "lettre" / "preferences_ton.md"
+LETTRE_TOURNURES_PATH = REPO_ROOT / "data" / "lettre" / "tournures_interdites.txt"
+LETTRE_CWD = Path.home() / ".cache" / "job-search" / "lettre_cwd"

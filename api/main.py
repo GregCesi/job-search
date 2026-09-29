@@ -11,6 +11,7 @@ from .cv import router as cv_router
 from .db import get_conn
 from .export import router as export_router
 from .fiche import router as fiche_router
+from .lettre import router as lettre_router
 from .offers import router as offers_router
 from .traces import router as traces_router
 
@@ -49,6 +50,7 @@ app.include_router(export_router)
 app.include_router(traces_router)
 app.include_router(fiche_router)
 app.include_router(cv_router)
+app.include_router(lettre_router)
 
 
 @app.get("/health")

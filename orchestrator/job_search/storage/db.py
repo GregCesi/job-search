@@ -109,6 +109,24 @@ def init_db(conn: sqlite3.Connection) -> None:
             groupe     TEXT, -- groupe touché ; NULL si l'action porte sur les notions
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS lettres (
+            id                        INTEGER PRIMARY KEY,
+            offer_id                  INTEGER NOT NULL REFERENCES offers(id),
+            statut                    TEXT NOT NULL DEFAULT 'aucune', -- aucune|pending|done|error
+            points_choisis_json       TEXT,  -- indices choisis ; NULL = défaut (tas "lettre", EXE-65 §H2)
+            texte                     TEXT,
+            tournures_signalees_json  TEXT,  -- JSON array des tournures interdites trouvées
+            nb_mots                   INTEGER,
+            depasse_longueur          INTEGER, -- 1 si nb_mots > 400
+            modele                    TEXT,  -- nom du modèle fixé, enregistré (critère 21)
+            session_id                TEXT,
+            cost_usd                  REAL,
+            prompt_text               TEXT,  -- prompt envoyé (audit invariant)
+            error_message             TEXT,
+            created_at                TEXT NOT NULL,
+            UNIQUE(offer_id)
+        );
     """)
     migrate_offers_schema(conn)
     migrate_fiches_entreprise_schema(conn)
