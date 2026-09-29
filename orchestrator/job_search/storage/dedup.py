@@ -3,6 +3,17 @@ import sqlite3
 from orchestrator.job_search.sources.base import JobOffer
 
 
+def find_existing(conn: sqlite3.Connection, offer: JobOffer) -> int | None:
+    """Id de l'offre déjà en base sous la même double clé que `filter_new`
+    (source+source_id OU fingerprint), ou None."""
+    row = conn.execute(
+        "SELECT id FROM offers WHERE (source = ? AND source_id = ?) OR fingerprint = ? "
+        "ORDER BY id LIMIT 1",
+        (offer.source, offer.source_id, offer.fingerprint),
+    ).fetchone()
+    return row[0] if row is not None else None
+
+
 def filter_new(conn: sqlite3.Connection, offers: list[JobOffer]) -> list[JobOffer]:
     """Return offers not already in the DB (by source+source_id OR fingerprint)."""
     if not offers:

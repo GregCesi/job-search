@@ -32,18 +32,9 @@ def main() -> None:
     load_dotenv()
 
     from orchestrator.job_search.digest.formatter import generate_digest
+    from orchestrator.job_search.ingestion import process_offer
     from orchestrator.job_search.matching.profile import load_profile
-    from orchestrator.job_search.scoring.ad_language import detect_ad_language
     from orchestrator.job_search.scoring.aliases import load_alias_table
-    from orchestrator.job_search.scoring.attainability import compute_attainability
-    from orchestrator.job_search.scoring.categorize import categorize
-    from orchestrator.job_search.scoring.desirability import compute_desirability
-    from orchestrator.job_search.scoring.extractor import (
-        extract_facts,
-        extraction_version,
-    )
-    from orchestrator.job_search.scoring.filters import apply_hard_filters
-    from orchestrator.job_search.scoring.hors_perimetre import derive_hors_perimetre
     from orchestrator.job_search.sources.base import JobOffer, Source
     from orchestrator.job_search.sources.eures import EuresSource
     from orchestrator.job_search.sources.france_travail import FranceTravailSource
@@ -51,7 +42,7 @@ def main() -> None:
     from orchestrator.job_search.sources.remotive import RemotiveSource
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.dedup import filter_new
-    from orchestrator.job_search.storage.offers import get_offers_since, save_offer
+    from orchestrator.job_search.storage.offers import get_offers_since
 
     model = os.getenv("OLLAMA_MODEL", "gemma4:12b")
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -106,72 +97,24 @@ def main() -> None:
     )
 
     # 5. Filtre dur + Extract (LLM, 1 appel/offre) + Score (Python) + Persist
+    #    — chaîne partagée avec l'ajout à la main (ingestion.py, EXE-79)
     for i, offer in enumerate(new_offers, 1):
         print(f"[run] ({i}/{len(new_offers)}) {offer.title[:55]}", flush=True)
 
-        filtered_out, filter_reason = apply_hard_filters(
-            offer, profile.search_criteria, profile.zones
+        outcome = process_offer(
+            conn, offer, profile, alias_table, model=model, host=host
         )
-        if filtered_out:
-            ad_lang = detect_ad_language(offer.description or "")
-            save_offer(
-                conn,
-                offer,
-                filtered_out=True,
-                filter_reason=filter_reason,
-                ad_language=ad_lang,
-            )
-            print(f"         → filtré : {filter_reason}")
+        if outcome.filter_reason is not None:
+            print(f"         → filtré : {outcome.filter_reason}")
             continue
 
-        facts = extract_facts(offer, model=model, host=host)
-        offer = offer.model_copy(update={"extracted_facts": facts})
-
-        d = compute_desirability(facts, profile.search_criteria, profile, alias_table)
-        a = compute_attainability(facts, profile, alias_table)
-
-        # Gate hors-périmètre APRÈS d/a — scores conservés intacts (0 LLM, §4)
-        hp_causes = derive_hors_perimetre(
-            facts,
-            title=offer.title,
-            description=offer.description,
-            contract_type=offer.contract_type,
-            nature_contract=offer.nature_contract,
-            alternance=offer.alternance,
-        )
-        ad_lang = detect_ad_language(offer.description or "")
-        if hp_causes:
-            flag = " ⚠ parse_failed" if facts.parse_failed else ""
-            causes_str = [c.value for c in hp_causes]
-            save_offer(
-                conn,
-                offer,
-                perimetre_causes=causes_str,
-                techs_matched=a.techs_matched,
-                techs_missing=a.techs_missing,
-                ad_language=ad_lang,
-                extraction_version=None
-                if facts.parse_failed
-                else extraction_version(model),
-            )
-            print(f"         → hors_perimetre: {','.join(causes_str)}{flag}")
+        flag = " ⚠ parse_failed" if outcome.parse_failed else ""
+        if outcome.perimetre_causes:
+            causes = ",".join(outcome.perimetre_causes)
+            print(f"         → hors_perimetre: {causes}{flag}")
             continue
 
-        cat = categorize(d.score, a.score)
-        save_offer(
-            conn,
-            offer,
-            category=cat,
-            techs_matched=a.techs_matched,
-            techs_missing=a.techs_missing,
-            ad_language=ad_lang,
-            extraction_version=None
-            if facts.parse_failed
-            else extraction_version(model),
-        )
-
-        flag = " ⚠ parse_failed" if facts.parse_failed else ""
-        print(f"         → [{cat.value}]{flag}")
+        print(f"         → [{outcome.category.value}]{flag}")
 
     # 6. Digest
     since = run_at - timedelta(hours=args.since_hours)

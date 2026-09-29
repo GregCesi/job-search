@@ -150,6 +150,20 @@ def init_db(conn: sqlite3.Connection) -> None:
             origine                   TEXT NOT NULL, -- modele|moi (EXE-66)
             created_at                TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS ajouts (
+            id               INTEGER PRIMARY KEY,
+            url              TEXT NOT NULL,
+            -- en_cours|termine|filtree|hors_perimetre|texte_a_coller|echec|deja_en_base (EXE-79)
+            statut           TEXT NOT NULL DEFAULT 'en_cours',
+            offer_id         INTEGER REFERENCES offers(id),
+            categorie        TEXT,
+            raison           TEXT,  -- raison du filtre dur si « filtrée »
+            causes_json      TEXT,  -- JSON array des causes si « hors périmètre »
+            message          TEXT,
+            created_at       TEXT NOT NULL,
+            finished_at      TEXT
+        );
     """)
     migrate_offers_schema(conn)
     migrate_fiches_entreprise_schema(conn)
