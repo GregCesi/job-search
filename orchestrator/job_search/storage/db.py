@@ -46,6 +46,16 @@ def init_db(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_offers_fingerprint ON offers(fingerprint);
 
+        CREATE TABLE IF NOT EXISTS expirations (
+            id               INTEGER PRIMARY KEY,
+            offer_id         INTEGER NOT NULL REFERENCES offers(id),
+            employer_url     TEXT,
+            expired          INTEGER NOT NULL DEFAULT 0,
+            last_checked_at  TEXT,
+            checks_json      TEXT,  -- JSON array [{url, status_code, checked_at}] (EXE-76)
+            UNIQUE(offer_id)
+        );
+
         CREATE TABLE IF NOT EXISTS human_reviews (
             offer_id          TEXT PRIMARY KEY,
             ratings_json      TEXT NOT NULL,

@@ -9,6 +9,7 @@ from orchestrator.job_search.storage.db import init_db
 
 from .cv import router as cv_router
 from .db import get_conn
+from .expiration import router as expiration_router
 from .export import router as export_router
 from .fiche import router as fiche_router
 from .lettre import router as lettre_router
@@ -51,6 +52,7 @@ app.include_router(traces_router)
 app.include_router(fiche_router)
 app.include_router(cv_router)
 app.include_router(lettre_router)
+app.include_router(expiration_router)
 
 
 @app.get("/health")

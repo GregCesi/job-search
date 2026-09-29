@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from .db import get_conn
 from .schemas import (
     CategoryReviewIn,
+    ExpirationCheckSchema,
     ExtractedFactsSchema,
     OfferDetail,
     OfferRow,
@@ -371,9 +372,11 @@ def list_offers(
                o.hors_perimetre_reason, o.perimetre_causes,
                o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
                o.rescored_at,
-               v.status AS verdict
+               v.status AS verdict,
+               ex.expired AS expiration_expired
         FROM offers o
         LEFT JOIN verdicts v ON v.offer_id = o.id
+        LEFT JOIN expirations ex ON ex.offer_id = o.id
         {where}
         ORDER BY {order_clause}
     """
@@ -402,6 +405,9 @@ def list_offers(
             **_derive_review_fields(r),
             filtered_out=bool(r["filtered_out"]),
             filter_reason=r["filter_reason"],
+            expired=bool(r["expiration_expired"])
+            if r["expiration_expired"] is not None
+            else False,
         )
         for r in rows
     ]
@@ -454,9 +460,14 @@ def get_offer(offer_id: int) -> OfferDetail:
     try:
         row = conn.execute(
             """
-            SELECT o.*, v.status AS verdict
+            SELECT o.*, v.status AS verdict,
+                   ex.employer_url AS expiration_employer_url,
+                   ex.expired AS expiration_expired,
+                   ex.last_checked_at AS expiration_last_checked_at,
+                   ex.checks_json AS expiration_checks_json
             FROM offers o
             LEFT JOIN verdicts v ON v.offer_id = o.id
+            LEFT JOIN expirations ex ON ex.offer_id = o.id
             WHERE o.id = ?
             """,
             (offer_id,),
@@ -499,7 +510,19 @@ def get_offer(offer_id: int) -> OfferDetail:
         if row["techs_missing_json"]
         else [],
         score_breakdown=_derive_score_breakdown(row),
+        employer_url=row["expiration_employer_url"],
+        last_checked_at=row["expiration_last_checked_at"],
+        expiration_checks=_parse_expiration_checks(row["expiration_checks_json"]),
+        expired=bool(row["expiration_expired"])
+        if row["expiration_expired"] is not None
+        else False,
     )
+
+
+def _parse_expiration_checks(raw: str | None) -> list[ExpirationCheckSchema]:
+    if not raw:
+        return []
+    return [ExpirationCheckSchema(**c) for c in json.loads(raw)]
 
 
 def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:

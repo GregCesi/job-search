@@ -31,6 +31,7 @@ class OfferRow(BaseModel):
     reviewed_at: str | None = None
     review_stale: bool = False
     suggestion_actuelle: str | None = None
+    expired: bool = False  # vérification d'expiration (EXE-76)
 
 
 class TechSchema(BaseModel):
@@ -47,6 +48,15 @@ class ExtractedFactsSchema(BaseModel):
     parse_failed: bool = False
 
 
+class ExpirationCheckSchema(BaseModel):
+    """Un point de vérification d'expiration (EXE-76) : une URL, son code de
+    réponse final ou l'absence de réponse, et la date de la vérification."""
+
+    url: str
+    status_code: int | None
+    checked_at: str
+
+
 class OfferDetail(OfferRow):
     source_id: str
     description: str | None
@@ -56,6 +66,16 @@ class OfferDetail(OfferRow):
     techs_matched: list[str] = []
     techs_missing: list[str] = []
     score_breakdown: str | None = None
+    employer_url: str | None = None  # EXE-76
+    last_checked_at: str | None = None  # EXE-76
+    expiration_checks: list[ExpirationCheckSchema] = []  # EXE-76
+
+
+class EmployerUrlIn(BaseModel):
+    """URL chez l'employeur, saisie à la main sur une offre retenue (EXE-76).
+    Chaîne vide = effacement."""
+
+    url: str
 
 
 class VerdictIn(BaseModel):
