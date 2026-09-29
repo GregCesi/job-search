@@ -98,6 +98,37 @@ export interface Cv {
   created_at: string
 }
 
+export type LettreStatut = 'aucune' | 'pending' | 'done' | 'error'
+
+export interface Lettre {
+  statut: LettreStatut
+  texte: string | null
+  tournures_signalees: string[]
+  nb_mots: number | null
+  depasse_longueur: boolean
+  modele: string | null
+  cost_usd: number | null
+  error_message: string | null
+  created_at: string
+  regeneration_en_cours: boolean
+  regeneration_error: string | null
+}
+
+export interface LettrePoint {
+  texte: string
+  tas: FicheTas | null
+  choisi: boolean
+}
+
+export interface LettreVersion {
+  texte: string
+  tournures_signalees: string[]
+  nb_mots: number
+  depasse_longueur: boolean
+  origine: 'modele' | 'moi'
+  created_at: string
+}
+
 export interface Filters {
   category?: string
   exclude_category?: string
