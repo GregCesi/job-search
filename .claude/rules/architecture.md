@@ -48,6 +48,8 @@ Trois tables d'interaction, jamais fusionnées :
 
 Le snapshot dans `human_reviews` rend chaque review auto-portante : la distance de désaccord se calcule contre l'IA _telle qu'elle était_ au moment de l'avis, et survit aux évolutions du scoring (refonte profil, nouveaux critères). Une review n'est jamais invalidée par un changement de grille ultérieur.
 
-## Exception encadrée — fiche entreprise (TCK-224)
+## Exceptions encadrées — fiche entreprise, CV, lettre (TCK-224, TCK-225, TCK-226)
 
-La fiche entreprise est le seul appel LLM hors extraction à l'ingestion : elle part **uniquement** d'un POST explicite (`/offers/{id}/fiche`, offre `retenue`) ou d'une explication de point (`.../explain`). Jamais d'un changement de `profile.yaml`, jamais d'un rescore. Elle tourne dans `fiches_entreprise` (4e table d'interaction, jamais mêlée à `offers`) ; réactions et tas humains y sont stockés et ne recalculent rien.
+Trois appels LLM existent hors extraction à l'ingestion. Chacun part **uniquement** d'une action explicite sur une offre `retenue` : un POST sur la route de sa pièce (`/offers/{id}/fiche` et son explication de point `.../explain` ; `/offers/{id}/cv` ; la route de la lettre). Jamais d'un changement de `profile.yaml`, jamais d'un rescore.
+
+Chacun tourne dans sa propre table d'interaction, jamais mêlée à `offers` : `fiches_entreprise`, `cvs` (avec `cv_corrections`), et la table de la lettre. Les choix humains qu'elles stockent — tas des points, corrections de compétences, points retenus pour la lettre, texte relu — ne recalculent rien.
