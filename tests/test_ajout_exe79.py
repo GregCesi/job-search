@@ -482,13 +482,9 @@ def test_texte_colle_sans_lire_la_page(db_path, profil, extraction, page):
     assert len(appels) == 1
 
 
-def test_texte_colle_sans_titre_refuse(db_path, profil, extraction, page):
-    with pytest.raises(ValueError):
-        api_ajouts.AjoutIn(url=URL, texte="du texte")
-
-
 # ---------------------------------------------------------------------------
-# Critère 10 — URL injoignable ou code HTTP d'erreur : « échec », message lisible
+# Critère 10 — URL injoignable ou code HTTP d'erreur : message lisible.
+# Remplacé par EXE-82 (critère 8) : l'état final vaut « texte à coller », plus « échec ».
 # ---------------------------------------------------------------------------
 
 
@@ -505,7 +501,7 @@ def test_texte_colle_sans_titre_refuse(db_path, profil, extraction, page):
 def test_url_en_echec(db_path, profil, extraction, page, panne):
     page.update(panne)
     _, final, _ = _ajouter({"url": URL})
-    assert final["statut"] == "echec"
+    assert final["statut"] == "texte_a_coller"
     assert final["message"]
     assert URL in final["message"]
     assert final["offer_id"] is None
@@ -627,6 +623,6 @@ def test_liste_des_ajouts_des_24_dernieres_heures(db_path, profil, extraction, p
     assert par_id[ok["id"]]["statut"] == "termine"
     assert par_id[ok["id"]]["offer_id"] == ok["offer_id"]
     assert par_id[ok["id"]]["url"] == URL
-    assert par_id[ko["id"]]["statut"] == "echec"
+    assert par_id[ko["id"]]["statut"] == "texte_a_coller"
     assert par_id[ko["id"]]["offer_id"] is None
     assert "404" in par_id[ko["id"]]["message"]

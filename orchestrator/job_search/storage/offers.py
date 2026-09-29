@@ -16,7 +16,7 @@ class StoredOffer:
     location: str | None
     remote: bool
     contract_type: str | None
-    url: str
+    url: str | None
     fetched_at: str
     category: str | None = None
     description: str | None = None

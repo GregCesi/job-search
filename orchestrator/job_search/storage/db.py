@@ -153,7 +153,8 @@ def init_db(conn: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS ajouts (
             id               INTEGER PRIMARY KEY,
-            url              TEXT NOT NULL,
+            url              TEXT,  -- NULL : texte collé sans URL (EXE-82)
+            texte            TEXT,  -- texte collé envoyé, rendu pour le reproposer (EXE-82)
             -- en_cours|termine|filtree|hors_perimetre|texte_a_coller|echec|deja_en_base (EXE-79)
             statut           TEXT NOT NULL DEFAULT 'en_cours',
             offer_id         INTEGER REFERENCES offers(id),
@@ -169,6 +170,41 @@ def init_db(conn: sqlite3.Connection) -> None:
     migrate_fiches_entreprise_schema(conn)
     migrate_cvs_schema(conn)
     migrate_lettres_schema(conn)
+    migrate_ajouts_schema(conn)
+
+
+def migrate_ajouts_schema(conn: sqlite3.Connection) -> None:
+    """EXE-82 : `url` devient facultative et `texte` est ajoutée — idempotent.
+
+    SQLite ne lève pas un NOT NULL par ALTER : la table est reconstruite, lignes
+    conservées telles quelles (`texte` vide pour les ajouts d'avant)."""
+    cols = {row[1]: row for row in conn.execute("PRAGMA table_info(ajouts)")}
+    if "texte" in cols and not cols["url"][3]:
+        return
+    conn.executescript("""
+        BEGIN;
+        CREATE TABLE ajouts_exe82 (
+            id               INTEGER PRIMARY KEY,
+            url              TEXT,
+            texte            TEXT,
+            statut           TEXT NOT NULL DEFAULT 'en_cours',
+            offer_id         INTEGER REFERENCES offers(id),
+            categorie        TEXT,
+            raison           TEXT,
+            causes_json      TEXT,
+            message          TEXT,
+            created_at       TEXT NOT NULL,
+            finished_at      TEXT
+        );
+        INSERT INTO ajouts_exe82 (id, url, statut, offer_id, categorie, raison,
+                                  causes_json, message, created_at, finished_at)
+            SELECT id, url, statut, offer_id, categorie, raison,
+                   causes_json, message, created_at, finished_at
+            FROM ajouts;
+        DROP TABLE ajouts;
+        ALTER TABLE ajouts_exe82 RENAME TO ajouts;
+        COMMIT;
+    """)
 
 
 def migrate_cvs_schema(conn: sqlite3.Connection) -> None:

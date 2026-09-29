@@ -1,12 +1,14 @@
-"""Source « manuel » — une offre trouvée à la main, envoyée par son URL (EXE-79).
+"""Source « manuel » — une offre trouvée à la main, par son URL ou son texte (EXE-79).
 
 Deux entrées, un seul `JobOffer` en sortie :
 - l'URL seule : la page est lue, et titre, entreprise, lieu et description sont pris
   dans son bloc de données structurées schema.org de type JobPosting (JSON-LD) ;
-- un texte collé avec son titre (entreprise et lieu facultatifs) : la page n'est pas lue.
+- un texte collé, avec ou sans URL (EXE-82) : la page n'est pas lue. Titre, entreprise
+  et lieu viennent de la saisie ; sans titre saisi, l'appelant les fait identifier
+  (`ajout/identification.py`) et les pose par `with_identification` avant `fetch`.
 
-Rien ne se devine : un champ absent du bloc ou du formulaire reste vide. Aucun appel
-LLM ici — le titre, l'entreprise et le lieu ne sont jamais demandés au modèle.
+Rien ne se devine : un champ absent du bloc, de la saisie ou de l'identification reste
+vide, et une offre sans URL envoyée n'a pas d'URL. Aucun appel LLM ici.
 """
 
 import hashlib
@@ -42,8 +44,8 @@ class JobPostingAbsent(Exception):
     """La page ne porte aucun bloc JobPosting exploitable (absent ou sans titre)."""
 
 
-def _source_id(url: str) -> str:
-    return hashlib.sha256(url.encode()).hexdigest()[:16]
+def _source_id(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
 def fetch_html(url: str) -> str:
@@ -53,11 +55,13 @@ def fetch_html(url: str) -> str:
         )
     except requests.exceptions.RequestException as exc:
         raise PageInjoignable(
-            f"La page {url} n'a pas pu être lue ({type(exc).__name__})."
+            f"La page {url} n'a pas pu être lue ({type(exc).__name__}). "
+            "Coller le texte de l'offre."
         ) from exc
     if resp.status_code >= 400:
         raise PageInjoignable(
-            f"La page {url} a répondu une erreur HTTP {resp.status_code}."
+            f"La page {url} a répondu une erreur HTTP {resp.status_code}. "
+            "Coller le texte de l'offre."
         )
     return resp.text
 
@@ -153,11 +157,11 @@ def _full_time(types: list[str]) -> bool | None:
 
 
 class ManualSource(Source):
-    """Une offre, depuis son URL ou depuis un texte collé (titre obligatoire)."""
+    """Une offre, depuis son URL ou depuis un texte collé (URL et titre facultatifs)."""
 
     def __init__(
         self,
-        url: str,
+        url: str | None,
         *,
         texte: str | None = None,
         titre: str | None = None,
@@ -169,6 +173,29 @@ class ManualSource(Source):
         self.titre = titre
         self.entreprise = entreprise
         self.lieu = lieu
+
+    @property
+    def source_id(self) -> str:
+        """Identifiant stable : l'URL si elle est envoyée, le texte collé sinon."""
+        return _source_id(self.url if self.url else self.texte or "")
+
+    @property
+    def needs_identification(self) -> bool:
+        """Texte collé sans titre saisi : titre, entreprise et lieu restent à identifier."""
+        return self.texte is not None and _text(self.titre) is None
+
+    def with_identification(
+        self, titre: str, entreprise: str | None, lieu: str | None
+    ) -> "ManualSource":
+        """La même entrée, titre posé ; entreprise et lieu saisis priment sur ceux
+        identifiés."""
+        return ManualSource(
+            self.url,
+            texte=self.texte,
+            titre=titre,
+            entreprise=_text(self.entreprise) or entreprise,
+            lieu=_text(self.lieu) or lieu,
+        )
 
     def fetch(self) -> list[JobOffer]:
         """Rend l'offre. Lève `PageInjoignable` ou `JobPostingAbsent` si l'URL ne
@@ -197,7 +224,7 @@ class ManualSource(Source):
     ) -> JobOffer:
         return JobOffer(
             source=SOURCE,
-            source_id=_source_id(self.url),
+            source_id=self.source_id,
             fingerprint=_fingerprint(title, company or "", location or ""),
             title=title,
             description=description,

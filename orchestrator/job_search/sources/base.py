@@ -74,7 +74,7 @@ class JobOffer(BaseModel):
     experience_required: str | None = None  # D/S/E — signal grossier pré-LLM
     rome_code: str | None = None  # ex: "M1889"
     rome_label: str | None = None  # ex: "Ingénieur / Ingénieure en IA"
-    url: str
+    url: str | None  # None : offre ajoutée à la main par son seul texte (EXE-82)
     fetched_at: datetime
     extracted_facts: ExtractedFacts | None = None  # rempli par l'étage LLM (L3)
 

@@ -11,6 +11,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 DB_PATH = REPO_ROOT / "data" / "job_search.sqlite"
 TRACES_PATH = REPO_ROOT / "data" / "traces" / "extract_facts.jsonl"
+# Appel d'identification d'une offre ajoutée à la main sans titre (EXE-82), à part des
+# traces d'extraction : le viewer de traces ne lit que des faits extraits.
+IDENTIFICATION_TRACES_PATH = REPO_ROOT / "data" / "traces" / "identify_offer.jsonl"
 CV_REFERENCE_PATH = REPO_ROOT / "data" / "cv" / "cv_reference.html"
 PROFILE_PATH = REPO_ROOT / "profiles" / "gregoire.yaml"
 VUE_CANDIDAT_PATH = REPO_ROOT / "profiles" / "vue_candidat.yaml"

@@ -3,6 +3,9 @@
 Même chaîne que le /run pour une offre (`ingestion.process_offer`) : filtre dur,
 extraction (un seul appel LLM), scoring Python, porte hors périmètre. L'état de
 l'ajout vit dans `ajouts`, jamais dans `offers`.
+
+Un texte collé sans titre passe d'abord par l'appel d'identification (EXE-82), avant
+la dédup et l'extraction : c'est le seul chemin qui l'appelle.
 """
 
 import json
@@ -12,6 +15,7 @@ from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 
+from orchestrator.job_search.ajout.identification import identify_offer
 from orchestrator.job_search.ingestion import process_offer
 from orchestrator.job_search.matching.profile import load_profile
 from orchestrator.job_search.paths import ALIAS_PATH, PROFILE_PATH
@@ -29,10 +33,17 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def create_ajout(conn: sqlite3.Connection, url: str) -> int:
+_SANS_TITRE = (
+    "Aucun titre n'a été trouvé dans le texte collé. Saisir le titre de l'offre "
+    "et relancer l'ajout."
+)
+
+
+def create_ajout(conn: sqlite3.Connection, url: str | None, texte: str | None) -> int:
     cur = conn.execute(
-        "INSERT INTO ajouts (url, statut, created_at) VALUES (?, 'en_cours', ?)",
-        (url, _now()),
+        "INSERT INTO ajouts (url, texte, statut, created_at) "
+        "VALUES (?, ?, 'en_cours', ?)",
+        (url, texte, _now()),
     )
     conn.commit()
     return cur.lastrowid
@@ -70,16 +81,29 @@ def _finish(
 
 
 def run_ajout(ajout_id: int, source: ManualSource) -> None:
-    """Lit l'offre, la dédoublonne, la traite et écrit l'état final de l'ajout.
-    Ne laisse jamais un ajout « en cours » : toute erreur finit en « échec »."""
+    """Identifie l'offre si son titre manque, la lit, la dédoublonne, la traite et
+    écrit l'état final de l'ajout. Ne laisse jamais un ajout « en cours » : toute
+    erreur finit en « échec »."""
     conn = get_connection()
     try:
+        load_dotenv()
+        model = os.getenv("OLLAMA_MODEL", "gemma4:12b")
+        host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+        if source.needs_identification:
+            identification = identify_offer(
+                source.texte or "", offer_id=source.source_id, model=model, host=host
+            )
+            if identification is None:
+                _finish(conn, ajout_id, "echec", message=_SANS_TITRE)
+                return
+            source = source.with_identification(
+                identification.titre, identification.entreprise, identification.lieu
+            )
+
         try:
             [offer] = source.fetch()
-        except PageInjoignable as exc:
-            _finish(conn, ajout_id, "echec", message=str(exc))
-            return
-        except JobPostingAbsent as exc:
+        except (PageInjoignable, JobPostingAbsent) as exc:
             _finish(conn, ajout_id, "texte_a_coller", message=str(exc))
             return
 
@@ -94,11 +118,8 @@ def run_ajout(ajout_id: int, source: ManualSource) -> None:
             )
             return
 
-        load_dotenv()
         profile, _ = load_profile(PROFILE_PATH)
         alias_table = load_alias_table(ALIAS_PATH)
-        model = os.getenv("OLLAMA_MODEL", "gemma4:12b")
-        host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
         outcome = process_offer(
             conn, offer, profile, alias_table, model=model, host=host

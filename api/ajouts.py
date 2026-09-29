@@ -1,4 +1,4 @@
-"""Endpoints d'ajout à la main d'une offre par son URL (EXE-79).
+"""Endpoints d'ajout à la main d'une offre par son URL ou son texte (EXE-79, EXE-82).
 
 Même motif que la fiche entreprise, le CV et la lettre : POST répond tout de suite
 (202, état « en_cours »), le traitement tourne en tâche de fond, GET lit l'état. Un
@@ -31,11 +31,12 @@ _ORPHELIN = "Ajout interrompu (API redémarrée pendant le traitement). Le relan
 
 
 class AjoutIn(BaseModel):
-    """L'URL seule, ou l'URL avec le texte collé de l'offre et son titre."""
+    """L'URL seule, ou le texte collé de l'offre avec ou sans URL. Titre, entreprise
+    et lieu sont facultatifs : sans titre, l'appel d'identification le cherche."""
 
     model_config = ConfigDict(extra="forbid")
 
-    url: str
+    url: str | None = None
     texte: str | None = None
     titre: str | None = None
     entreprise: str | None = None
@@ -43,16 +44,18 @@ class AjoutIn(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def _url_non_vide(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("L'URL est obligatoire")
-        return v
+    def _url_nettoyee(cls, v: str | None) -> str | None:
+        return (v or "").strip() or None
+
+    @field_validator("texte")
+    @classmethod
+    def _texte_non_blanc(cls, v: str | None) -> str | None:
+        return v if v is not None and v.strip() else None
 
     @model_validator(mode="after")
-    def _titre_avec_texte(self) -> "AjoutIn":
-        if self.texte is not None and not (self.titre or "").strip():
-            raise ValueError("Un texte collé demande son titre")
+    def _url_ou_texte(self) -> "AjoutIn":
+        if self.url is None and self.texte is None:
+            raise ValueError("Une URL ou le texte de l'offre est obligatoire")
         return self
 
 
@@ -60,6 +63,7 @@ def _row_to_ajout(row) -> dict:
     ajout = {
         "id": row["id"],
         "url": row["url"],
+        "texte": row["texte"],
         "statut": row["statut"],
         "offer_id": row["offer_id"],
         "categorie": row["categorie"],
@@ -93,7 +97,7 @@ async def create_ajout(body: AjoutIn, response: Response) -> dict:
         lieu=body.lieu,
     )
     with get_conn() as conn:
-        ajout_id = _create_ajout(conn, body.url)
+        ajout_id = _create_ajout(conn, body.url, body.texte)
     _running.add(ajout_id)
     task = asyncio.create_task(_process(ajout_id, source))
     _tasks.add(task)
