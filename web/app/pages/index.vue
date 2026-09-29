@@ -91,6 +91,12 @@ onMounted(() => {
   const vue = route.query.vue as CandidateView
   store.setView(CANDIDATE_VIEWS.includes(vue) ? vue : 'cibles')
   store.fetchTraceCounts()
+  // ?offre= est posé par une notification d'ajout depuis une autre page (EXE-81).
+  const offre = Number(route.query.offre)
+  if (Number.isInteger(offre) && offre > 0) {
+    store.openDetail(offre)
+    router.replace({ path: '/', query: { ...route.query, offre: undefined } })
+  }
 })
 
 const router = useRouter()
