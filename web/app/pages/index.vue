@@ -21,12 +21,14 @@
         </button>
       </nav>
 
-      <!-- Vérification d'expiration (EXE-77) — onglet Retenues uniquement -->
+      <!-- Vérification d'expiration (EXE-76/77/78) — les 4 onglets candidat.
+           Retenues vérifie toutes les offres retenues (comportement EXE-77
+           inchangé) ; les 3 autres désignent les offres affichées. -->
       <button
-        v-if="store.activeView === 'retenues'"
+        v-if="(['cibles', 'gaps', 'filet', 'retenues'] as CandidateView[]).includes(store.activeView as CandidateView)"
         :disabled="store.checkingExpirations"
         class="px-3 py-1.5 rounded-md text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
-        @click="store.checkExpirations()"
+        @click="handleCheckExpirations"
       >
         {{ store.checkingExpirations ? 'Vérification en cours…' : 'Vérifier les offres' }}
       </button>
@@ -111,6 +113,14 @@ async function handleSelect(offer: OfferRow) {
     router.push(`/offers/${offer.id}`)
   } else {
     await store.openDetail(offer.id)
+  }
+}
+
+function handleCheckExpirations() {
+  if (store.activeView === 'retenues') {
+    store.checkExpirations()
+  } else {
+    store.checkExpirations(store.offers.map(o => o.id))
   }
 }
 </script>

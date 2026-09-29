@@ -285,10 +285,11 @@ export const useOffersStore = defineStore('offers', () => {
     if (openedOffer.value?.id === id) openedOffer.value.verdict = null
   }
 
-  async function checkExpirations() {
+  async function checkExpirations(offerIds?: number[]) {
     checkingExpirations.value = true
     try {
-      await $fetch(`${config.public.apiBase}/offers/check-expirations`, { method: 'POST' })
+      const body = offerIds !== undefined ? { offer_ids: offerIds } : undefined
+      await $fetch(`${config.public.apiBase}/offers/check-expirations`, { method: 'POST', body })
       await fetchOffers()
     } finally {
       checkingExpirations.value = false

@@ -78,6 +78,13 @@ class EmployerUrlIn(BaseModel):
     url: str
 
 
+class CheckExpirationsIn(BaseModel):
+    """Désignation d'offres à vérifier (EXE-78). offer_ids=None (ou corps absent)
+    = comportement d'avant ce ticket : seules les offres retenues sont vérifiées."""
+
+    offer_ids: list[int] | None = None
+
+
 class VerdictIn(BaseModel):
     status: Literal[
         "retenu",

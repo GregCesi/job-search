@@ -1,7 +1,8 @@
-"""Vérification d'expiration des offres retenues (EXE-76).
+"""Vérification d'expiration des offres retenues (EXE-76), étendue à toute
+offre désignée explicitement depuis un onglet de la vue candidat (EXE-78).
 
 Action explicite (jamais déclenchée par l'ingestion, le rescore ou un changement
-de profil) : pour chaque offre retenue, interroge son URL en base et son URL
+de profil) : pour chaque offre concernée, interroge son URL en base et son URL
 employeur optionnelle, et recalcule l'état expiré/non-expiré — cf. H2 du ticket.
 """
 
@@ -37,18 +38,39 @@ def compute_expired(status_codes: list[int], previous_expired: bool) -> bool:
     return previous_expired
 
 
-def run_expiration_check(conn: sqlite3.Connection) -> None:
-    """Vérifie les URL de chaque offre retenue et persiste l'état recalculé
-    dans `expirations`. Ne touche jamais `offers` ni `verdicts`."""
-    rows = conn.execute(
-        """
-        SELECT o.id AS offer_id, o.url AS offer_url, e.employer_url, e.expired
-        FROM offers o
-        JOIN verdicts v ON v.offer_id = o.id
-        LEFT JOIN expirations e ON e.offer_id = o.id
-        WHERE v.status = 'retenu'
-        """
-    ).fetchall()
+def run_expiration_check(
+    conn: sqlite3.Connection, offer_ids: list[int] | None = None
+) -> None:
+    """Vérifie les URL des offres concernées et persiste l'état recalculé dans
+    `expirations`. Ne touche jamais `offers` ni `verdicts`.
+
+    `offer_ids=None` (comportement d'avant EXE-78) : seules les offres
+    retenues sont vérifiées. `offer_ids` désigné : exactement ces offres, quel
+    que soit leur verdict — l'appelant garantit qu'elles existent toutes."""
+    if offer_ids is not None:
+        if not offer_ids:
+            rows = []
+        else:
+            placeholders = ",".join("?" for _ in offer_ids)
+            rows = conn.execute(
+                f"""
+                SELECT o.id AS offer_id, o.url AS offer_url, e.employer_url, e.expired
+                FROM offers o
+                LEFT JOIN expirations e ON e.offer_id = o.id
+                WHERE o.id IN ({placeholders})
+                """,
+                offer_ids,
+            ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT o.id AS offer_id, o.url AS offer_url, e.employer_url, e.expired
+            FROM offers o
+            JOIN verdicts v ON v.offer_id = o.id
+            LEFT JOIN expirations e ON e.offer_id = o.id
+            WHERE v.status = 'retenu'
+            """
+        ).fetchall()
 
     for row in rows:
         urls = [u for u in (row["offer_url"], row["employer_url"]) if u]

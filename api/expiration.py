@@ -1,10 +1,13 @@
-"""Vérification d'expiration des offres retenues (EXE-76).
+"""Vérification d'expiration des offres retenues (EXE-76) et, sur désignation
+explicite, de n'importe quelle offre affichée dans un onglet de la vue
+candidat (EXE-78).
 
 URL employeur (saisie manuelle) et lancement de la vérification : deux actions
 explicites, jamais déclenchées par l'ingestion, le rescore ou un changement de
 profil. La logique de vérification vit dans
 `orchestrator.job_search.expiration.service` ; cette route ne fait que le
-garde-fou "offre retenue" et la persistance de l'URL employeur.
+garde-fou "offre retenue" (URL employeur), la résolution des offres désignées,
+et la persistance de l'URL employeur.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -12,7 +15,7 @@ from fastapi import APIRouter, HTTPException
 from orchestrator.job_search.expiration.service import run_expiration_check
 
 from .db import get_conn
-from .schemas import EmployerUrlIn
+from .schemas import CheckExpirationsIn, EmployerUrlIn
 
 router = APIRouter(prefix="/offers")
 
@@ -56,9 +59,25 @@ def set_employer_url(offer_id: int, body: EmployerUrlIn) -> None:
 
 
 @router.post("/check-expirations", status_code=204)
-def check_expirations() -> None:
+def check_expirations(body: CheckExpirationsIn | None = None) -> None:
+    offer_ids = body.offer_ids if body is not None else None
     conn = get_conn()
     try:
-        run_expiration_check(conn)
+        if offer_ids is not None:
+            existing_ids: set[int] = set()
+            if offer_ids:
+                placeholders = ",".join("?" for _ in offer_ids)
+                rows = conn.execute(
+                    f"SELECT id FROM offers WHERE id IN ({placeholders})",
+                    offer_ids,
+                ).fetchall()
+                existing_ids = {r["id"] for r in rows}
+            missing = [oid for oid in offer_ids if oid not in existing_ids]
+            if missing:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Offre(s) introuvable(s) : {missing}",
+                )
+        run_expiration_check(conn, offer_ids=offer_ids)
     finally:
         conn.close()

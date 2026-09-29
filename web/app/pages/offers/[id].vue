@@ -74,8 +74,9 @@
             </template>
           </div>
 
-          <!-- Vérification d'expiration (EXE-77) -->
-          <div v-if="isRetenue" class="rounded-lg border border-gray-200 bg-white px-4 py-3 space-y-2 flex-shrink-0 text-xs">
+          <!-- Vérification d'expiration (EXE-76/77/78) — tag/date/checks pour
+               toute offre expirée ; URL employeur réservée aux retenues -->
+          <div v-if="isRetenue || offer.expired" class="rounded-lg border border-gray-200 bg-white px-4 py-3 space-y-2 flex-shrink-0 text-xs">
             <div v-if="offer.expired" class="space-y-2">
               <div class="flex items-center gap-2">
                 <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Expiré</span>
@@ -91,21 +92,23 @@
               </ul>
             </div>
 
-            <div class="flex items-center gap-2" :class="offer.expired ? 'pt-2 border-t border-gray-100' : ''">
-              <label class="text-gray-400 shrink-0">URL chez l'employeur</label>
-              <input
-                v-model="employerUrlEdit"
-                type="text"
-                placeholder="https://..."
-                class="flex-1 rounded border border-gray-200 px-2 py-1 text-xs"
-              >
-              <button
-                @click="enregistrerEmployerUrl"
-                :disabled="employerUrlBusy"
-                class="px-2.5 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 shrink-0"
-              >{{ employerUrlBusy ? '…' : 'Enregistrer' }}</button>
-            </div>
-            <p v-if="employerUrlError" class="text-red-600">{{ employerUrlError }}</p>
+            <template v-if="isRetenue">
+              <div class="flex items-center gap-2" :class="offer.expired ? 'pt-2 border-t border-gray-100' : ''">
+                <label class="text-gray-400 shrink-0">URL chez l'employeur</label>
+                <input
+                  v-model="employerUrlEdit"
+                  type="text"
+                  placeholder="https://..."
+                  class="flex-1 rounded border border-gray-200 px-2 py-1 text-xs"
+                >
+                <button
+                  @click="enregistrerEmployerUrl"
+                  :disabled="employerUrlBusy"
+                  class="px-2.5 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 shrink-0"
+                >{{ employerUrlBusy ? '…' : 'Enregistrer' }}</button>
+              </div>
+              <p v-if="employerUrlError" class="text-red-600">{{ employerUrlError }}</p>
+            </template>
           </div>
 
           <!-- Synthèse d'extraction -->
