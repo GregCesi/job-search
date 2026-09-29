@@ -125,12 +125,26 @@ def init_db(conn: sqlite3.Connection) -> None:
             prompt_text               TEXT,  -- prompt envoyé (audit invariant)
             error_message             TEXT,
             created_at                TEXT NOT NULL,
+            regeneration_en_cours     INTEGER NOT NULL DEFAULT 0, -- EXE-66
+            regeneration_error        TEXT,  -- EXE-66 : dernier échec de régénération, distinct de error_message
             UNIQUE(offer_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS lettre_versions (
+            id                        INTEGER PRIMARY KEY,
+            offer_id                  INTEGER NOT NULL REFERENCES offers(id),
+            texte                     TEXT NOT NULL,
+            tournures_signalees_json  TEXT,
+            nb_mots                   INTEGER,
+            depasse_longueur          INTEGER,
+            origine                   TEXT NOT NULL, -- modele|moi (EXE-66)
+            created_at                TEXT NOT NULL
         );
     """)
     migrate_offers_schema(conn)
     migrate_fiches_entreprise_schema(conn)
     migrate_cvs_schema(conn)
+    migrate_lettres_schema(conn)
 
 
 def migrate_cvs_schema(conn: sqlite3.Connection) -> None:
@@ -139,6 +153,19 @@ def migrate_cvs_schema(conn: sqlite3.Connection) -> None:
     for col in ("groupes_json", "notions_json"):
         if col not in existing:
             conn.execute(f"ALTER TABLE cvs ADD COLUMN {col} TEXT")
+    conn.commit()
+
+
+def migrate_lettres_schema(conn: sqlite3.Connection) -> None:
+    """Colonnes ajoutées après la première livraison (EXE-65) — idempotent."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(lettres)").fetchall()}
+    if "regeneration_en_cours" not in existing:
+        conn.execute(
+            "ALTER TABLE lettres ADD COLUMN regeneration_en_cours "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
+    if "regeneration_error" not in existing:
+        conn.execute("ALTER TABLE lettres ADD COLUMN regeneration_error TEXT")
     conn.commit()
 
 

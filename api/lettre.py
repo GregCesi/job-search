@@ -1,4 +1,4 @@
-"""Endpoints lettre de motivation (EXE-65).
+"""Endpoints lettre de motivation (EXE-65) et reprise/régénération/historique (EXE-66).
 
 Le choix des points est stocké avec la lettre, jamais dans la fiche entreprise
 (architecture.md, exceptions encadrées) : PUT /lettre/points ne touche jamais
@@ -7,6 +7,11 @@ Le choix des points est stocké avec la lettre, jamais dans la fiche entreprise
 POST déclenche la génération (action explicite, offre retenue + fiche terminée +
 au moins un point choisi — critères 3, 4, 8). Si une lettre est déjà `done`, POST la
 rend telle quelle sans rappeler le modèle (critère 2).
+
+PUT /lettre/texte enregistre le texte repris par l'utilisateur (calcul 100% Python,
+aucun appel modèle). POST /lettre/regenerer relance le modèle depuis le choix de
+points courant sans toucher à la version d'avant tant qu'elle n'a pas abouti.
+GET /lettre/versions rend l'historique, jamais réécrit ni tronqué.
 """
 
 import asyncio
@@ -16,6 +21,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, ConfigDict
 
+import orchestrator.job_search.lettre.service as lettre_service
 from orchestrator.job_search.lettre.redaction import point_text, resolve_chosen_indices
 from orchestrator.job_search.lettre.service import reset_pending, run_lettre
 
@@ -32,6 +38,12 @@ class PointsChoisisIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     indices: list[int]
+
+
+class LettreTexteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    texte: str
 
 
 def _now() -> str:
@@ -108,6 +120,8 @@ def _row_to_lettre(row) -> dict:
         "cost_usd": row["cost_usd"],
         "error_message": row["error_message"],
         "created_at": row["created_at"],
+        "regeneration_en_cours": bool(row["regeneration_en_cours"]),
+        "regeneration_error": row["regeneration_error"],
     }
 
 
@@ -180,3 +194,76 @@ def get_lettre(offer_id: int) -> dict:
             "Génération interrompue (API redémarrée). Relancer la lettre."
         )
     return lettre
+
+
+@router.put("/{offer_id}/lettre/texte")
+def put_lettre_texte(offer_id: int, body: LettreTexteIn) -> dict:
+    with get_conn() as conn:
+        try:
+            lettre_service.save_texte(conn, offer_id, body.texte)
+        except lettre_service.LettreNonPreteError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+    return _row_to_lettre(row)
+
+
+async def _regenerate(offer_id: int) -> None:
+    try:
+        await lettre_service.run_lettre_regenerate(offer_id)
+    finally:
+        _running.discard(offer_id)
+
+
+@router.post("/{offer_id}/lettre/regenerer")
+async def regenerer_lettre(offer_id: int, response: Response) -> dict:
+    with get_conn() as conn:
+        v = conn.execute(
+            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if v is None or v["status"] != "retenu":
+            raise HTTPException(
+                status_code=409,
+                detail="La lettre n'est régénérée que pour une offre retenue",
+            )
+        row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if row is None or row["statut"] != "done":
+            raise HTTPException(
+                status_code=409,
+                detail="Pas de lettre prête à régénérer pour cette offre",
+            )
+        if offer_id not in _running:
+            lettre_service.mark_regenerating(conn, offer_id)
+    if offer_id not in _running:
+        _running.add(offer_id)
+        task = asyncio.create_task(_regenerate(offer_id))
+        _tasks.add(task)
+        task.add_done_callback(_tasks.discard)
+    response.status_code = 202
+    return {"regeneration_en_cours": True}
+
+
+@router.get("/{offer_id}/lettre/versions")
+def get_lettre_versions(offer_id: int) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT texte, tournures_signalees_json, nb_mots, depasse_longueur, "
+            "origine, created_at FROM lettre_versions WHERE offer_id = ? ORDER BY id ASC",
+            (offer_id,),
+        ).fetchall()
+    return [
+        {
+            "texte": r["texte"],
+            "tournures_signalees": json.loads(r["tournures_signalees_json"] or "[]"),
+            "nb_mots": r["nb_mots"],
+            "depasse_longueur": bool(r["depasse_longueur"]),
+            "origine": r["origine"],
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
