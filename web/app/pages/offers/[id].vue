@@ -171,8 +171,112 @@
         </svg>
       </button>
     </div>
-    <div v-if="activeCard === 'Lettre de motivation'" class="flex-1 flex items-center justify-center text-sm text-gray-400 italic">
-      Aucun contenu — à produire
+    <div v-if="activeCard === 'Lettre de motivation'" class="flex-1 overflow-y-auto p-6">
+      <div class="max-w-3xl mx-auto space-y-4">
+        <!-- Non éligible -->
+        <div v-if="!isRetenue || !ficheDone" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+          <p v-if="!isRetenue" class="text-sm text-gray-400 italic">La lettre n'est générée que pour une offre retenue.</p>
+          <p v-else class="text-sm text-gray-400 italic">La fiche entreprise doit être terminée avant de générer la lettre.</p>
+        </div>
+
+        <template v-else>
+          <!-- Points choisis -->
+          <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Points choisis pour la lettre</h3>
+            <p v-if="!lettrePoints || !lettrePoints.length" class="text-sm text-gray-400 italic">Aucun point.</p>
+            <ul v-else class="space-y-2">
+              <li v-for="(point, idx) in lettrePoints" :key="idx" class="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  :checked="point.choisi"
+                  @change="togglePointChoisi(idx)"
+                  class="mt-0.5 flex-shrink-0"
+                >
+                <span class="flex-1">{{ point.texte }}</span>
+                <span v-if="point.tas" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0">{{ point.tas }}</span>
+              </li>
+            </ul>
+          </section>
+
+          <!-- Pas de lettre / erreur -->
+          <div v-if="!lettre || lettre.statut === 'error'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+            <p v-if="lettre?.error_message" class="text-sm text-red-600">{{ lettre.error_message }}</p>
+            <button
+              @click="genererLettre"
+              :disabled="lettreBusy"
+              class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            >{{ lettreBusy ? 'Lancement…' : 'Générer la lettre' }}</button>
+            <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
+          </div>
+
+          <!-- En cours -->
+          <div v-else-if="lettre.statut === 'pending'" class="rounded-lg border border-gray-200 bg-white p-6 flex items-center justify-center gap-3 text-sm text-gray-500">
+            <svg class="w-5 h-5 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+            </svg>
+            Génération en cours…
+          </div>
+
+          <!-- Lettre prête -->
+          <template v-else>
+            <div
+              v-if="lettre.nb_mots !== null || lettre.depasse_longueur || lettre.tournures_signalees.length"
+              class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2 text-xs"
+            >
+              <p v-if="lettre.nb_mots !== null" class="text-gray-500"><span class="text-gray-400">Mots</span> <span class="font-medium text-gray-700">{{ lettre.nb_mots }}</span></p>
+              <p v-if="lettre.depasse_longueur" class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">Dépasse la longueur recommandée.</p>
+              <div v-if="lettre.tournures_signalees.length" class="space-y-1">
+                <p class="text-gray-400">Tournures signalées</p>
+                <ul class="flex flex-wrap gap-1.5">
+                  <li v-for="t in lettre.tournures_signalees" :key="t" class="px-2 py-0.5 rounded bg-red-50 text-red-600">{{ t }}</li>
+                </ul>
+              </div>
+            </div>
+
+            <textarea
+              v-model="texteEdit"
+              :disabled="lettre.regeneration_en_cours"
+              rows="14"
+              class="w-full rounded-lg border border-gray-200 p-3 text-sm text-gray-800 leading-relaxed disabled:bg-gray-50 disabled:text-gray-400"
+            />
+
+            <div class="flex items-center gap-2">
+              <button
+                @click="sauvegarderTexte"
+                :disabled="lettre.regeneration_en_cours"
+                class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >Enregistrer</button>
+              <button
+                @click="copierTexte"
+                class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+              >{{ lettreCopied ? 'Copié !' : 'Copier' }}</button>
+              <button
+                @click="regenererLettre"
+                :disabled="lettre.regeneration_en_cours || lettreBusy"
+                class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+              >{{ lettre.regeneration_en_cours ? 'Régénération en cours…' : 'Régénérer' }}</button>
+            </div>
+            <p v-if="lettre.regeneration_error" class="text-xs text-red-600">{{ lettre.regeneration_error }}</p>
+            <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
+          </template>
+
+          <!-- Historique des versions -->
+          <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Historique des versions</h3>
+            <p v-if="!lettreVersions.length" class="text-sm text-gray-400 italic">Aucune version.</p>
+            <ul v-else class="space-y-2">
+              <li v-for="(v, i) in lettreVersions" :key="i" class="rounded border border-gray-200 bg-gray-50 p-3 space-y-1">
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                  <span>{{ v.created_at }}</span>
+                  <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{{ v.origine === 'moi' ? 'moi' : 'modèle' }}</span>
+                </div>
+                <p class="text-xs text-gray-700 whitespace-pre-wrap">{{ v.texte }}</p>
+              </li>
+            </ul>
+          </section>
+        </template>
+      </div>
     </div>
 
     <!-- CV adapté -->
@@ -362,7 +466,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { Cv, FicheEntreprise, FicheTas, OfferDetail, TechInfo } from '~/stores/offers'
+import type { Cv, FicheEntreprise, FicheTas, Lettre, LettrePoint, LettreVersion, OfferDetail, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -380,11 +484,17 @@ onMounted(async () => {
   if (fiche.value?.statut === 'pending') startPolling()
   await chargerCv()
   if (cv.value?.statut === 'pending') startCvPolling()
+  await chargerLettre()
+  await chargerLettrePoints()
+  await chargerLettreVersions()
+  if (shouldPollLettre(lettre.value)) startLettrePolling()
 })
 onBeforeUnmount(() => {
   stopPolling()
   stopCvPolling()
+  stopLettrePolling()
   if (cvBlobUrl) URL.revokeObjectURL(cvBlobUrl)
+  if (lettreCopiedTimer) clearTimeout(lettreCopiedTimer)
 })
 
 async function retirerDesRetenues() {
@@ -615,6 +725,154 @@ watch(() => cv.value?.html, (html) => {
   if (html) cvBlobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
   cvHtmlUrl.value = cvBlobUrl
 })
+
+// ── Lettre de motivation ────────────────────────────────────────────────────
+const lettre = ref<Lettre | null>(null)
+const lettrePoints = ref<LettrePoint[] | null>(null)
+const lettreVersions = ref<LettreVersion[]>([])
+const texteEdit = ref('')
+const lettreActionError = ref<string | null>(null)
+const lettreBusy = ref(false)
+const lettreCopied = ref(false)
+let lettreCopiedTimer: ReturnType<typeof setTimeout> | null = null
+let lettrePollTimer: ReturnType<typeof setInterval> | null = null
+
+const ficheDone = computed(() => fiche.value?.statut === 'done')
+const lettreUrl = () => `${config.public.apiBase}/offers/${id.value}/lettre`
+
+const EMPTY_LETTRE: Lettre = {
+  statut: 'pending',
+  texte: null,
+  tournures_signalees: [],
+  nb_mots: null,
+  depasse_longueur: false,
+  modele: null,
+  cost_usd: null,
+  error_message: null,
+  created_at: '',
+  regeneration_en_cours: false,
+  regeneration_error: null,
+}
+
+async function chargerLettre() {
+  try {
+    lettre.value = await $fetch<Lettre>(lettreUrl())
+    texteEdit.value = lettre.value.texte ?? ''
+  } catch (e) {
+    // 404 = pas encore de lettre ; toute autre erreur (réseau) garde l'état courant
+    if ((e as { statusCode?: number }).statusCode === 404) lettre.value = null
+  }
+}
+
+async function chargerLettrePoints() {
+  try {
+    lettrePoints.value = await $fetch<LettrePoint[]>(`${lettreUrl()}/points`)
+  } catch (e) {
+    if ((e as { statusCode?: number }).statusCode === 404) lettrePoints.value = null
+  }
+}
+
+async function chargerLettreVersions() {
+  lettreVersions.value = await $fetch<LettreVersion[]>(`${lettreUrl()}/versions`)
+}
+
+function shouldPollLettre(l: Lettre | null): boolean {
+  return !!l && (l.statut === 'pending' || l.regeneration_en_cours)
+}
+
+function stopLettrePolling() {
+  if (lettrePollTimer) { clearInterval(lettrePollTimer); lettrePollTimer = null }
+}
+
+function startLettrePolling() {
+  stopLettrePolling()
+  let ticks = 0
+  lettrePollTimer = setInterval(async () => {
+    await chargerLettre()
+    ticks++
+    if (!shouldPollLettre(lettre.value)) {
+      stopLettrePolling()
+      await chargerLettreVersions()
+    } else if (ticks >= POLL_MAX) {
+      stopLettrePolling()
+      if (lettre.value?.regeneration_en_cours) {
+        lettre.value = { ...lettre.value, regeneration_en_cours: false, regeneration_error: 'Délai dépassé. Relancer la génération.' }
+      } else {
+        lettre.value = { ...(lettre.value ?? EMPTY_LETTRE), statut: 'error', error_message: 'Délai dépassé. Relancer la lettre.' }
+      }
+    }
+  }, 5000)
+}
+
+function messageErreurLettre(e: unknown): string {
+  const detail = (e as { data?: { detail?: string } })?.data?.detail
+  return detail ?? 'Action impossible.'
+}
+
+async function genererLettre() {
+  lettreActionError.value = null
+  lettreBusy.value = true
+  try {
+    const res = await $fetch<Lettre>(lettreUrl(), { method: 'POST' })
+    if (res.statut === 'done') {
+      lettre.value = res
+      texteEdit.value = res.texte ?? ''
+      await chargerLettreVersions()
+    } else {
+      lettre.value = { ...EMPTY_LETTRE, statut: 'pending' }
+      startLettrePolling()
+    }
+  } catch (e) {
+    lettreActionError.value = messageErreurLettre(e)
+  } finally {
+    lettreBusy.value = false
+  }
+}
+
+async function regenererLettre() {
+  lettreActionError.value = null
+  lettreBusy.value = true
+  try {
+    await $fetch(`${lettreUrl()}/regenerer`, { method: 'POST' })
+    if (lettre.value) lettre.value = { ...lettre.value, regeneration_en_cours: true, regeneration_error: null }
+    startLettrePolling()
+  } catch (e) {
+    lettreActionError.value = messageErreurLettre(e)
+  } finally {
+    lettreBusy.value = false
+  }
+}
+
+async function sauvegarderTexte() {
+  lettreActionError.value = null
+  try {
+    lettre.value = await $fetch<Lettre>(`${lettreUrl()}/texte`, { method: 'PUT', body: { texte: texteEdit.value } })
+    texteEdit.value = lettre.value.texte ?? ''
+    await chargerLettreVersions()
+  } catch (e) {
+    lettreActionError.value = messageErreurLettre(e)
+  }
+}
+
+async function togglePointChoisi(idx: number) {
+  if (!lettrePoints.value) return
+  const point = lettrePoints.value[idx]
+  if (!point) return
+  point.choisi = !point.choisi // optimiste
+  const indices = lettrePoints.value.reduce<number[]>((acc, p, i) => { if (p.choisi) acc.push(i); return acc }, [])
+  try {
+    lettrePoints.value = await $fetch<LettrePoint[]>(`${lettreUrl()}/points`, { method: 'PUT', body: { indices } })
+  } catch {
+    await chargerLettrePoints() // revert en cas d'échec
+  }
+}
+
+async function copierTexte() {
+  await navigator.clipboard.writeText(texteEdit.value)
+  lettreCopied.value = true
+  if (lettreCopiedTimer) clearTimeout(lettreCopiedTimer)
+  lettreCopiedTimer = setTimeout(() => { lettreCopied.value = false }, 1500)
+}
 
 // ── Frise ────────────────────────────────────────────────────────────────
 const STEPS = ['Retenue', 'Prête à l\'envoi', 'Candidature envoyée', 'Entretien à préparer']
