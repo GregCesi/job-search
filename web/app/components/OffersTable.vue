@@ -96,7 +96,15 @@
 
           <!-- Verdict -->
           <td class="px-3 py-3 whitespace-nowrap">
-            <VerdictBadge :verdict="offer.verdict" />
+            <div class="flex items-center gap-1.5">
+              <VerdictBadge :verdict="offer.verdict" />
+              <span
+                v-if="store.activeView === 'retenues' && offer.expired"
+                class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium"
+              >
+                Expiré
+              </span>
+            </div>
           </td>
         </tr>
       </tbody>

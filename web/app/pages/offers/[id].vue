@@ -74,6 +74,40 @@
             </template>
           </div>
 
+          <!-- Vérification d'expiration (EXE-77) -->
+          <div v-if="isRetenue" class="rounded-lg border border-gray-200 bg-white px-4 py-3 space-y-2 flex-shrink-0 text-xs">
+            <div v-if="offer.expired" class="space-y-2">
+              <div class="flex items-center gap-2">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Expiré</span>
+                <span v-if="offer.last_checked_at" class="text-gray-400">
+                  Dernière vérification <span class="text-gray-600 font-medium">{{ offer.last_checked_at.slice(0, 10) }}</span>
+                </span>
+              </div>
+              <ul v-if="offer.expiration_checks.length" class="space-y-1">
+                <li v-for="chk in offer.expiration_checks" :key="chk.url" class="flex items-center gap-2 text-gray-600">
+                  <span class="truncate flex-1">{{ chk.url }}</span>
+                  <span class="font-medium">{{ chk.status_code !== null ? chk.status_code : 'pas de réponse' }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="flex items-center gap-2" :class="offer.expired ? 'pt-2 border-t border-gray-100' : ''">
+              <label class="text-gray-400 shrink-0">URL chez l'employeur</label>
+              <input
+                v-model="employerUrlEdit"
+                type="text"
+                placeholder="https://..."
+                class="flex-1 rounded border border-gray-200 px-2 py-1 text-xs"
+              >
+              <button
+                @click="enregistrerEmployerUrl"
+                :disabled="employerUrlBusy"
+                class="px-2.5 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 shrink-0"
+              >{{ employerUrlBusy ? '…' : 'Enregistrer' }}</button>
+            </div>
+            <p v-if="employerUrlError" class="text-red-600">{{ employerUrlError }}</p>
+          </div>
+
           <!-- Synthèse d'extraction -->
           <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2 flex-shrink-0 text-xs">
             <!-- Lieu + remote + contrat + date + source -->
@@ -500,6 +534,29 @@ onBeforeUnmount(() => {
 async function retirerDesRetenues() {
   await $fetch(`${config.public.apiBase}/offers/${id.value}/verdict`, { method: 'DELETE' })
   router.back()
+}
+
+// ── Vérification d'expiration (EXE-77) ──────────────────────────────────────
+const employerUrlEdit = ref('')
+const employerUrlBusy = ref(false)
+const employerUrlError = ref<string | null>(null)
+
+watch(offer, (o) => { employerUrlEdit.value = o?.employer_url ?? '' }, { immediate: true })
+
+async function enregistrerEmployerUrl() {
+  employerUrlError.value = null
+  employerUrlBusy.value = true
+  try {
+    await $fetch(`${config.public.apiBase}/offers/${id.value}/employer-url`, {
+      method: 'PUT',
+      body: { url: employerUrlEdit.value },
+    })
+    if (offer.value) offer.value.employer_url = employerUrlEdit.value
+  } catch (e) {
+    employerUrlError.value = (e as { data?: { detail?: string } })?.data?.detail ?? 'Action impossible.'
+  } finally {
+    employerUrlBusy.value = false
+  }
 }
 
 // ── Fiche entreprise ──────────────────────────────────────────────────────

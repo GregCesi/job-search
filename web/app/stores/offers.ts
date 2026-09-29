@@ -24,6 +24,13 @@ export interface OfferRow {
   reviewed_at: string | null
   review_stale: boolean
   suggestion_actuelle: string | null
+  expired: boolean // vérification d'expiration (EXE-76/77)
+}
+
+export interface ExpirationCheck {
+  url: string
+  status_code: number | null
+  checked_at: string
 }
 
 export interface TechInfo {
@@ -50,6 +57,9 @@ export interface OfferDetail extends OfferRow {
   techs_missing: string[]
   score_breakdown?: string | null
   fiche?: FicheEntreprise | null
+  employer_url: string | null // EXE-76
+  last_checked_at: string | null // EXE-76
+  expiration_checks: ExpirationCheck[] // EXE-76
 }
 
 export type FicheTas = 'lettre' | 'entretien' | 'rien'
@@ -174,6 +184,7 @@ export const useOffersStore = defineStore('offers', () => {
   const activeView = ref<ActiveView>('a_traiter')
   const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter })
   const loading = ref(false)
+  const checkingExpirations = ref(false)
   const viewProfileActive = ref(true)
   const includeRemote = ref(false)
   const traceCounts = ref<Record<string, number>>({})
@@ -274,6 +285,16 @@ export const useOffersStore = defineStore('offers', () => {
     if (openedOffer.value?.id === id) openedOffer.value.verdict = null
   }
 
+  async function checkExpirations() {
+    checkingExpirations.value = true
+    try {
+      await $fetch(`${config.public.apiBase}/offers/check-expirations`, { method: 'POST' })
+      await fetchOffers()
+    } finally {
+      checkingExpirations.value = false
+    }
+  }
+
   function setView(view: ActiveView) {
     activeView.value = view
     filters.value = { ...VIEW_PRESETS[view] }
@@ -286,6 +307,7 @@ export const useOffersStore = defineStore('offers', () => {
     activeView,
     filters,
     loading,
+    checkingExpirations,
     viewProfileActive,
     includeRemote,
     traceCounts,
@@ -296,6 +318,7 @@ export const useOffersStore = defineStore('offers', () => {
     submitCategoryReview,
     setVerdict,
     clearVerdict,
+    checkExpirations,
     setView,
   }
 })

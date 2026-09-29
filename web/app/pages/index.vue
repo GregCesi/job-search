@@ -21,6 +21,16 @@
         </button>
       </nav>
 
+      <!-- Vérification d'expiration (EXE-77) — onglet Retenues uniquement -->
+      <button
+        v-if="store.activeView === 'retenues'"
+        :disabled="store.checkingExpirations"
+        class="px-3 py-1.5 rounded-md text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
+        @click="store.checkExpirations()"
+      >
+        {{ store.checkingExpirations ? 'Vérification en cours…' : 'Vérifier les offres' }}
+      </button>
+
       <!-- Offer count + export calibration (L11) -->
       <div class="ml-auto flex items-center gap-3">
         <span class="text-xs text-gray-400">
