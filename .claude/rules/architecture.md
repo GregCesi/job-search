@@ -53,3 +53,11 @@ Le snapshot dans `human_reviews` rend chaque review auto-portante : la distance 
 Trois appels LLM existent hors extraction à l'ingestion. Chacun part **uniquement** d'une action explicite sur une offre `retenue` : un POST sur la route de sa pièce (`/offers/{id}/fiche` et son explication de point `.../explain` ; `/offers/{id}/cv` ; la route de la lettre). Jamais d'un changement de `profile.yaml`, jamais d'un rescore.
 
 Chacun tourne dans sa propre table d'interaction, jamais mêlée à `offers` : `fiches_entreprise`, `cvs` (avec `cv_corrections`), et la table de la lettre. Les choix humains qu'elles stockent — tas des points, corrections de compétences, points retenus pour la lettre, texte relu — ne recalculent rien.
+
+## Exception encadrée — identification d'une offre ajoutée à la main sans titre (TCK-183)
+
+Une offre ajoutée à la main par son texte, sans titre saisi, passe par un appel d'identification **avant** l'extraction : un prompt système distinct, qui ne rend que le titre, l'entreprise et le lieu lus dans le texte. Il part uniquement de cet ajout — jamais d'une offre de source, jamais d'un changement de `profile.yaml`, jamais d'un rescore.
+
+L'extraction qui suit est l'extraction ordinaire, prompt inchangé : l'invariant 4 vaut pour elle. L'appel d'identification ne rend aucun fait qui entre dans le scoring (ni séniorité, ni techno, ni domaine, ni langue). Il est tracé comme l'extraction.
+
+_Écrit le 29 septembre 2026, TCK-183 : sur deux pages d'offre essayées, aucune n'a été lue ; le collage devient la voie principale._
