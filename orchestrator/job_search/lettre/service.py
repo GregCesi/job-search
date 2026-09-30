@@ -26,6 +26,7 @@ from orchestrator.job_search.lettre.redaction import (
     exceeds_length,
     load_tournures_interdites,
     resolve_chosen_indices,
+    resolve_offer_text,
     strip_html,
 )
 from orchestrator.job_search.paths import (
@@ -118,10 +119,15 @@ async def _generate_texte(conn: sqlite3.Connection, offer_id: int) -> _Generatio
     et appelle le modèle. Partagé par la génération initiale et la régénération
     (EXE-66 critère 9 : le choix courant, jamais un choix figé au premier appel)."""
     offer = conn.execute(
-        "SELECT description_raw FROM offers WHERE id = ?", (offer_id,)
+        "SELECT title, description_raw, description FROM offers WHERE id = ?",
+        (offer_id,),
     ).fetchone()
     if offer is None:
         raise ValueError(f"offre {offer_id} introuvable")
+
+    offer_text = resolve_offer_text(offer["description_raw"], offer["description"])
+    if not offer_text:
+        raise ValueError(f"texte de l'offre manquant pour l'offre {offer_id}")
 
     fiche = conn.execute(
         "SELECT presentation, points_json FROM fiches_entreprise "
@@ -154,7 +160,8 @@ async def _generate_texte(conn: sqlite3.Connection, offer_id: int) -> _Generatio
     cv_reference_text = strip_html(CV_REFERENCE_PATH.read_text(encoding="utf-8"))
 
     prompt_text = build_prompt(
-        offer["description_raw"] or "",
+        offer["title"] or "",
+        offer_text,
         fiche["presentation"] or "",
         chosen_points,
         preferences_ton,

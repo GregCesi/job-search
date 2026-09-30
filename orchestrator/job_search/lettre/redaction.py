@@ -77,7 +77,19 @@ def detect_tournures(texte: str, tournures: list[str]) -> list[str]:
     return found
 
 
+def resolve_offer_text(description_raw: str | None, description: str | None) -> str:
+    """Texte de l'offre à envoyer au modèle (EXE-84) : le texte brut s'il contient
+    autre chose que des espaces, sinon le texte nettoyé. Chaîne vide si les deux sont
+    vides — signal de refus de génération, jamais un texte à corriger ici."""
+    if (description_raw or "").strip():
+        return description_raw
+    if (description or "").strip():
+        return description
+    return ""
+
+
 def build_prompt(
+    title: str,
     offer_text: str,
     presentation: str,
     chosen_points: list[dict],
@@ -89,6 +101,7 @@ def build_prompt(
         "Tu écris une lettre de motivation à partir des éléments suivants. Rends "
         "uniquement le texte de la lettre, en français, sans objet ni note.\n\n"
         "**Offre** :\n"
+        f"{title}\n\n"
         f"{offer_text}\n\n"
         "**Présentation de l'entreprise** :\n"
         f"{presentation}\n\n"

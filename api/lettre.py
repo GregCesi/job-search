@@ -22,7 +22,11 @@ from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, ConfigDict
 
 import orchestrator.job_search.lettre.service as lettre_service
-from orchestrator.job_search.lettre.redaction import point_text, resolve_chosen_indices
+from orchestrator.job_search.lettre.redaction import (
+    point_text,
+    resolve_chosen_indices,
+    resolve_offer_text,
+)
 from orchestrator.job_search.lettre.service import reset_pending, run_lettre
 
 from .db import get_conn
@@ -157,6 +161,18 @@ async def create_lettre(offer_id: int, response: Response) -> dict:
         if row is not None and row["statut"] == "done":
             response.status_code = 200
             return _row_to_lettre(row)
+
+        o = conn.execute(
+            "SELECT description_raw, description FROM offers WHERE id = ?",
+            (offer_id,),
+        ).fetchone()
+        if not resolve_offer_text(
+            o["description_raw"] if o else None, o["description"] if o else None
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Le texte de l'offre manque, impossible de générer la lettre",
+            )
 
         points = _fetch_fiche_points(conn, offer_id) or []
         chosen = resolve_chosen_indices(
