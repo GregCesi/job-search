@@ -123,23 +123,17 @@ _DOMAIN_VALID = {
 _EXPERIENCE_HINT = {"D": "Débutant accepté", "S": "Souhaitée", "E": "Exigée"}
 
 
-def _fallback() -> ExtractedFacts:
-    return ExtractedFacts(
-        seniority_required=SeniorityLevel.intermediate,
-        techs_required=[],
-        domain="other",
-        role_level=RoleLevel.ic,
-        parse_failed=True,
-    )
-
-
 def extract_facts(
     offer: JobOffer,
     model: str = _DEFAULT_MODEL,
     host: str = _DEFAULT_HOST,
     retries: int = 2,
-) -> ExtractedFacts:
-    """Extract intrinsic facts from a job offer. Never raises — returns parse_failed on error."""
+) -> ExtractedFacts | None:
+    """Extract intrinsic facts from a job offer. Never raises.
+
+    None = extraction en échec : aucune réponse lisible après les `retries + 1`
+    tentatives (architecture.md, exception TCK-273). Aucun fait de repli n'est
+    retourné ni scoré — c'est à l'appelant de laisser l'offre à refaire."""
     client = ollama.Client(host=host)
 
     hints: list[str] = []
@@ -271,7 +265,8 @@ def extract_facts(
                     f"[extractor] parse failed on offer '{offer.source_id}': {exc}"
                 )
 
-    fallback = _fallback()
+    # Aucune réponse lisible après les `retries + 1` tentatives — échec, pas de
+    # fait de repli (architecture.md, exception TCK-273) : l'offre reste à refaire.
     _write_trace(
         LLMTrace(
             offer_id=offer.source_id,
@@ -281,10 +276,10 @@ def extract_facts(
             prompt_system=_SYSTEM_PROMPT,
             prompt_user=user_prompt,
             raw_response=_last_raw,
-            parsed_facts=fallback.model_dump(),
+            parsed_facts={},
             parse_failed=True,
             timestamp=datetime.now(timezone.utc).isoformat(),
         ),
         TRACE_PATH,
     )
-    return fallback
+    return None

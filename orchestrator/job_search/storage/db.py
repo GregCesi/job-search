@@ -167,6 +167,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
     """)
     migrate_offers_schema(conn)
+    migrate_legacy_extraction_failures(conn)
     migrate_fiches_entreprise_schema(conn)
     migrate_cvs_schema(conn)
     migrate_lettres_schema(conn)
@@ -226,6 +227,40 @@ def migrate_lettres_schema(conn: sqlite3.Connection) -> None:
         )
     if "regeneration_error" not in existing:
         conn.execute("ALTER TABLE lettres ADD COLUMN regeneration_error TEXT")
+    conn.commit()
+
+
+# Signature exacte des faits de repli produits par l'ancien `_fallback()` d'une
+# extraction en échec, avant EXE-98 (scoring/extractor.py, historique figé ici).
+_LEGACY_FALLBACK_FACTS_JSON = (
+    '{"seniority_required":"intermediate","techs_required":[],"domain":"other",'
+    '"role_level":"ic","langues_requises":[],"parse_failed":true}'
+)
+
+
+def migrate_legacy_extraction_failures(conn: sqlite3.Connection) -> None:
+    """EXE-98 (architecture.md, exception TCK-273) : avant ce ticket, une extraction
+    en échec persistait des faits de repli et finissait rangée « sans techno »,
+    indiscernable d'une vraie offre sans technologie exigée. Toute offre non filtrée,
+    jamais réextraite (`extraction_version IS NULL`), dont les faits enregistrés sont
+    EXACTEMENT ce signal, repasse « à refaire » avec 1 essai et perd sa cause
+    hors-périmètre. Idempotent : les faits sont effacés, un second passage ne
+    retrouve plus la correspondance exacte."""
+    conn.execute(
+        """
+        UPDATE offers
+        SET extraction_status     = 'retry',
+            extraction_attempts   = 1,
+            extracted_facts_json  = NULL,
+            hors_perimetre_reason = NULL,
+            perimetre_causes      = NULL
+        WHERE filtered_out = 0
+          AND extraction_version IS NULL
+          AND extraction_status IS NULL
+          AND extracted_facts_json = ?
+        """,
+        (_LEGACY_FALLBACK_FACTS_JSON,),
+    )
     conn.commit()
 
 
@@ -297,6 +332,10 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("ad_language", "TEXT"),
         # TCK-211 — version de l'extraction (modèle + empreinte prompt + schéma)
         ("extraction_version", "TEXT"),
+        # EXE-98 — état d'une extraction qui n'a pas (encore) produit de faits :
+        # NULL (normal) | pending | retry | unreadable (architecture.md TCK-273)
+        ("extraction_status", "TEXT"),
+        ("extraction_attempts", "INTEGER NOT NULL DEFAULT 0"),
     ]
     for col, col_type in add_cols:
         if col not in existing:

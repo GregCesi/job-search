@@ -32,7 +32,7 @@ def main() -> None:
     load_dotenv()
 
     from orchestrator.job_search.digest.formatter import generate_digest
-    from orchestrator.job_search.ingestion import process_offer
+    from orchestrator.job_search.ingestion import extract_and_score, register_offer
     from orchestrator.job_search.matching.profile import load_profile
     from orchestrator.job_search.scoring.aliases import load_alias_table
     from orchestrator.job_search.sources.base import JobOffer, Source
@@ -42,7 +42,7 @@ def main() -> None:
     from orchestrator.job_search.sources.remotive import RemotiveSource
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.dedup import filter_new
-    from orchestrator.job_search.storage.offers import get_offers_since
+    from orchestrator.job_search.storage.offers import get_offers_since, offer_from_row
 
     model = os.getenv("OLLAMA_MODEL", "gemma4:12b")
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -96,25 +96,67 @@ def main() -> None:
         f"[run] {len(new_offers)} nouvelles ({len(all_offers) - len(new_offers)} déjà vues)"
     )
 
-    # 5. Filtre dur + Extract (LLM, 1 appel/offre) + Score (Python) + Persist
-    #    — chaîne partagée avec l'ajout à la main (ingestion.py, EXE-79)
+    # 5a. Filtre dur + mise en attente — chaque offre nouvelle qui passe est
+    #     enregistrée « en attente d'extraction » avant tout appel LLM (EXE-98)
     for i, offer in enumerate(new_offers, 1):
-        print(f"[run] ({i}/{len(new_offers)}) {offer.title[:55]}", flush=True)
+        registered = register_offer(conn, offer, profile)
+        if registered.filtered:
+            print(
+                f"[run] ({i}/{len(new_offers)}) {offer.title[:55]} "
+                f"→ filtré : {registered.filter_reason}"
+            )
 
-        outcome = process_offer(
-            conn, offer, profile, alias_table, model=model, host=host
+    # 5b. Extraction (LLM, 1 essai/offre) + Score (Python) + Persist — reprend
+    #     TOUTES les offres en attente ou à refaire, y compris celles laissées par
+    #     un run précédent interrompu (EXE-98) — chaîne partagée avec l'ajout à la
+    #     main (ingestion.py, EXE-79)
+    pending_rows = conn.execute(
+        "SELECT * FROM offers WHERE extraction_status IN ('pending', 'retry') "
+        "ORDER BY fetched_at"
+    ).fetchall()
+    print(
+        f"[run] {len(pending_rows)} offres à extraire (en attente + à refaire)",
+        flush=True,
+    )
+
+    for i, row in enumerate(pending_rows, 1):
+        pending_offer = offer_from_row(row)
+        print(f"[run] ({i}/{len(pending_rows)}) {pending_offer.title[:55]}", flush=True)
+
+        outcome = extract_and_score(
+            conn,
+            pending_offer,
+            profile,
+            alias_table,
+            model=model,
+            host=host,
+            attempts_before=row["extraction_attempts"] or 0,
         )
-        if outcome.filter_reason is not None:
-            print(f"         → filtré : {outcome.filter_reason}")
-            continue
-
-        flag = " ⚠ parse_failed" if outcome.parse_failed else ""
-        if outcome.perimetre_causes:
+        if outcome.extraction_status == "retry":
+            print(f"         → à refaire (essai {outcome.extraction_attempts})")
+        elif outcome.extraction_status == "unreadable":
+            print("         → illisible")
+        elif outcome.perimetre_causes:
+            flag = " ⚠ parse_failed" if outcome.parse_failed else ""
             causes = ",".join(outcome.perimetre_causes)
             print(f"         → hors_perimetre: {causes}{flag}")
-            continue
+        else:
+            flag = " ⚠ parse_failed" if outcome.parse_failed else ""
+            print(f"         → [{outcome.category.value}]{flag}")
 
-        print(f"         → [{outcome.category.value}]{flag}")
+    n_pending = conn.execute(
+        "SELECT COUNT(*) FROM offers WHERE extraction_status = 'pending'"
+    ).fetchone()[0]
+    n_retry = conn.execute(
+        "SELECT COUNT(*) FROM offers WHERE extraction_status = 'retry'"
+    ).fetchone()[0]
+    n_unreadable = conn.execute(
+        "SELECT COUNT(*) FROM offers WHERE extraction_status = 'unreadable'"
+    ).fetchone()[0]
+    print(
+        f"[run] extraction — {n_pending} en attente, {n_retry} à refaire, "
+        f"{n_unreadable} illisibles"
+    )
 
     # 6. Digest
     since = run_at - timedelta(hours=args.since_hours)

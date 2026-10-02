@@ -144,6 +144,7 @@ export interface Filters {
   exclude_category?: string
   hors_perimetre?: boolean
   hp_cause?: string
+  extraction_status?: string
   exclude_ad_language?: string
   etat_review?: string
   remote?: boolean
@@ -209,6 +210,7 @@ export const useOffersStore = defineStore('offers', () => {
       if (filters.value.exclude_category !== undefined) params.exclude_category = filters.value.exclude_category
       if (filters.value.hors_perimetre !== undefined) params.hors_perimetre = filters.value.hors_perimetre
       if (filters.value.hp_cause !== undefined) params.hp_cause = filters.value.hp_cause
+      if (filters.value.extraction_status !== undefined) params.extraction_status = filters.value.extraction_status
       if (filters.value.exclude_ad_language !== undefined) params.exclude_ad_language = filters.value.exclude_ad_language
       if (filters.value.etat_review !== undefined) params.etat_review = filters.value.etat_review
       if (filters.value.remote !== undefined) params.remote = filters.value.remote

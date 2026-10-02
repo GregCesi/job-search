@@ -123,7 +123,12 @@ def main() -> None:
             raise SystemExit(
                 f"[rescore] modèle {model} absent d'Ollama (disponibles : {sorted(available)})."
             )
-    conditions: list[str] = ["(o.filtered_out = 0 OR o.filtered_out IS NULL)"]
+    # EXE-98 : une offre en attente, à refaire ou illisible n'est jamais touchée par
+    # le rescore, dans aucun mode — c'est le /run qui la reprend (architecture.md TCK-273)
+    conditions: list[str] = [
+        "(o.filtered_out = 0 OR o.filtered_out IS NULL)",
+        "o.extraction_status IS NULL",
+    ]
     params: list = []
     order_params: list = []
 

@@ -37,8 +37,16 @@ def save_offer(
     techs_missing: list[str] | None = None,
     ad_language: str | None = None,
     extraction_version: str | None = None,
+    extraction_status: str | None = None,
+    extraction_attempts: int = 0,
 ) -> None:
-    """Upsert offer. Filtered/hors-périmètre offers saved without category."""
+    """Upsert offer. Filtered/hors-périmètre offers saved without category.
+
+    `extraction_status`/`extraction_attempts` (EXE-98) : état d'une extraction qui
+    n'a pas (encore) produit de faits — None (normal) | pending | retry | unreadable.
+    Toujours écrits tels quels (pas de COALESCE) : un appel qui ne les précise pas
+    les remet à leur valeur neutre, ce qui n'arrive que sur des lignes qui n'ont
+    jamais porté cet état (le rescore exclut les autres, cf. pipeline.md)."""
     import json
 
     facts_json = (
@@ -68,9 +76,9 @@ def save_offer(
              filtered_out, filter_reason, hors_perimetre_reason,
              perimetre_causes,
              techs_matched_json, techs_missing_json, rescored_at, ad_language,
-             extraction_version)
+             extraction_version, extraction_status, extraction_attempts)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json  = excluded.extracted_facts_json,
             category              = excluded.category,
@@ -85,7 +93,9 @@ def save_offer(
             techs_missing_json    = excluded.techs_missing_json,
             rescored_at           = excluded.rescored_at,
             ad_language           = COALESCE(excluded.ad_language, ad_language),
-            extraction_version    = COALESCE(excluded.extraction_version, extraction_version)
+            extraction_version    = COALESCE(excluded.extraction_version, extraction_version),
+            extraction_status     = excluded.extraction_status,
+            extraction_attempts   = excluded.extraction_attempts
         """,
         (
             offer.source,
@@ -118,9 +128,39 @@ def save_offer(
             now,
             ad_language,
             extraction_version,
+            extraction_status,
+            extraction_attempts,
         ),
     )
     conn.commit()
+
+
+def offer_from_row(row: sqlite3.Row) -> JobOffer:
+    """Reconstruit un `JobOffer` depuis une ligne `offers` (sans faits extraits) —
+    utilisé pour reprendre une offre en attente ou à refaire (EXE-98)."""
+    return JobOffer(
+        source=row["source"],
+        source_id=row["source_id"],
+        fingerprint=row["fingerprint"],
+        title=row["title"] or "",
+        description=row["description"] or "",
+        description_raw=row["description_raw"],
+        company=row["company"],
+        location=row["location"],
+        remote=bool(row["remote"]),
+        contract_type=row["contract_type"],
+        nature_contract=row["nature_contract"],
+        alternance=bool(row["alternance"] or False),
+        full_time=(None if row["full_time"] is None else bool(row["full_time"])),
+        company_size=row["company_size"],
+        experience_required=row["experience_required"],
+        rome_code=row["rome_code"],
+        rome_label=row["rome_label"],
+        url=row["url"] or "",
+        fetched_at=datetime.fromisoformat(row["fetched_at"])
+        if row["fetched_at"]
+        else datetime.now(timezone.utc),
+    )
 
 
 def get_offers_since(

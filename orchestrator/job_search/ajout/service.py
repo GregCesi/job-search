@@ -38,6 +38,11 @@ _SANS_TITRE = (
     "et relancer l'ajout."
 )
 
+_EXTRACTION_A_REFAIRE = (
+    "L'extraction de cette offre a échoué. Elle est enregistrée « à refaire » : "
+    "un prochain run la reprendra."
+)
+
 
 def create_ajout(conn: sqlite3.Connection, url: str | None, texte: str | None) -> int:
     cur = conn.execute(
@@ -132,6 +137,14 @@ def run_ajout(ajout_id: int, source: ManualSource) -> None:
                 "filtree",
                 offer_id=offer_id,
                 raison=outcome.filter_reason,
+            )
+        elif outcome.extraction_status is not None:
+            _finish(
+                conn,
+                ajout_id,
+                "echec",
+                offer_id=offer_id,
+                message=_EXTRACTION_A_REFAIRE,
             )
         elif outcome.perimetre_causes:
             _finish(

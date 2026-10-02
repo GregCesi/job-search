@@ -221,6 +221,10 @@ def list_offers(
     hp_cause: str | None = Query(
         None, description="Filtre par cause HP : no_tech | mgmt_role | contrat"
     ),
+    extraction_status: str | None = Query(
+        None,
+        description="pending (inclut à refaire) | unreadable — EXE-98",
+    ),
     exclude_ad_language: str | None = Query(
         None,
         description="Exclut les offres dont ad_language est dans cette liste (comma-separated, ex: nl)",
@@ -268,6 +272,10 @@ def list_offers(
     if hp_cause is not None:
         conditions.append("o.perimetre_causes LIKE ?")
         params.append(f'%"{hp_cause}"%')
+    if extraction_status == "pending":
+        conditions.append("o.extraction_status IN ('pending', 'retry')")
+    elif extraction_status == "unreadable":
+        conditions.append("o.extraction_status = 'unreadable'")
     if exclude_ad_language is not None:
         langs = [
             lang.strip() for lang in exclude_ad_language.split(",") if lang.strip()
@@ -371,7 +379,7 @@ def list_offers(
                o.category, o.seen_candidat, o.fetched_at, o.filtered_out, o.filter_reason,
                o.hors_perimetre_reason, o.perimetre_causes,
                o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
-               o.rescored_at,
+               o.rescored_at, o.extraction_status, o.extraction_attempts,
                v.status AS verdict,
                ex.expired AS expiration_expired
         FROM offers o
@@ -408,6 +416,8 @@ def list_offers(
             expired=bool(r["expiration_expired"])
             if r["expiration_expired"] is not None
             else False,
+            extraction_status=r["extraction_status"],
+            extraction_attempts=r["extraction_attempts"] or 0,
         )
         for r in rows
     ]
@@ -516,6 +526,8 @@ def get_offer(offer_id: int) -> OfferDetail:
         expired=bool(row["expiration_expired"])
         if row["expiration_expired"] is not None
         else False,
+        extraction_status=row["extraction_status"],
+        extraction_attempts=row["extraction_attempts"] or 0,
     )
 
 

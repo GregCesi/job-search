@@ -32,6 +32,9 @@ class OfferRow(BaseModel):
     review_stale: bool = False
     suggestion_actuelle: str | None = None
     expired: bool = False  # vérification d'expiration (EXE-76)
+    # EXE-98 — None = extraction normale | pending | retry | unreadable
+    extraction_status: str | None = None
+    extraction_attempts: int = 0
 
 
 class TechSchema(BaseModel):

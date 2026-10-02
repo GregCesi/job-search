@@ -107,6 +107,20 @@
       </select>
     </div>
 
+    <!-- État extraction (EXE-98) -->
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Extraction</label>
+      <select
+        v-model="local.extraction_status"
+        class="border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        @change="apply"
+      >
+        <option value="">Toutes</option>
+        <option value="pending">⏳ Extraction en attente</option>
+        <option value="unreadable">⊘ Illisible</option>
+      </select>
+    </div>
+
     <!-- Verdict -->
     <div class="flex flex-col gap-1">
       <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Verdict</label>
@@ -150,6 +164,7 @@ interface LocalFilters {
   etat_review: string[]
   hors_perimetre: boolean | undefined
   hp_cause: string
+  extraction_status: string
   verdict: string
 }
 
@@ -161,6 +176,7 @@ const local = reactive<LocalFilters>({
   etat_review: [],
   hors_perimetre: undefined,
   hp_cause: '',
+  extraction_status: '',
   verdict: '',
 })
 
@@ -176,6 +192,7 @@ function apply() {
   // hors_perimetre : ne pas écraser le preset si l'utilisateur n'a pas touché au select
   if (local.hors_perimetre !== undefined) store.filters.hors_perimetre = local.hors_perimetre
   store.filters.hp_cause       = local.hp_cause || undefined
+  store.filters.extraction_status = local.extraction_status || undefined
   store.filters.verdict        = local.verdict || undefined
   store.fetchOffers()
 }
@@ -188,6 +205,7 @@ function reset() {
   local.etat_review    = []
   local.hors_perimetre = undefined
   local.hp_cause       = ''
+  local.extraction_status = ''
   local.verdict        = ''
   store.filters.q              = undefined
   store.filters.category       = undefined
@@ -196,6 +214,7 @@ function reset() {
   store.filters.etat_review    = undefined
   store.filters.hors_perimetre = undefined
   store.filters.hp_cause       = undefined
+  store.filters.extraction_status = undefined
   store.filters.verdict        = undefined
   store.fetchOffers()
 }
