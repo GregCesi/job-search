@@ -18,7 +18,11 @@ Le score final catégorisation utilise `min(attain_tech, attain_role)`, pas une 
 
 ## `parse_failed`
 
-**Interdit** : scorer une offre dont `extracted_facts.parse_failed=True` comme si les faits étaient fiables. Les valeurs de fallback (`techs_required=[]`, `domain="other"`) produisent un scoring dégradé (désirabilité ~0, catégorie « hors »). L'offre reste visible dans le bucket hors-périmètre (reason `no_tech`) pour inspection manuelle. Le flag est un signal de debug — sa place est dans le viewer de traces, pas comme verdict.
+`parse_failed=True` marque une extraction **dégradée** : le modèle a répondu, mais un champ sortait du vocabulaire et a pris sa valeur par défaut. L'offre est scorée. Le flag est un signal de debug : sa place est dans le viewer de traces, pas comme verdict.
+
+Une extraction **échouée** (aucune réponse lisible) ne produit aucun fait et n'est jamais scorée : l'offre reste à refaire (cf. `architecture.md`, exception TCK-273).
+
+**Interdit** : scorer des valeurs de repli comme si c'étaient des faits, ou ranger une extraction échouée sous `no_tech`.
 
 ## Règle de modification
 

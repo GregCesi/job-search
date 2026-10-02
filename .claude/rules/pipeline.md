@@ -103,9 +103,9 @@ Lecture préalable recommandée : `architecture.md` (invariants fondamentaux), `
 - Trace JSONL en append dans `data/traces/extract_facts.jsonl` (`LLMTrace` : prompt complet, réponse brute, facts parsés, timestamp)
 
 ### INVARIANTS
-- Un seul appel LLM par offre, à l'ingestion — résultat persisté sur `offers.extracted_facts_json`, jamais recalculé sauf `--re-extract` explicite
+- Un seul appel LLM par offre, à l'ingestion — résultat persisté sur `offers.extracted_facts_json`, jamais recalculé sauf `--re-extract` explicite. Deux cas y dérogent : la reprise d'une extraction échouée et la seconde passe (cf. `architecture.md`, exception TCK-273)
 - Faits intrinsèques = indépendants du profil (cf. `architecture.md` §4)
-- Parsing défensif : 2 retries (3 tentatives au total), fallback `ExtractedFacts(parse_failed=True, techs_required=[], domain="other")` — ne crashe jamais le run
+- Parsing défensif : 2 retries (3 tentatives au total). Sans réponse lisible après les 3, l'extraction est en échec : aucun fait n'est enregistré et l'offre reste à refaire (cf. `architecture.md`, exception TCK-273) — ne crashe jamais le run
 - La trace est sacrée : le vocabulaire brut du LLM est conservé tel quel dans le JSONL — la canonicalisation (`alias.yaml`) n'intervient qu'au scoring (étage 5)
 - Coercion v1 : si `techs_required` arrive en `list[str]` (ancien format), le model_validator coerce en `list[TechRequirement]` avec importance `"required"`
 

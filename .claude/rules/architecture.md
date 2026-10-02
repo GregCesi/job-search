@@ -61,3 +61,23 @@ Une offre ajoutée à la main par son texte, sans titre saisi, passe par un appe
 L'extraction qui suit est l'extraction ordinaire, prompt inchangé : l'invariant 4 vaut pour elle. L'appel d'identification ne rend aucun fait qui entre dans le scoring (ni séniorité, ni techno, ni domaine, ni langue). Il est tracé comme l'extraction.
 
 _Écrit le 29 septembre 2026, TCK-183 : sur deux pages d'offre essayées, aucune n'a été lue ; le collage devient la voie principale._
+
+## Exception encadrée : reprise d'une extraction échouée et seconde passe (TCK-273)
+
+L'invariant 4 dit que le LLM intervient une seule fois par offre. Deux cas y dérogent, à l'ingestion seulement.
+
+**Reprise.** Une extraction échouée (aucune réponse lisible du modèle après ses tentatives) n'a produit aucun fait. L'offre reste à extraire, et un run ultérieur rappelle le modèle pour elle. Aucun fait de repli n'est enregistré ni scoré à sa place. Une extraction réussie n'est jamais refaite par ce chemin.
+
+**Seconde passe.** Le run extrait chaque offre avec un modèle de tri. Il l'extrait une seconde fois avec un modèle de précision dans deux cas seulement : le tri la classe parfait ou rêve, ou le tri n'a pas réussi à la lire. Les faits du modèle de précision remplacent alors ceux du tri, et la catégorie est recalculée en Python sur eux. Les deux modèles reçoivent le même prompt.
+
+Ce qui ne change pas : aucun de ces appels ne part d'un changement de `profile.yaml` ni d'un rescore, les faits extraits restent intrinsèques, et chaque appel est tracé avec son modèle.
+
+_Écrit le 2 octobre 2026, TCK-273 : le run du jour a duré 5h20 pour 52 extractions avec un seul modèle, et 148 extractions échouées ont été rangées « sans techno »._
+
+## Exception encadrée : rejeu du jeu de référence (TCK-221)
+
+Le rejeu d'un jeu de référence appelle le modèle d'extraction hors ingestion, sur des offres déjà extraites, pour mesurer un modèle ou un prompt contre une extraction attendue écrite à la main. Il part uniquement d'une commande lancée à la main : jamais d'un run, jamais d'un changement de `profile.yaml`, jamais d'un rescore.
+
+Il n'écrit rien dans `offers` ni dans la trace d'extraction du run. Ses résultats vivent dans son rapport et dans MLflow.
+
+_Écrit le 2 octobre 2026, TCK-221._
