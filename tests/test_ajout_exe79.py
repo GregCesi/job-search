@@ -305,6 +305,8 @@ def _run_main(monkeypatch, tmp_path, profil_path, offre: JobOffer) -> None:
     # EXE-99 : `extraction` fake `extract_facts` sans parler à un Ollama réel —
     # le contrôle de disponibilité des modèles du /run est neutralisé pareil.
     monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
+    # EXE-100 : le /run décharge les modèles en finissant.
+    monkeypatch.setattr(extractor, "unload_model", lambda *a, **k: None)
     (tmp_path / "data").mkdir(exist_ok=True)
     monkeypatch.setattr(
         sys,

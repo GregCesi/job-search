@@ -186,6 +186,9 @@ def cascade(monkeypatch):
 
     monkeypatch.setattr(ingestion, "extract_facts", _extract)
     monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
+    # EXE-100 : le /run décharge les modèles en finissant — ces tests ne
+    # parlent jamais à un Ollama réel.
+    monkeypatch.setattr(extractor, "unload_model", lambda *a, **k: None)
     return calls, state
 
 
@@ -804,6 +807,7 @@ def test_critere14_modele_de_tri_defaut_llama3_sans_configuration(
 
     monkeypatch.setattr(ingestion, "extract_facts", _extract)
     monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
+    monkeypatch.setattr(extractor, "unload_model", lambda *a, **k: None)
     monkeypatch.delenv("OLLAMA_MODEL_TRI", raising=False)
 
     class _UneOffreSource:
@@ -840,6 +844,7 @@ def test_critere14_modele_de_tri_configure_explicitement(
 
     monkeypatch.setattr(ingestion, "extract_facts", _extract)
     monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
+    monkeypatch.setattr(extractor, "unload_model", lambda *a, **k: None)
     monkeypatch.setenv("OLLAMA_MODEL_TRI", "mon-modele-tri")
 
     class _UneOffreSource:
@@ -881,6 +886,7 @@ def test_critere15_modele_de_precision_reste_ollama_model_defaut_gemma(
 
     monkeypatch.setattr(ingestion, "extract_facts", _extract)
     monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
+    monkeypatch.setattr(extractor, "unload_model", lambda *a, **k: None)
     monkeypatch.delenv("OLLAMA_MODEL_TRI", raising=False)
     monkeypatch.delenv("OLLAMA_MODEL", raising=False)
 

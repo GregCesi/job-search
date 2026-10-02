@@ -111,6 +111,24 @@ class OllamaUnavailable(RuntimeError):
     """Ollama injoignable, ou un modèle configuré n'y est pas installé (EXE-99)."""
 
 
+class NoResponseFromModel(RuntimeError):
+    """Aucune réponse lisible après épuisement des essais : réponse vide à
+    chaque tentative, ou modèle injoignable — jamais une réponse non vide que
+    le parsing n'a pas su lire (EXE-100, critères 11/14). Distinct d'un échec
+    d'extraction « illisible » (TCK-273), qui reste signalé par `None`."""
+
+
+def unload_model(host: str, model: str) -> None:
+    """Demande à Ollama de décharger `model` immédiatement (`keep_alive=0`).
+    Ne lève jamais : un échec de déchargement ne doit pas empêcher le run de
+    continuer ou de rendre la main (EXE-100, critères 5-8)."""
+    client = ollama.Client(host=host)
+    try:
+        client.generate(model=model, keep_alive=0)
+    except Exception as exc:
+        warnings.warn(f"[extractor] déchargement de {model} a échoué : {exc}")
+
+
 def ensure_models_available(host: str, models: list[str]) -> None:
     """Lève `OllamaUnavailable` si Ollama n'est pas joignable sur `host`, ou si
     l'un des `models` n'y est pas installé. Aucun appel au LLM — lecture seule
@@ -195,7 +213,12 @@ def extract_facts(
     )
 
     _last_raw = ""
+    # Vrai dès qu'une tentative a renvoyé un texte non vide — même illisible
+    # (EXE-100, critère 14). Si aucune tentative n'en renvoie, l'échec final
+    # est une absence de réponse (critère 11), pas une extraction illisible.
+    _any_readable = False
     for attempt in range(retries + 1):
+        _attempt_raw = ""
         try:
             resp = client.chat(
                 model=model,
@@ -208,8 +231,11 @@ def extract_facts(
                 # rend une réponse vide (done_reason=length, TCK-200).
                 think=False,
             )
-            _last_raw = resp.message.content
-            raw = resp.message.content.strip()
+            _attempt_raw = resp.message.content or ""
+            _last_raw = _attempt_raw
+            if _attempt_raw.strip():
+                _any_readable = True
+            raw = _attempt_raw.strip()
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
@@ -320,4 +346,11 @@ def extract_facts(
         ),
         TRACE_PATH,
     )
+    if not _any_readable:
+        # Vide à chaque tentative, ou modèle injoignable (EXE-100, critère 11) —
+        # distinct d'une réponse reçue mais illisible (critère 14).
+        raise NoResponseFromModel(
+            f"Ollama n'a renvoyé aucune réponse lisible pour l'offre "
+            f"'{offer.source_id}' après {retries + 1} tentative(s)"
+        )
     return None

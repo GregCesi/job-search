@@ -107,6 +107,9 @@ def fake_extract(monkeypatch):
 
     monkeypatch.setattr(ingestion, "extract_facts", _extract)
     monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
+    # EXE-100 : le /run décharge les modèles en finissant — ces tests ne
+    # parlent jamais à un Ollama réel.
+    monkeypatch.setattr(extractor, "unload_model", lambda *a, **k: None)
     return calls, state
 
 

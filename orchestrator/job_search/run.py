@@ -8,9 +8,206 @@ Usage:
 
 import argparse
 import os
+import time
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from orchestrator.job_search.paths import ALIAS_PATH, PROFILE_PATH, REPO_ROOT
+
+# EXE-100, critères 11/13 — 3 offres de suite sans réponse du modèle (vide ou
+# modèle injoignable) arrêtent la phase en cours. Pas configurable : c'est un
+# signal de panne, pas un réglage de volume (ceux-là vivent dans les variables
+# d'environnement ci-dessous).
+_NO_RESPONSE_STREAK_LIMIT = 3
+
+
+@dataclass
+class _TriPhaseReport:
+    n_triees: int = 0
+    a_relire_non_lues: list[tuple] = field(default_factory=list)
+    stopped_no_response: bool = False
+
+
+@dataclass
+class _SecondPassReport:
+    n_relues: int = 0
+    batches_done: int = 0
+    pause_seconds_total: float = 0.0
+    stop_reason: str | None = None  # None | "cap" | "no_response"
+
+
+@dataclass
+class _SecondPassEntry:
+    offer: object
+    kind: str  # "category" | "unreadable"
+    category: object | None = None
+    attempts_before: int = 0
+
+
+def _tri_phase(
+    conn, pending_rows, profile, alias_table, *, tri_model, host
+) -> _TriPhaseReport:
+    """Trie chaque offre en attente/à refaire avec le modèle de tri. Arrête la
+    phase après 3 offres de suite sans réponse du modèle (EXE-100, critère 11) :
+    les offres non encore triées restent en attente d'extraction, et les 3 de
+    la série qui ont déclenché l'arrêt ne comptent aucun essai (critère 12) —
+    elles ne rejoignent donc jamais la file de seconde passe ci-dessous. Une
+    réponse illisible mais non vide (critère 14) ne compte pas dans cette
+    série : elle réhabilite le tampon accumulé jusque-là."""
+    from orchestrator.job_search.ingestion import run_tri
+    from orchestrator.job_search.storage.offers import offer_from_row
+
+    a_relire_non_lues: list[tuple] = []
+    streak_buffer: list[tuple] = []
+    n_triees = 0
+    stopped = False
+
+    for row in pending_rows:
+        offer = offer_from_row(row)
+        print(f"[run] tri {offer.title[:55]}", flush=True)
+        tri = run_tri(conn, offer, profile, alias_table, model=tri_model, host=host)
+        n_triees += 1
+
+        if (
+            tri.needs_second_pass
+            and tri.second_pass_reason == "unreadable"
+            and tri.no_response
+        ):
+            streak_buffer.append((offer, row["extraction_attempts"] or 0))
+            if len(streak_buffer) >= _NO_RESPONSE_STREAK_LIMIT:
+                stopped = True
+                streak_buffer = []
+                print("         → tri arrêté : 3 offres de suite sans réponse")
+                break
+            continue
+
+        a_relire_non_lues.extend(streak_buffer)
+        streak_buffer = []
+
+        if tri.needs_second_pass and tri.second_pass_reason == "unreadable":
+            a_relire_non_lues.append((offer, row["extraction_attempts"] or 0))
+        elif tri.needs_second_pass:
+            print(
+                f"         → [{tri.outcome.category.value}] en attente de seconde passe"
+            )
+        elif tri.outcome.perimetre_causes:
+            causes = ",".join(tri.outcome.perimetre_causes)
+            print(f"         → hors_perimetre: {causes}")
+        else:
+            print(f"         → [{tri.outcome.category.value}]")
+
+    a_relire_non_lues.extend(streak_buffer)
+    return _TriPhaseReport(
+        n_triees=n_triees,
+        a_relire_non_lues=a_relire_non_lues,
+        stopped_no_response=stopped,
+    )
+
+
+def _resolve_second_pass_entry(
+    conn, entry: _SecondPassEntry, profile, alias_table, *, model, host
+):
+    from orchestrator.job_search.ingestion import (
+        resolve_category_second_pass,
+        resolve_unreadable_with_precision,
+    )
+
+    if entry.kind == "category":
+        return resolve_category_second_pass(
+            conn,
+            entry.offer,
+            profile,
+            alias_table,
+            model=model,
+            host=host,
+            tri_category=entry.category,
+            second_pass_attempts_before=entry.attempts_before,
+        )
+    return resolve_unreadable_with_precision(
+        conn,
+        entry.offer,
+        profile,
+        alias_table,
+        model=model,
+        host=host,
+        attempts_before=entry.attempts_before,
+    )
+
+
+def _second_pass_batches(
+    conn,
+    queue: list[_SecondPassEntry],
+    profile,
+    alias_table,
+    *,
+    tri_model: str,
+    precision_model: str,
+    host: str,
+    batch_size: int,
+    pause_seconds: float,
+    max_batches: int,
+) -> _SecondPassReport:
+    """Traite `queue` (parfait, puis rêve, puis non lues — ordre posé par
+    EXE-99, jamais changé ici) par lots de `batch_size`, avec une pause entre
+    deux lots (jamais après le dernier) et un plafond de `max_batches` lots
+    (EXE-100, critères 1-4, 9). Décharge le modèle de tri avant le premier lot
+    (critère 5) et le modèle de précision au début de chaque pause (critère 6).
+    Arrête les lots après 3 offres de suite sans réponse du modèle (critère 13)."""
+    from orchestrator.job_search.scoring.extractor import unload_model
+
+    report = _SecondPassReport()
+    unload_model(host, tri_model)
+
+    streak = 0
+    idx = 0
+    total = len(queue)
+    stopped_by_streak = False
+
+    while idx < total:
+        batch = queue[idx : idx + batch_size]
+        for entry in batch:
+            outcome = _resolve_second_pass_entry(
+                conn, entry, profile, alias_table, model=precision_model, host=host
+            )
+            report.n_relues += 1
+            print(f"[run] seconde passe {entry.offer.title[:55]}", flush=True)
+            if outcome.no_response:
+                streak += 1
+                if streak >= _NO_RESPONSE_STREAK_LIMIT:
+                    stopped_by_streak = True
+                    break
+            else:
+                streak = 0
+                if outcome.extraction_status == "second_pass_pending":
+                    print(
+                        f"         → en attente de seconde passe "
+                        f"(essai {outcome.second_pass_attempts})"
+                    )
+                elif outcome.extraction_status == "retry":
+                    print(f"         → à refaire (essai {outcome.extraction_attempts})")
+                elif outcome.extraction_status == "unreadable":
+                    print("         → illisible")
+                elif outcome.category is not None:
+                    print(f"         → [{outcome.category.value}]")
+
+        idx += len(batch)
+        report.batches_done += 1
+
+        if stopped_by_streak:
+            report.stop_reason = "no_response"
+            break
+        if report.batches_done >= max_batches:
+            if idx < total:
+                report.stop_reason = "cap"
+            break
+        if idx >= total:
+            break
+
+        unload_model(host, precision_model)
+        time.sleep(pause_seconds)
+        report.pause_seconds_total += pause_seconds
+
+    return report
 
 
 def main() -> None:
@@ -32,18 +229,14 @@ def main() -> None:
     load_dotenv()
 
     from orchestrator.job_search.digest.formatter import generate_digest
-    from orchestrator.job_search.ingestion import (
-        register_offer,
-        resolve_category_second_pass,
-        resolve_unreadable_with_precision,
-        run_tri,
-    )
+    from orchestrator.job_search.ingestion import register_offer
     from orchestrator.job_search.matching.profile import load_profile
     from orchestrator.job_search.scoring.aliases import load_alias_table
     from orchestrator.job_search.scoring.categorize import Category
     from orchestrator.job_search.scoring.extractor import (
         OllamaUnavailable,
         ensure_models_available,
+        unload_model,
     )
     from orchestrator.job_search.sources.base import JobOffer, Source
     from orchestrator.job_search.sources.eures import EuresSource
@@ -59,6 +252,11 @@ def main() -> None:
     tri_model = os.getenv("OLLAMA_MODEL_TRI", "llama3")
     precision_model = os.getenv("OLLAMA_MODEL", "gemma4:12b")
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+    # EXE-100, critères 3/4/9 — réglables par configuration, sans toucher au code.
+    batch_size = int(os.getenv("SECOND_PASS_BATCH_SIZE", "10"))
+    pause_seconds = float(os.getenv("SECOND_PASS_PAUSE_SECONDS", "300"))
+    max_batches = int(os.getenv("SECOND_PASS_MAX_BATCHES", "5"))
 
     run_at = datetime.now(timezone.utc)
     print(f"[run] démarrage {run_at.strftime('%Y-%m-%d %H:%M')} UTC", flush=True)
@@ -78,177 +276,169 @@ def main() -> None:
         print(f"[run] {exc}")
         return
 
-    # 2. DB
-    conn = get_connection()
-    init_db(conn)
+    try:
+        # 2. DB
+        conn = get_connection()
+        init_db(conn)
 
-    # 3. Fetch — zones résolues depuis le profil
-    active_zones = {
-        name: profile.zones[name]
-        for name in profile.search_criteria.locations
-        if name in profile.zones
-    }
-    kw = profile.search_criteria.keywords
-    ft_codes = [(zone, code) for zone in active_zones.values() for code in zone.insee]
-    per_source = max(30, args.max_results // max(len(ft_codes), 1))
-    sources: list[Source] = [
-        FranceTravailSource(keywords=kw, commune=code, max_results=per_source)
-        for _zone, code in ft_codes
-    ] or [FranceTravailSource(keywords=kw, max_results=args.max_results)]
-    if not args.no_remotive:
-        sources.append(RemotiveSource())
-    if not args.no_indeed:
-        sources.append(IndeedFileSource())
-    if not args.no_eures and "belgique_area" in active_zones:
-        sources.append(EuresSource(keywords=kw))
+        # 3. Fetch — zones résolues depuis le profil
+        active_zones = {
+            name: profile.zones[name]
+            for name in profile.search_criteria.locations
+            if name in profile.zones
+        }
+        kw = profile.search_criteria.keywords
+        ft_codes = [
+            (zone, code) for zone in active_zones.values() for code in zone.insee
+        ]
+        per_source = max(30, args.max_results // max(len(ft_codes), 1))
+        sources: list[Source] = [
+            FranceTravailSource(keywords=kw, commune=code, max_results=per_source)
+            for _zone, code in ft_codes
+        ] or [FranceTravailSource(keywords=kw, max_results=args.max_results)]
+        if not args.no_remotive:
+            sources.append(RemotiveSource())
+        if not args.no_indeed:
+            sources.append(IndeedFileSource())
+        if not args.no_eures and "belgique_area" in active_zones:
+            sources.append(EuresSource(keywords=kw))
 
-    all_offers: list[JobOffer] = []
-    for src in sources:
-        label = type(src).__name__
-        print(f"[run] fetch {label}…", flush=True)
-        batch = src.fetch()
-        print(f"[run] {label}: {len(batch)} offres")
-        all_offers.extend(batch)
-    print(f"[run] {len(all_offers)} offres récupérées (total)")
+        all_offers: list[JobOffer] = []
+        for src in sources:
+            label = type(src).__name__
+            print(f"[run] fetch {label}…", flush=True)
+            batch = src.fetch()
+            print(f"[run] {label}: {len(batch)} offres")
+            all_offers.extend(batch)
+        print(f"[run] {len(all_offers)} offres récupérées (total)")
 
-    # 4. Dédup
-    new_offers = filter_new(conn, all_offers)
-    print(
-        f"[run] {len(new_offers)} nouvelles ({len(all_offers) - len(new_offers)} déjà vues)"
-    )
-
-    # 5a. Filtre dur + mise en attente — chaque offre nouvelle qui passe est
-    #     enregistrée « en attente d'extraction » avant tout appel LLM (EXE-98)
-    for i, offer in enumerate(new_offers, 1):
-        registered = register_offer(conn, offer, profile)
-        if registered.filtered:
-            print(
-                f"[run] ({i}/{len(new_offers)}) {offer.title[:55]} "
-                f"→ filtré : {registered.filter_reason}"
-            )
-
-    # 5b. Tri (LLM, modèle de tri) + Score (Python) + Persist — reprend TOUTES
-    #     les offres en attente ou à refaire, y compris celles laissées par un
-    #     run précédent interrompu (EXE-98). Chaque offre est triée avant que la
-    #     première seconde passe n'ait lieu (EXE-99, critère 11).
-    pending_rows = conn.execute(
-        "SELECT * FROM offers WHERE extraction_status IN ('pending', 'retry') "
-        "ORDER BY fetched_at"
-    ).fetchall()
-    print(
-        f"[run] {len(pending_rows)} offres à trier (en attente + à refaire)",
-        flush=True,
-    )
-
-    # (offer, extraction_attempts avant ce run) — le tri n'a pas pu les lire.
-    a_relire_non_lues: list[tuple[JobOffer, int]] = []
-    n_triees = 0
-
-    for i, row in enumerate(pending_rows, 1):
-        pending_offer = offer_from_row(row)
+        # 4. Dédup
+        new_offers = filter_new(conn, all_offers)
         print(
-            f"[run] tri ({i}/{len(pending_rows)}) {pending_offer.title[:55]}",
+            f"[run] {len(new_offers)} nouvelles ({len(all_offers) - len(new_offers)} déjà vues)"
+        )
+
+        # 5a. Filtre dur + mise en attente — chaque offre nouvelle qui passe est
+        #     enregistrée « en attente d'extraction » avant tout appel LLM (EXE-98)
+        for i, offer in enumerate(new_offers, 1):
+            registered = register_offer(conn, offer, profile)
+            if registered.filtered:
+                print(
+                    f"[run] ({i}/{len(new_offers)}) {offer.title[:55]} "
+                    f"→ filtré : {registered.filter_reason}"
+                )
+
+        # 5b. Tri (LLM, modèle de tri) + Score (Python) + Persist — reprend TOUTES
+        #     les offres en attente ou à refaire, y compris celles laissées par un
+        #     run précédent interrompu (EXE-98). Chaque offre est triée avant que la
+        #     première seconde passe n'ait lieu (EXE-99, critère 11). Arrêt anticipé
+        #     après 3 offres de suite sans réponse du modèle (EXE-100, critère 11).
+        pending_rows = conn.execute(
+            "SELECT * FROM offers WHERE extraction_status IN ('pending', 'retry') "
+            "ORDER BY fetched_at"
+        ).fetchall()
+        print(
+            f"[run] {len(pending_rows)} offres à trier (en attente + à refaire)",
             flush=True,
         )
-        n_triees += 1
 
-        tri = run_tri(
-            conn, pending_offer, profile, alias_table, model=tri_model, host=host
+        tri_report = _tri_phase(
+            conn, pending_rows, profile, alias_table, tri_model=tri_model, host=host
         )
-        if tri.needs_second_pass and tri.second_pass_reason == "unreadable":
-            a_relire_non_lues.append((pending_offer, row["extraction_attempts"] or 0))
-        elif tri.needs_second_pass:
-            print(
-                f"         → [{tri.outcome.category.value}] en attente de seconde passe"
-            )
-        elif tri.outcome.perimetre_causes:
-            causes = ",".join(tri.outcome.perimetre_causes)
-            print(f"         → hors_perimetre: {causes}")
-        else:
-            print(f"         → [{tri.outcome.category.value}]")
+        n_triees = tri_report.n_triees
 
-    # 5c. Seconde passe (LLM, modèle de précision) — parfait, puis rêve, puis
-    #     les offres que le tri n'a pas lues (EXE-99, critère 12). Les offres
-    #     « second_pass_pending » d'un run précédent sont reprises ici aussi,
-    #     sans rappeler le modèle de tri (critère 8).
-    n_relues = 0
-    for cat in (Category.parfait, Category.reve):
-        rows = conn.execute(
-            "SELECT * FROM offers WHERE extraction_status = 'second_pass_pending' "
-            "AND category = ? ORDER BY fetched_at",
-            (cat.value,),
-        ).fetchall()
-        for row in rows:
-            offer = offer_from_row(row)
-            print(f"[run] seconde passe [{cat.value}] {offer.title[:55]}", flush=True)
-            n_relues += 1
-            outcome = resolve_category_second_pass(
-                conn,
-                offer,
-                profile,
-                alias_table,
-                model=precision_model,
-                host=host,
-                tri_category=cat,
-                second_pass_attempts_before=row["second_pass_attempts"] or 0,
-            )
-            if outcome.extraction_status == "second_pass_pending":
-                print(
-                    f"         → en attente de seconde passe (essai {outcome.second_pass_attempts})"
+        # 5c. Seconde passe (LLM, modèle de précision) — parfait, puis rêve, puis
+        #     les offres que le tri n'a pas lues (EXE-99, critère 12). Les offres
+        #     « second_pass_pending » d'un run précédent sont reprises ici aussi,
+        #     sans rappeler le modèle de tri (critère 8). EXE-100 : traitées par
+        #     lots avec pause (critères 1-9) et arrêt sur absence de réponse
+        #     (critère 13).
+        second_pass_queue: list[_SecondPassEntry] = []
+        for cat in (Category.parfait, Category.reve):
+            rows = conn.execute(
+                "SELECT * FROM offers WHERE extraction_status = 'second_pass_pending' "
+                "AND category = ? ORDER BY fetched_at",
+                (cat.value,),
+            ).fetchall()
+            for row in rows:
+                second_pass_queue.append(
+                    _SecondPassEntry(
+                        offer=offer_from_row(row),
+                        kind="category",
+                        category=cat,
+                        attempts_before=row["second_pass_attempts"] or 0,
+                    )
                 )
-            else:
-                print(f"         → [{outcome.category.value}]")
+        for offer, attempts_before in tri_report.a_relire_non_lues:
+            second_pass_queue.append(
+                _SecondPassEntry(
+                    offer=offer, kind="unreadable", attempts_before=attempts_before
+                )
+            )
 
-    for offer, attempts_before in a_relire_non_lues:
-        print(f"[run] seconde passe [non lue] {offer.title[:55]}", flush=True)
-        n_relues += 1
-        outcome = resolve_unreadable_with_precision(
+        second_pass_report = _second_pass_batches(
             conn,
-            offer,
+            second_pass_queue,
             profile,
             alias_table,
-            model=precision_model,
+            tri_model=tri_model,
+            precision_model=precision_model,
             host=host,
-            attempts_before=attempts_before,
+            batch_size=batch_size,
+            pause_seconds=pause_seconds,
+            max_batches=max_batches,
         )
-        if outcome.extraction_status == "retry":
-            print(f"         → à refaire (essai {outcome.extraction_attempts})")
-        elif outcome.extraction_status == "unreadable":
-            print("         → illisible")
-        else:
-            print(f"         → [{outcome.category.value}]")
+        n_relues = second_pass_report.n_relues
 
-    n_pending = conn.execute(
-        "SELECT COUNT(*) FROM offers WHERE extraction_status = 'pending'"
-    ).fetchone()[0]
-    n_retry = conn.execute(
-        "SELECT COUNT(*) FROM offers WHERE extraction_status = 'retry'"
-    ).fetchone()[0]
-    n_unreadable = conn.execute(
-        "SELECT COUNT(*) FROM offers WHERE extraction_status = 'unreadable'"
-    ).fetchone()[0]
-    n_second_pass_pending = conn.execute(
-        "SELECT COUNT(*) FROM offers WHERE extraction_status = 'second_pass_pending'"
-    ).fetchone()[0]
-    print(
-        f"[run] extraction — {n_pending} en attente, {n_retry} à refaire, "
-        f"{n_unreadable} illisibles"
-    )
-    print(
-        f"[run] {n_triees} offres triées, {n_relues} relues, "
-        f"{n_second_pass_pending} en attente de seconde passe"
-    )
+        n_pending = conn.execute(
+            "SELECT COUNT(*) FROM offers WHERE extraction_status = 'pending'"
+        ).fetchone()[0]
+        n_retry = conn.execute(
+            "SELECT COUNT(*) FROM offers WHERE extraction_status = 'retry'"
+        ).fetchone()[0]
+        n_unreadable = conn.execute(
+            "SELECT COUNT(*) FROM offers WHERE extraction_status = 'unreadable'"
+        ).fetchone()[0]
+        n_second_pass_pending = conn.execute(
+            "SELECT COUNT(*) FROM offers WHERE extraction_status = 'second_pass_pending'"
+        ).fetchone()[0]
+        print(
+            f"[run] extraction — {n_pending} en attente, {n_retry} à refaire, "
+            f"{n_unreadable} illisibles"
+        )
+        print(
+            f"[run] {n_triees} offres triées, {n_relues} relues, "
+            f"{n_second_pass_pending} en attente de seconde passe"
+        )
 
-    # 6. Digest
-    since = run_at - timedelta(hours=args.since_hours)
-    scored = get_offers_since(conn, since)
-    digest = generate_digest(scored, run_at=run_at)
-    print()
-    print(digest)
+        reason_txt = {
+            "cap": "plafond de lots atteint",
+            "no_response": "modèle sans réponse",
+            None: "terminé",
+        }[second_pass_report.stop_reason]
+        run_duration = (datetime.now(timezone.utc) - run_at).total_seconds()
+        print(
+            f"[run] seconde passe — {second_pass_report.batches_done} lots, "
+            f"pauses {second_pass_report.pause_seconds_total:.0f}s, "
+            f"run {run_duration:.0f}s, arrêt: {reason_txt}"
+        )
 
-    digest_path = REPO_ROOT / f"data/digest_{run_at.strftime('%Y%m%d_%H%M')}.txt"
-    digest_path.write_text(digest)
-    print(f"[run] digest → {digest_path}")
+        # 6. Digest
+        since = run_at - timedelta(hours=args.since_hours)
+        scored = get_offers_since(conn, since)
+        digest = generate_digest(scored, run_at=run_at)
+        print()
+        print(digest)
+
+        digest_path = REPO_ROOT / f"data/digest_{run_at.strftime('%Y%m%d_%H%M')}.txt"
+        digest_path.write_text(digest)
+        print(f"[run] digest → {digest_path}")
+    finally:
+        # EXE-100, critères 7/8 — à la fin d'un run qui va au bout comme sur une
+        # erreur ou une interruption au clavier, les deux modèles sont déchargés
+        # avant de rendre la main.
+        unload_model(host, tri_model)
+        unload_model(host, precision_model)
 
 
 if __name__ == "__main__":

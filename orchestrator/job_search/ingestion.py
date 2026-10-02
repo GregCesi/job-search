@@ -25,7 +25,11 @@ from orchestrator.job_search.scoring.attainability import (
 )
 from orchestrator.job_search.scoring.categorize import Category, categorize
 from orchestrator.job_search.scoring.desirability import compute_desirability
-from orchestrator.job_search.scoring.extractor import extract_facts, extraction_version
+from orchestrator.job_search.scoring.extractor import (
+    NoResponseFromModel,
+    extract_facts,
+    extraction_version,
+)
 from orchestrator.job_search.scoring.filters import apply_hard_filters
 from orchestrator.job_search.scoring.hors_perimetre import (
     HorsPerimetreCause,
@@ -59,6 +63,11 @@ class OfferOutcome:
     extraction_status: str | None = None
     extraction_attempts: int = 0
     second_pass_attempts: int = 0
+    # EXE-100 — vide à chaque tentative, ou modèle injoignable (critère 11),
+    # distinct d'une réponse illisible mais non vide (critère 14). Ne compte
+    # jamais comme un essai (critères 12/13) : aucune persistance n'accompagne
+    # ce cas, l'offre reste dans l'état où elle était avant l'appel.
+    no_response: bool = False
 
 
 @dataclass
@@ -73,6 +82,9 @@ class TriOutcome:
     outcome: OfferOutcome = field(default_factory=OfferOutcome)
     needs_second_pass: bool = False
     second_pass_reason: str | None = None  # "category" | "unreadable"
+    # EXE-100, critère 11 — vrai si le tri n'a pas pu lire l'offre faute de
+    # réponse (vide ou modèle injoignable), distinct d'une réponse illisible.
+    no_response: bool = False
 
 
 @dataclass
@@ -113,6 +125,19 @@ def register_offer(
         ad_language=ad_lang,
     )
     return RegisterOutcome(filtered=False)
+
+
+def _extract_with_no_response_flag(
+    offer: JobOffer, model: str, host: str
+) -> tuple[ExtractedFacts | None, bool]:
+    """Appelle `extract_facts` (seul point d'appel au LLM, inchangé pour les
+    appelants existants) et distingue une absence de réponse (EXE-100, critère
+    11) d'une extraction illisible mais non vide (critère 14, `facts is None`
+    sans lever)."""
+    try:
+        return extract_facts(offer, model=model, host=host), False
+    except NoResponseFromModel:
+        return None, True
 
 
 def _score(
@@ -203,9 +228,16 @@ def extract_and_score(
 
     EXE-99 — réutilisée telle quelle pour résoudre le cas « le tri n'a pas pu
     lire l'offre » : appelée avec le modèle de précision, elle compte comme le
-    seul essai supplémentaire si les deux modèles échouent (critère 10)."""
-    facts = extract_facts(offer, model=model, host=host)
+    seul essai supplémentaire si les deux modèles échouent (critère 10).
+
+    EXE-100, critères 11-13 — une absence de réponse (vide ou modèle
+    injoignable) ne persiste rien et ne compte aucun essai : l'offre reste
+    dans son état actuel, à la différence d'une réponse illisible mais non
+    vide (comportement EXE-98/99 inchangé)."""
+    facts, no_response = _extract_with_no_response_flag(offer, model, host)
     if facts is None:
+        if no_response:
+            return OfferOutcome(extraction_attempts=attempts_before, no_response=True)
         attempts = attempts_before + 1
         status = "unreadable" if attempts >= _MAX_EXTRACTION_ATTEMPTS else "retry"
         save_offer(
@@ -236,9 +268,13 @@ def run_tri(
     Si le tri échoue à lire l'offre, rien n'est persisté ici : c'est à
     l'appelant de retenter avec le modèle de précision avant de décider du
     compteur d'essais (critère 10)."""
-    facts = extract_facts(offer, model=model, host=host)
+    facts, no_response = _extract_with_no_response_flag(offer, model, host)
     if facts is None:
-        return TriOutcome(needs_second_pass=True, second_pass_reason="unreadable")
+        return TriOutcome(
+            needs_second_pass=True,
+            second_pass_reason="unreadable",
+            no_response=no_response,
+        )
 
     offer, a, hp_causes, ad_lang, cat = _score(facts, offer, profile, alias_table)
     version = None if facts.parse_failed else extraction_version(model)
@@ -345,10 +381,21 @@ def resolve_category_second_pass(
     faits et la catégorie du tri déjà persistés — une mise à jour ciblée des
     deux seules colonnes concernées, pour ne pas les écraser (critère 7).
     Après `_MAX_SECOND_PASS_ATTEMPTS` échecs, elle sort de l'attente
-    (critère 9)."""
-    facts = extract_facts(offer, model=model, host=host)
+    (critère 9).
+
+    EXE-100, critère 13 — une absence de réponse ne persiste rien et ne
+    compte aucun essai : l'offre reste « en attente de seconde passe »."""
+    facts, no_response = _extract_with_no_response_flag(offer, model, host)
     if facts is not None:
         return _persist_final(conn, offer, facts, profile, alias_table, model=model)
+
+    if no_response:
+        return OfferOutcome(
+            category=tri_category,
+            extraction_status="second_pass_pending",
+            second_pass_attempts=second_pass_attempts_before,
+            no_response=True,
+        )
 
     attempts = second_pass_attempts_before + 1
     status = None if attempts >= _MAX_SECOND_PASS_ATTEMPTS else "second_pass_pending"

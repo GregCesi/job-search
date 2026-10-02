@@ -123,6 +123,9 @@ def ollama_double(monkeypatch):
     # disponibilité des modèles du /run est neutralisé, ces tests ne parlent
     # jamais à un Ollama réel.
     monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
+    # EXE-100 : le /run décharge les modèles en finissant — ce double n'a pas
+    # besoin de le simuler.
+    monkeypatch.setattr(extractor, "unload_model", lambda *a, **k: None)
     return state
 
 
