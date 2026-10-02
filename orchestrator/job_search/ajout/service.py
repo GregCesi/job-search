@@ -92,12 +92,19 @@ def run_ajout(ajout_id: int, source: ManualSource) -> None:
     conn = get_connection()
     try:
         load_dotenv()
-        model = os.getenv("OLLAMA_MODEL", "gemma4:12b")
+        # EXE-99 — l'ajout à la main suit la même cascade que le /run : tri
+        # d'abord, puis seconde passe (critère 17). L'identification (TCK-183)
+        # garde le modèle de précision, inchangée par ce ticket.
+        tri_model = os.getenv("OLLAMA_MODEL_TRI", "llama3")
+        precision_model = os.getenv("OLLAMA_MODEL", "gemma4:12b")
         host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
         if source.needs_identification:
             identification = identify_offer(
-                source.texte or "", offer_id=source.source_id, model=model, host=host
+                source.texte or "",
+                offer_id=source.source_id,
+                model=precision_model,
+                host=host,
             )
             if identification is None:
                 _finish(conn, ajout_id, "echec", message=_SANS_TITRE)
@@ -127,7 +134,14 @@ def run_ajout(ajout_id: int, source: ManualSource) -> None:
         alias_table = load_alias_table(ALIAS_PATH)
 
         outcome = process_offer(
-            conn, offer, profile, alias_table, model=model, host=host
+            conn,
+            offer,
+            profile,
+            alias_table,
+            tri_model=tri_model,
+            tri_host=host,
+            precision_model=precision_model,
+            precision_host=host,
         )
         offer_id = find_existing(conn, offer)
         if outcome.filter_reason is not None:

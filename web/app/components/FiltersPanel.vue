@@ -118,6 +118,7 @@
         <option value="">Toutes</option>
         <option value="pending">⏳ Extraction en attente</option>
         <option value="unreadable">⊘ Illisible</option>
+        <option value="second_pass_pending">⏳ Seconde passe en attente</option>
       </select>
     </div>
 

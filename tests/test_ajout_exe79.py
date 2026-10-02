@@ -296,11 +296,15 @@ class _UneOffreSource:
 
 def _run_main(monkeypatch, tmp_path, profil_path, offre: JobOffer) -> None:
     import orchestrator.job_search.run as run
+    import orchestrator.job_search.scoring.extractor as extractor
     import orchestrator.job_search.sources.france_travail as ft
 
     _UneOffreSource.offre = offre
     monkeypatch.setattr(ft, "FranceTravailSource", _UneOffreSource)
     monkeypatch.setattr(run, "REPO_ROOT", tmp_path)
+    # EXE-99 : `extraction` fake `extract_facts` sans parler à un Ollama réel —
+    # le contrôle de disponibilité des modèles du /run est neutralisé pareil.
+    monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
     (tmp_path / "data").mkdir(exist_ok=True)
     monkeypatch.setattr(
         sys,

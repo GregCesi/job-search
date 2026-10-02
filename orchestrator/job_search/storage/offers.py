@@ -39,14 +39,18 @@ def save_offer(
     extraction_version: str | None = None,
     extraction_status: str | None = None,
     extraction_attempts: int = 0,
+    second_pass_attempts: int = 0,
 ) -> None:
     """Upsert offer. Filtered/hors-périmètre offers saved without category.
 
     `extraction_status`/`extraction_attempts` (EXE-98) : état d'une extraction qui
-    n'a pas (encore) produit de faits — None (normal) | pending | retry | unreadable.
-    Toujours écrits tels quels (pas de COALESCE) : un appel qui ne les précise pas
-    les remet à leur valeur neutre, ce qui n'arrive que sur des lignes qui n'ont
-    jamais porté cet état (le rescore exclut les autres, cf. pipeline.md)."""
+    n'a pas (encore) produit de faits — None (normal) | pending | retry | unreadable
+    | second_pass_pending (EXE-99). Toujours écrits tels quels (pas de COALESCE) :
+    un appel qui ne les précise pas les remet à leur valeur neutre, ce qui n'arrive
+    que sur des lignes qui n'ont jamais porté cet état (le rescore exclut les
+    autres, cf. pipeline.md). `second_pass_attempts` (EXE-99) : même règle, compte
+    les échecs du modèle de précision sur une offre classée parfait/rêve par le
+    tri — indépendant d'`extraction_attempts`, qui compte les échecs de lecture."""
     import json
 
     facts_json = (
@@ -76,9 +80,10 @@ def save_offer(
              filtered_out, filter_reason, hors_perimetre_reason,
              perimetre_causes,
              techs_matched_json, techs_missing_json, rescored_at, ad_language,
-             extraction_version, extraction_status, extraction_attempts)
+             extraction_version, extraction_status, extraction_attempts,
+             second_pass_attempts)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
             extracted_facts_json  = excluded.extracted_facts_json,
             category              = excluded.category,
@@ -95,7 +100,8 @@ def save_offer(
             ad_language           = COALESCE(excluded.ad_language, ad_language),
             extraction_version    = COALESCE(excluded.extraction_version, extraction_version),
             extraction_status     = excluded.extraction_status,
-            extraction_attempts   = excluded.extraction_attempts
+            extraction_attempts   = excluded.extraction_attempts,
+            second_pass_attempts  = excluded.second_pass_attempts
         """,
         (
             offer.source,
@@ -130,6 +136,7 @@ def save_offer(
             extraction_version,
             extraction_status,
             extraction_attempts,
+            second_pass_attempts,
         ),
     )
     conn.commit()

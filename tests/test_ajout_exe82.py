@@ -119,6 +119,10 @@ def ollama_double(monkeypatch):
             return SimpleNamespace(message=SimpleNamespace(content=state[kind]))
 
     monkeypatch.setattr("ollama.Client", _Client)
+    # EXE-99 : ce double n'implémente pas `.list()` — le contrôle de
+    # disponibilité des modèles du /run est neutralisé, ces tests ne parlent
+    # jamais à un Ollama réel.
+    monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
     return state
 
 

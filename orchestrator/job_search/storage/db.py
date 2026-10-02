@@ -332,10 +332,14 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("ad_language", "TEXT"),
         # TCK-211 — version de l'extraction (modèle + empreinte prompt + schéma)
         ("extraction_version", "TEXT"),
-        # EXE-98 — état d'une extraction qui n'a pas (encore) produit de faits :
-        # NULL (normal) | pending | retry | unreadable (architecture.md TCK-273)
+        # EXE-98/EXE-99 — état d'une extraction qui n'a pas (encore) produit de
+        # faits définitifs : NULL (normal) | pending | retry | unreadable |
+        # second_pass_pending (architecture.md TCK-273)
         ("extraction_status", "TEXT"),
         ("extraction_attempts", "INTEGER NOT NULL DEFAULT 0"),
+        # EXE-99 — essais du modèle de précision sur une offre classée
+        # parfait/rêve par le tri, indépendant d'extraction_attempts (lecture)
+        ("second_pass_attempts", "INTEGER NOT NULL DEFAULT 0"),
     ]
     for col, col_type in add_cols:
         if col not in existing:
