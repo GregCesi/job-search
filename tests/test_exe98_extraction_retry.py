@@ -90,7 +90,12 @@ def alias_table():
 def fake_extract(monkeypatch):
     """Double de `ingestion.extract_facts` : rend `state['facts']` (par défaut
     FACTS_OK), ou None si `state['fail']` est vrai (extraction en échec, vocabulaire
-    du ticket : aucune réponse lisible après les 3 tentatives). Compte ses appels."""
+    du ticket : aucune réponse lisible après les 3 tentatives). Compte ses appels.
+
+    EXE-99 : neutralise aussi le contrôle de disponibilité Ollama du /run
+    (`ensure_models_available`) — ces tests ne parlent jamais à un Ollama réel,
+    tri ou précision, et FACTS_OK catégorise « atteignable » sous le profil
+    exemple, donc aucune seconde passe n'est déclenchée par ce double."""
     calls: list[JobOffer] = []
     state = {"facts": FACTS_OK, "fail": False}
 
@@ -101,6 +106,7 @@ def fake_extract(monkeypatch):
         return state["facts"]
 
     monkeypatch.setattr(ingestion, "extract_facts", _extract)
+    monkeypatch.setattr(extractor, "ensure_models_available", lambda *a, **k: None)
     return calls, state
 
 
@@ -227,16 +233,18 @@ class _CinqOffresSource:
 def test_critere2_run_interrompu_laisse_le_reste_en_attente(
     db_path, profil, monkeypatch, tmp_path, fake_extract
 ):
-    real_extract_and_score = ingestion.extract_and_score
+    # EXE-99 : le /run appelle désormais `run_tri` (pas `extract_and_score`) pour
+    # chaque offre en attente/à refaire — c'est ce point qu'on interrompt ici.
+    real_run_tri = ingestion.run_tri
     progressed: list[int] = []
 
     def _crash_after_two(*args, **kwargs):
         progressed.append(1)
         if len(progressed) > 2:
             raise RuntimeError("coupure simulée")
-        return real_extract_and_score(*args, **kwargs)
+        return real_run_tri(*args, **kwargs)
 
-    monkeypatch.setattr(ingestion, "extract_and_score", _crash_after_two)
+    monkeypatch.setattr(ingestion, "run_tri", _crash_after_two)
 
     with pytest.raises(RuntimeError):
         _run_main(monkeypatch, tmp_path, profil, _CinqOffresSource)
@@ -251,7 +259,7 @@ def test_critere2_run_interrompu_laisse_le_reste_en_attente(
 
     # Le run suivant : la source rend les 5 mêmes offres (dédup → 0 nouvelle),
     # et pourtant les 3 restées en attente sont extraites.
-    monkeypatch.setattr(ingestion, "extract_and_score", real_extract_and_score)
+    monkeypatch.setattr(ingestion, "run_tri", real_run_tri)
     _run_main(monkeypatch, tmp_path, profil, _CinqOffresSource)
 
     rows = [_row(db_path, i) for i in ids]

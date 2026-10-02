@@ -223,7 +223,8 @@ def list_offers(
     ),
     extraction_status: str | None = Query(
         None,
-        description="pending (inclut à refaire) | unreadable — EXE-98",
+        description="pending (inclut à refaire) | unreadable | "
+        "second_pass_pending — EXE-98/EXE-99",
     ),
     exclude_ad_language: str | None = Query(
         None,
@@ -276,6 +277,8 @@ def list_offers(
         conditions.append("o.extraction_status IN ('pending', 'retry')")
     elif extraction_status == "unreadable":
         conditions.append("o.extraction_status = 'unreadable'")
+    elif extraction_status == "second_pass_pending":
+        conditions.append("o.extraction_status = 'second_pass_pending'")
     if exclude_ad_language is not None:
         langs = [
             lang.strip() for lang in exclude_ad_language.split(",") if lang.strip()

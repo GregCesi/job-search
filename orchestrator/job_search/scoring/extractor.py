@@ -107,6 +107,44 @@ def extraction_version(model: str = _DEFAULT_MODEL) -> str:
     return f"{model}|p{digest}|s{SCHEMA_VERSION}"
 
 
+class OllamaUnavailable(RuntimeError):
+    """Ollama injoignable, ou un modèle configuré n'y est pas installé (EXE-99)."""
+
+
+def ensure_models_available(host: str, models: list[str]) -> None:
+    """Lève `OllamaUnavailable` si Ollama n'est pas joignable sur `host`, ou si
+    l'un des `models` n'y est pas installé. Aucun appel au LLM — lecture seule
+    de la liste des modèles installés (architecture.md, exception TCK-273)."""
+    client = ollama.Client(host=host)
+    try:
+        response = client.list()
+    except Exception as exc:
+        raise OllamaUnavailable(f"Ollama injoignable sur {host} : {exc}") from exc
+
+    raw_models = getattr(response, "models", None)
+    if raw_models is None and isinstance(response, dict):
+        raw_models = response.get("models", [])
+    raw_models = raw_models or []
+
+    installed: set[str] = set()
+    for entry in raw_models:
+        name = getattr(entry, "model", None)
+        if name is None and isinstance(entry, dict):
+            name = entry.get("model") or entry.get("name")
+        if name:
+            installed.add(name)
+
+    def _present(wanted: str) -> bool:
+        return wanted in installed or any(
+            name == f"{wanted}:latest" or name.split(":")[0] == wanted
+            for name in installed
+        )
+
+    missing = [m for m in models if not _present(m)]
+    if missing:
+        raise OllamaUnavailable("Modèle(s) Ollama manquant(s) : " + ", ".join(missing))
+
+
 _SENIORITY_VALID = {s.value for s in SeniorityLevel}
 _ROLE_VALID = {r.value for r in RoleLevel}
 _IMPORTANCE_VALID = {"core", "required", "nice_to_have"}
