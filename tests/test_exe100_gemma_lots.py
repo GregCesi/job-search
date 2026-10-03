@@ -155,7 +155,8 @@ def _offer(n: int, **overrides) -> JobOffer:
         source_id=f"FT-{n}",
         fingerprint=f"fp-{n}",
         title=f"Offre {n}",
-        description="Une offre.",
+        # EXE-115 : ≥ 50 caractères, sous ce seuil l'offre devient « texte manquant ».
+        description="Une offre à pourvoir, décrite ici pour les besoins du test.",
         company="Acme",
         location="Strasbourg",
         remote=False,
@@ -605,7 +606,11 @@ def test_critere16_ajout_ne_marque_aucune_pause(monkeypatch, db_path, profil, ca
     conn.close()
 
     source = manual.ManualSource(
-        None, texte="Nous cherchons un profil.", titre="Développeur", lieu="Strasbourg"
+        None,
+        # EXE-115 : ≥ 50 caractères, sous ce seuil l'offre devient « texte manquant ».
+        texte="Nous cherchons un profil pour une équipe produit à Strasbourg.",
+        titre="Développeur",
+        lieu="Strasbourg",
     )
     ajout_service.run_ajout(ajout_id, source)
 

@@ -232,6 +232,8 @@ def main() -> None:
     from orchestrator.job_search.digest.formatter import generate_digest
     from orchestrator.job_search.ingestion import (
         rattraper_filtre_contrat,
+        rattraper_offres_categorisees_sans_texte,
+        rattraper_texte_recu,
         register_offer,
     )
     from orchestrator.job_search.matching.profile import load_profile
@@ -308,11 +310,14 @@ def main() -> None:
     n_offres_nouvelles = 0
     n_offres_filtrees = 0
     n_offres_rattrapees = 0
+    n_offres_sans_texte_rattrapees = 0
+    n_offres_texte_recu = 0
     n_triees = 0
     n_relues = 0
     n_pending = 0
     n_retry = 0
     n_unreadable = 0
+    n_texte_manquant = 0
     n_second_pass_pending = 0
     category_counts: Counter = Counter()
     n_hors_perimetre = 0
@@ -334,6 +339,17 @@ def main() -> None:
         #     une offre rattrapée qui n'est plus écartée est triée par ce run.
         n_offres_rattrapees = rattraper_filtre_contrat(conn, profile)
         print(f"[run] {n_offres_rattrapees} offres rattrapées (filtre contrat)")
+
+        # 2.6 Rattrapage texte manquant (EXE-115, critère 7) — une offre déjà
+        #     catégorisée ou hors-périmètre dont le texte nettoyé fait moins de
+        #     50 caractères perd ses faits, sa catégorie et sa cause, et repasse
+        #     « texte manquant ». Avant le fetch : ce run la trie si une source
+        #     lui rapporte son texte juste après (2.7).
+        n_offres_sans_texte_rattrapees = rattraper_offres_categorisees_sans_texte(conn)
+        print(
+            f"[run] {n_offres_sans_texte_rattrapees} offres repassées "
+            "texte manquant (rattrapage)"
+        )
 
         # 3. Fetch — zones résolues depuis le profil
         active_zones = {
@@ -367,6 +383,12 @@ def main() -> None:
         n_offres_recuperees = len(all_offers)
         print(f"[run] {len(all_offers)} offres récupérées (total)")
 
+        # 3.5 Rattrapage texte reçu (EXE-115, critère 6) — une offre en texte
+        #     manquant dont ce fetch rapporte cette fois un texte suffisant
+        #     repasse en attente d'extraction ; ce run la trie plus bas (5b).
+        n_offres_texte_recu = rattraper_texte_recu(conn, all_offers)
+        print(f"[run] {n_offres_texte_recu} offres ont retrouvé leur texte")
+
         # 4. Dédup
         new_offers = filter_new(conn, all_offers)
         n_offres_nouvelles = len(new_offers)
@@ -383,6 +405,10 @@ def main() -> None:
                 print(
                     f"[run] ({i}/{len(new_offers)}) {offer.title[:55]} "
                     f"→ filtré : {registered.filter_reason}"
+                )
+            elif registered.missing_text:
+                print(
+                    f"[run] ({i}/{len(new_offers)}) {offer.title[:55]} → texte manquant"
                 )
 
         # 5b. Tri (LLM, modèle de tri) + Score (Python) + Persist — reprend TOUTES
@@ -472,9 +498,12 @@ def main() -> None:
         n_second_pass_pending = conn.execute(
             "SELECT COUNT(*) FROM offers WHERE extraction_status = 'second_pass_pending'"
         ).fetchone()[0]
+        n_texte_manquant = conn.execute(
+            "SELECT COUNT(*) FROM offers WHERE extraction_status = 'missing_text'"
+        ).fetchone()[0]
         print(
             f"[run] extraction — {n_pending} en attente, {n_retry} à refaire, "
-            f"{n_unreadable} illisibles"
+            f"{n_unreadable} illisibles, {n_texte_manquant} texte manquant"
         )
         print(
             f"[run] {n_triees} offres triées, {n_relues} relues, "

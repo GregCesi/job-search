@@ -338,7 +338,8 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
         ("extraction_version", "TEXT"),
         # EXE-98/EXE-99 — état d'une extraction qui n'a pas (encore) produit de
         # faits définitifs : NULL (normal) | pending | retry | unreadable |
-        # second_pass_pending (architecture.md TCK-273)
+        # second_pass_pending (architecture.md TCK-273) | missing_text (EXE-115,
+        # architecture.md « Offre sans texte »)
         ("extraction_status", "TEXT"),
         ("extraction_attempts", "INTEGER NOT NULL DEFAULT 0"),
         # EXE-99 — essais du modèle de précision sur une offre classée

@@ -77,6 +77,7 @@ onMounted(() => {
 const VIEWS: { key: ActiveView; label: string }[] = [
   { key: 'a_traiter',      label: 'À traiter'       },
   { key: 'hors_perimetre', label: 'Hors-périmètre'  },
+  { key: 'texte_manquant', label: 'Texte manquant'  },
   { key: 'tout',           label: 'Tout'            },
 ]
 

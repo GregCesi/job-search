@@ -64,7 +64,10 @@ def _job_posting(**overrides) -> dict:
         "@context": "https://schema.org",
         "@type": "JobPosting",
         "title": "Développeur Python backend",
-        "description": "<p>Nous cherchons un <b>développeur Python</b> FastAPI.</p>",
+        # EXE-115 : nettoyé (balises retirées), ce texte doit rester ≥ 50
+        # caractères — sous ce seuil, l'offre devient « texte manquant ».
+        "description": "<p>Nous cherchons un <b>développeur Python</b> FastAPI, "
+        "pour une équipe produit en pleine croissance.</p>",
         "hiringOrganization": {"@type": "Organization", "name": "Smals"},
         "jobLocation": {
             "@type": "Place",
@@ -346,7 +349,8 @@ def test_meme_classement_que_le_run(monkeypatch, tmp_path, profil, extraction, f
     _, state = extraction
     state["facts"] = facts
     titre, entreprise, lieu = "Développeur Python backend", "Smals", "Strasbourg"
-    texte = "Nous cherchons un développeur Python FastAPI."
+    # EXE-115 : ≥ 50 caractères, sous ce seuil l'offre devient « texte manquant ».
+    texte = "Nous cherchons un développeur Python FastAPI, pour une équipe produit."
 
     run_db = tmp_path / "run.sqlite"
     monkeypatch.setattr(storage_db, "DB_PATH", run_db)
@@ -464,10 +468,12 @@ def test_jobposting_dans_un_graph_est_lu(db_path, profil, extraction, page):
 
 def test_texte_colle_sans_lire_la_page(db_path, profil, extraction, page):
     appels, _ = extraction
+    # EXE-115 : ≥ 50 caractères, sous ce seuil l'offre devient « texte manquant ».
+    texte = "Nous cherchons un développeur Python FastAPI, pour une équipe produit."
     _, final, _ = _ajouter(
         {
             "url": URL,
-            "texte": "Nous cherchons un développeur Python FastAPI.",
+            "texte": texte,
             "titre": "Développeur Python",
             "entreprise": "EDITX",
             "lieu": "Strasbourg",
@@ -483,7 +489,7 @@ def test_texte_colle_sans_lire_la_page(db_path, profil, extraction, page):
         URL,
     )
     assert row["source"] == "manuel"
-    assert row["description"] == "Nous cherchons un développeur Python FastAPI."
+    assert row["description"] == texte
     assert row["category"] is not None
     assert len(appels) == 1
 

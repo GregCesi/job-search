@@ -198,7 +198,8 @@ def _offer(n: int, **overrides) -> JobOffer:
         source_id=f"FT-{n}",
         fingerprint=f"fp-{n}",
         title=f"Offre {n}",
-        description="Une offre.",
+        # EXE-115 : ≥ 50 caractères, sous ce seuil l'offre devient « texte manquant ».
+        description="Une offre à pourvoir, décrite ici pour les besoins du test.",
         company="Acme",
         location="Strasbourg",
         remote=False,
@@ -1022,7 +1023,8 @@ def test_critere17_ajout_a_la_main_suit_la_meme_cascade(
 
     source = manual.ManualSource(
         None,
-        texte="Nous cherchons un profil.",
+        # EXE-115 : ≥ 50 caractères, sous ce seuil l'offre devient « texte manquant ».
+        texte="Nous cherchons un profil pour une équipe produit à Strasbourg.",
         titre="Développeur",
         lieu="Strasbourg",
     )

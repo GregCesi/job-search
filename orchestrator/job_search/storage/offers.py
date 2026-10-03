@@ -45,7 +45,8 @@ def save_offer(
 
     `extraction_status`/`extraction_attempts` (EXE-98) : état d'une extraction qui
     n'a pas (encore) produit de faits — None (normal) | pending | retry | unreadable
-    | second_pass_pending (EXE-99). Toujours écrits tels quels (pas de COALESCE) :
+    | second_pass_pending (EXE-99) | missing_text (EXE-115, texte nettoyé trop court,
+    jamais envoyé à un modèle). Toujours écrits tels quels (pas de COALESCE) :
     un appel qui ne les précise pas les remet à leur valeur neutre, ce qui n'arrive
     que sur des lignes qui n'ont jamais porté cet état (le rescore exclut les
     autres, cf. pipeline.md). `second_pass_attempts` (EXE-99) : même règle, compte

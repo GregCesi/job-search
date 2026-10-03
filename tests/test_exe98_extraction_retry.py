@@ -715,7 +715,8 @@ def test_critere16_ajout_dont_extraction_echoue_finit_en_echec(
 
     source = manual.ManualSource(
         None,
-        texte="Nous cherchons un développeur Python FastAPI.",
+        # EXE-115 : ≥ 50 caractères, sous ce seuil l'offre devient « texte manquant ».
+        texte="Nous cherchons un développeur Python FastAPI, pour une équipe produit.",
         titre="Développeur Python",
         lieu="Strasbourg",
     )

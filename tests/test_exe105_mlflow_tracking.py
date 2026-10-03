@@ -143,7 +143,8 @@ def _offer(n: int, **overrides) -> JobOffer:
         source_id=f"FT-{n}",
         fingerprint=f"fp-{n}",
         title=f"Offre {n}",
-        description="Une offre.",
+        # EXE-115 : ≥ 50 caractères, sous ce seuil l'offre devient « texte manquant ».
+        description="Une offre à pourvoir, décrite ici pour les besoins du test.",
         company="Acme",
         location="Strasbourg",
         remote=False,

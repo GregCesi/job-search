@@ -51,6 +51,14 @@ _MAX_SECOND_PASS_ATTEMPTS = 3
 # EXE-99 — catégories qui déclenchent une seconde passe du modèle de précision.
 _SECOND_PASS_CATEGORIES = {Category.parfait, Category.reve}
 
+# EXE-115 (architecture.md, « Offre sans texte ») — en deçà de ce nombre de
+# caractères de texte nettoyé, une offre n'est envoyée à aucun modèle.
+_MIN_TEXT_LENGTH = 50
+
+
+def _cleaned_text_len(offer: JobOffer) -> int:
+    return len((offer.description or "").strip())
+
 
 @dataclass
 class OfferOutcome:
@@ -60,8 +68,8 @@ class OfferOutcome:
     perimetre_causes: list[str] = field(default_factory=list)
     category: Category | None = None
     parse_failed: bool = False
-    # EXE-98/EXE-99 — None = succès (ou filtrée) | pending | retry | unreadable
-    # | second_pass_pending
+    # EXE-98/EXE-99/EXE-115 — None = succès (ou filtrée) | pending | retry |
+    # unreadable | second_pass_pending | missing_text
     extraction_status: str | None = None
     extraction_attempts: int = 0
     second_pass_attempts: int = 0
@@ -91,10 +99,14 @@ class TriOutcome:
 
 @dataclass
 class RegisterOutcome:
-    """Issue de `register_offer` : filtrée, ou enregistrée en attente d'extraction."""
+    """Issue de `register_offer` : filtrée, texte manquant, ou enregistrée en
+    attente d'extraction."""
 
     filtered: bool = False
     filter_reason: str | None = None
+    # EXE-115 — texte nettoyé trop court : aucun appel LLM, l'offre attend son
+    # texte (architecture.md, « Offre sans texte »).
+    missing_text: bool = False
 
 
 def register_offer(
@@ -103,8 +115,10 @@ def register_offer(
     profile: Profile,
 ) -> RegisterOutcome:
     """Filtre dur — aucun appel LLM. Une offre filtrée est persistée comme telle ;
-    une offre qui passe est enregistrée « en attente d'extraction » avant tout appel
-    au modèle (critère 1, EXE-98)."""
+    une offre dont le texte nettoyé fait moins de `_MIN_TEXT_LENGTH` caractères est
+    persistée « texte manquant », sans appel au modèle (critère 1, EXE-115) ; une
+    offre qui passe les deux est enregistrée « en attente d'extraction » avant tout
+    appel au modèle (critère 1, EXE-98)."""
     filtered_out, filter_reason = apply_hard_filters(
         offer, profile.search_criteria, profile.zones
     )
@@ -119,6 +133,16 @@ def register_offer(
         )
         return RegisterOutcome(filtered=True, filter_reason=filter_reason)
 
+    if _cleaned_text_len(offer) < _MIN_TEXT_LENGTH:
+        save_offer(
+            conn,
+            offer,
+            extraction_status="missing_text",
+            extraction_attempts=0,
+            ad_language=ad_lang,
+        )
+        return RegisterOutcome(filtered=False, missing_text=True)
+
     save_offer(
         conn,
         offer,
@@ -127,6 +151,64 @@ def register_offer(
         ad_language=ad_lang,
     )
     return RegisterOutcome(filtered=False)
+
+
+def rattraper_offres_categorisees_sans_texte(conn: sqlite3.Connection) -> int:
+    """Critère 7, EXE-115 — une offre déjà en base, non écartée par un filtre, dont
+    le texte nettoyé fait moins de `_MIN_TEXT_LENGTH` caractères et qui porte encore
+    une catégorie ou une cause hors périmètre (classée avant ce ticket, ou par une
+    source qui a d'abord rapporté un texte suffisant puis plus rien) : elle perd ses
+    faits, sa catégorie et sa cause, et repasse « texte manquant ». Aucun appel LLM
+    (architecture.md §4). Les champs écrits par review humaine (`categorie_corrigee`,
+    `remarque`, `reviewed_at`) ne sont pas touchés par `save_offer`."""
+    rows = conn.execute(
+        "SELECT * FROM offers WHERE filtered_out = 0 "
+        "AND (category IS NOT NULL OR perimetre_causes IS NOT NULL)"
+    ).fetchall()
+
+    n = 0
+    for row in rows:
+        offer = offer_from_row(row)
+        if _cleaned_text_len(offer) >= _MIN_TEXT_LENGTH:
+            continue
+        save_offer(
+            conn,
+            offer,
+            extraction_status="missing_text",
+            extraction_attempts=0,
+            second_pass_attempts=0,
+            ad_language=row["ad_language"],
+        )
+        n += 1
+    return n
+
+
+def rattraper_texte_recu(conn: sqlite3.Connection, offers: list[JobOffer]) -> int:
+    """Critère 6, EXE-115 — une offre déjà en base « texte manquant » dont une
+    source rapporte à nouveau un texte de `_MIN_TEXT_LENGTH` caractères ou plus
+    (ex. Indeed relit tous les fichiers déposés à chaque run) : le texte est
+    enregistré et l'offre repasse en attente d'extraction — ce run la trie plus
+    bas. Ne touche aucune offre qui n'est pas en texte manquant."""
+    n = 0
+    for offer in offers:
+        if _cleaned_text_len(offer) < _MIN_TEXT_LENGTH:
+            continue
+        row = conn.execute(
+            "SELECT * FROM offers WHERE (source = ? AND source_id = ?) "
+            "OR fingerprint = ? LIMIT 1",
+            (offer.source, offer.source_id, offer.fingerprint),
+        ).fetchone()
+        if row is None or row["extraction_status"] != "missing_text":
+            continue
+        save_offer(
+            conn,
+            offer,
+            extraction_status="pending",
+            extraction_attempts=0,
+            ad_language=row["ad_language"],
+        )
+        n += 1
+    return n
 
 
 # EXE-114 — raisons posées par l'ancienne version du filtre de contrat (table de
@@ -484,10 +566,15 @@ def process_offer(
     """Filtre, trie, relit si nécessaire, score, classe et persiste une offre
     déjà dédupliquée — la cascade complète pour une seule offre (EXE-99,
     critère 17 : l'ajout à la main suit la même cascade que le /run). Compose
-    `register_offer` + `run_tri` + la résolution de seconde passe adaptée."""
+    `register_offer` + `run_tri` + la résolution de seconde passe adaptée.
+
+    EXE-115 — un texte nettoyé trop court (« texte manquant ») arrête la cascade
+    au même point qu'un filtre dur : aucun appel LLM, ici comme dans le /run."""
     registered = register_offer(conn, offer, profile)
     if registered.filtered:
         return OfferOutcome(filter_reason=registered.filter_reason)
+    if registered.missing_text:
+        return OfferOutcome(extraction_status="missing_text")
 
     tri = run_tri(conn, offer, profile, alias_table, model=tri_model, host=tri_host)
     if not tri.needs_second_pass:

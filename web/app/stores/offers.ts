@@ -177,7 +177,7 @@ export interface Filters {
 // Candidat (page /)
 export type CandidateView = 'cibles' | 'gaps' | 'filet' | 'retenues'
 // Opérateur (page /operateur)
-export type OperatorView = 'a_traiter' | 'hors_perimetre' | 'tout'
+export type OperatorView = 'a_traiter' | 'hors_perimetre' | 'texte_manquant' | 'tout'
 
 export type ActiveView = CandidateView | OperatorView
 
@@ -190,6 +190,7 @@ const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> 
   // Opérateur
   a_traiter:      { etat_review: 'non_relue,a_revoir', hors_perimetre: false, sort: 'category',   order: 'desc' },
   hors_perimetre: { hors_perimetre: true,                            sort: 'hors_perimetre_reason', order: 'asc' },
+  texte_manquant: { extraction_status: 'missing_text',               sort: 'fetched_at', order: 'desc' },
   tout:           {                                                   sort: 'category',   order: 'desc' },
 }
 
