@@ -37,7 +37,7 @@ from orchestrator.job_search.scoring.hors_perimetre import (
     derive_hors_perimetre,
 )
 from orchestrator.job_search.sources.base import ExtractedFacts, JobOffer
-from orchestrator.job_search.storage.offers import save_offer
+from orchestrator.job_search.storage.offers import offer_from_row, save_offer
 from orchestrator.job_search.tracking import extraction_stats
 
 # Après 3 essais en échec (le 1er + 2 reprises), une offre devient « illisible »
@@ -127,6 +127,54 @@ def register_offer(
         ad_language=ad_lang,
     )
     return RegisterOutcome(filtered=False)
+
+
+# EXE-114 — raisons posées par l'ancienne version du filtre de contrat (table de
+# correspondance sans valeur Indeed) : seules celles-ci sont rattrapables.
+_RATTRAPABLE_FILTER_REASONS = ("contract:permanent", "contract:full-time")
+
+
+def rattraper_filtre_contrat(conn: sqlite3.Connection, profile: Profile) -> int:
+    """Ré-évalue, avec la version courante d'`apply_hard_filters`, les offres déjà
+    écartées sous `contract:permanent` ou `contract:full-time` — raisons produites
+    par l'ancienne table de correspondance, qui ne connaissait aucune valeur Indeed
+    (EXE-114). Filtre pur Python, aucun appel LLM (architecture.md §4) : une offre
+    qui ne doit plus être écartée repasse « en attente d'extraction » et ce run la
+    trie ; une offre toujours écartée pour une autre raison garde cette raison.
+    Retourne le nombre d'offres rattrapées (résultat changé)."""
+    rows = conn.execute(
+        "SELECT * FROM offers WHERE filtered_out = 1 AND filter_reason IN (?, ?)",
+        _RATTRAPABLE_FILTER_REASONS,
+    ).fetchall()
+
+    n_rattrapees = 0
+    for row in rows:
+        offer = offer_from_row(row)
+        filtered_out, filter_reason = apply_hard_filters(
+            offer, profile.search_criteria, profile.zones
+        )
+        if filtered_out and filter_reason == row["filter_reason"]:
+            continue
+
+        n_rattrapees += 1
+        if filtered_out:
+            save_offer(
+                conn,
+                offer,
+                filtered_out=True,
+                filter_reason=filter_reason,
+                ad_language=row["ad_language"],
+            )
+        else:
+            save_offer(
+                conn,
+                offer,
+                extraction_status="pending",
+                extraction_attempts=0,
+                ad_language=row["ad_language"],
+            )
+
+    return n_rattrapees
 
 
 def _extract_with_no_response_flag(

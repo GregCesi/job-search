@@ -230,7 +230,10 @@ def main() -> None:
     load_dotenv()
 
     from orchestrator.job_search.digest.formatter import generate_digest
-    from orchestrator.job_search.ingestion import register_offer
+    from orchestrator.job_search.ingestion import (
+        rattraper_filtre_contrat,
+        register_offer,
+    )
     from orchestrator.job_search.matching.profile import load_profile
     from orchestrator.job_search.scoring.aliases import load_alias_table
     from orchestrator.job_search.scoring.categorize import Category
@@ -304,6 +307,7 @@ def main() -> None:
     n_offres_recuperees = 0
     n_offres_nouvelles = 0
     n_offres_filtrees = 0
+    n_offres_rattrapees = 0
     n_triees = 0
     n_relues = 0
     n_pending = 0
@@ -323,6 +327,13 @@ def main() -> None:
         # 2. DB
         conn = get_connection()
         init_db(conn)
+
+        # 2.5 Rattrapage filtre de contrat (EXE-114) — réévalue les offres déjà
+        #     écartées contract:permanent/contract:full-time avec le filtre
+        #     corrigé, avant que les offres en attente ne soient listées (5b) :
+        #     une offre rattrapée qui n'est plus écartée est triée par ce run.
+        n_offres_rattrapees = rattraper_filtre_contrat(conn, profile)
+        print(f"[run] {n_offres_rattrapees} offres rattrapées (filtre contrat)")
 
         # 3. Fetch — zones résolues depuis le profil
         active_zones = {

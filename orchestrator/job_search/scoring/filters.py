@@ -20,7 +20,8 @@ _STAGE_CODES = {"STA", "STG", "APP", "PRO"}
 # Mots-clés dans nature_contract signalant stage/apprentissage (fallback si code absent)
 _STAGE_KEYWORDS = ("stage", "apprentissage", "apprenti", "alternance")
 
-# Mapping code contrat → clé profil (France Travail + EURES positionOfferingCode)
+# Mapping code contrat → clé profil (France Travail + EURES positionOfferingCode
+# + Indeed job_type, uppercase dans le filtre)
 _CONTRACT_MAP: dict[str, str] = {
     # France Travail
     "CDI": "cdi",
@@ -39,7 +40,13 @@ _CONTRACT_MAP: dict[str, str] = {
     "INTERNSHIP": "stage",
     "SEASONAL": "cdd",
     "RECRUITMENTRESERVE": "cdd",
+    # Indeed job_type (EXE-114)
+    "PERMANENT": "cdi",
 }
+
+# Indeed job_type qui ne décide rien de la nature du contrat (temps de travail,
+# pas type de contrat) : ne doit jamais faire écarter une offre (EXE-114).
+_CONTRACT_NEUTRAL = {"FULL-TIME"}
 
 
 def apply_hard_filters(
@@ -63,7 +70,7 @@ def apply_hard_filters(
     if any(kw in nature for kw in _STAGE_KEYWORDS):
         return True, "contract:stage"
 
-    if criteria.contract_types and ct:
+    if criteria.contract_types and ct and ct not in _CONTRACT_NEUTRAL:
         mapped = _CONTRACT_MAP.get(ct, ct.lower())
         if mapped not in criteria.contract_types:
             return True, f"contract:{mapped}"
