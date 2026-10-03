@@ -31,3 +31,6 @@ CV_CWD = Path.home() / ".cache" / "job-search" / "cv_cwd"
 LETTRE_PREFERENCES_PATH = REPO_ROOT / "data" / "lettre" / "preferences_ton.md"
 LETTRE_TOURNURES_PATH = REPO_ROOT / "data" / "lettre" / "tournures_interdites.txt"
 LETTRE_CWD = Path.home() / ".cache" / "job-search" / "lettre_cwd"
+# Coordonnées du candidat pour les PDF CV/lettre (EXE-102, H4) : hors git, posées à
+# part comme les autres fichiers de data/lettre/.
+COORDONNEES_PATH = REPO_ROOT / "data" / "lettre" / "coordonnees.txt"

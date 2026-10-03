@@ -22,6 +22,12 @@ from orchestrator.job_search.cv.service import (
     reset_pending,
     run_cv,
 )
+from orchestrator.job_search.pdf.coordonnees import (
+    CoordonneesManquantesError,
+    load_coordonnees,
+)
+from orchestrator.job_search.pdf.filename import resolve_piece_filename
+from orchestrator.job_search.pdf.render import html_to_pdf
 
 from .db import get_conn
 
@@ -134,6 +140,40 @@ def correct_cv_skill(offer_id: int, body: SkillCorrectionIn) -> dict:
             "SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)
         ).fetchone()
     return _row_to_cv(row)
+
+
+@router.get("/{offer_id}/cv/pdf")
+def get_cv_pdf(offer_id: int) -> Response:
+    """PDF téléchargeable du CV d'une offre retenue (EXE-102) — le CV généré tel
+    quel, jamais recorrigé ; aucun appel modèle (critère 17)."""
+    with get_conn() as conn:
+        v = conn.execute(
+            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if v is None or v["status"] != "retenu":
+            raise HTTPException(
+                status_code=409,
+                detail="Le PDF n'est produit que pour une offre retenue",
+            )
+        row = conn.execute(
+            "SELECT html FROM cvs WHERE offer_id = ? AND statut = 'done'",
+            (offer_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=409, detail="Le CV n'est pas généré pour cette offre"
+            )
+        try:
+            coordonnees = load_coordonnees()
+        except CoordonneesManquantesError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        filename = resolve_piece_filename(conn, offer_id, "CV", coordonnees)
+    pdf_bytes = html_to_pdf(row["html"])
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{offer_id}/cv/corrections")

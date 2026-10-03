@@ -28,6 +28,13 @@ from orchestrator.job_search.lettre.redaction import (
     resolve_offer_text,
 )
 from orchestrator.job_search.lettre.service import reset_pending, run_lettre
+from orchestrator.job_search.pdf.coordonnees import (
+    CoordonneesManquantesError,
+    load_coordonnees,
+)
+from orchestrator.job_search.pdf.filename import resolve_piece_filename
+from orchestrator.job_search.pdf.lettre_html import build_lettre_html
+from orchestrator.job_search.pdf.render import html_to_pdf
 
 from .db import get_conn
 
@@ -262,6 +269,45 @@ async def regenerer_lettre(offer_id: int, response: Response) -> dict:
         task.add_done_callback(_tasks.discard)
     response.status_code = 202
     return {"regeneration_en_cours": True}
+
+
+@router.get("/{offer_id}/lettre/pdf")
+def get_lettre_pdf(offer_id: int) -> Response:
+    """PDF téléchargeable de la lettre d'une offre retenue (EXE-102) — mise en
+    page du texte stocké tel quel, jamais corrigé ; aucun appel modèle (critère 17)."""
+    with get_conn() as conn:
+        v = conn.execute(
+            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if v is None or v["status"] != "retenu":
+            raise HTTPException(
+                status_code=409,
+                detail="Le PDF n'est produit que pour une offre retenue",
+            )
+        row = conn.execute(
+            "SELECT texte FROM lettres WHERE offer_id = ? AND statut = 'done'",
+            (offer_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=409, detail="La lettre n'est pas générée pour cette offre"
+            )
+        try:
+            coordonnees = load_coordonnees()
+        except CoordonneesManquantesError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        filename = resolve_piece_filename(conn, offer_id, "Lettre", coordonnees)
+        offer = conn.execute(
+            "SELECT title FROM offers WHERE id = ?", (offer_id,)
+        ).fetchone()
+    intitule = offer["title"] if offer else ""
+    html = build_lettre_html(coordonnees, intitule, row["texte"])
+    pdf_bytes = html_to_pdf(html)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{offer_id}/lettre/versions")
