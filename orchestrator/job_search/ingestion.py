@@ -11,6 +11,11 @@ la lire, le modèle de précision la relit dans le même run
 (`resolve_category_second_pass` / `resolve_unreadable_with_precision`). Les deux
 modèles reçoivent le même prompt (`extract_facts`, inchangé) ; seul le nom du
 modèle varie.
+
+EXE-116 (architecture.md, exception TCK-273, 3e cas) — une offre que le tri
+range hors-périmètre pour la seule cause « sans techno » suit la même seconde
+passe que parfait/rêve (`resolve_category_second_pass`, `tri_category=None`),
+en dernier dans la file (après parfait, rêve, non lues).
 """
 
 import sqlite3
@@ -91,7 +96,8 @@ class TriOutcome:
 
     outcome: OfferOutcome = field(default_factory=OfferOutcome)
     needs_second_pass: bool = False
-    second_pass_reason: str | None = None  # "category" | "unreadable"
+    # "category" | "unreadable" | "no_tech" (EXE-116)
+    second_pass_reason: str | None = None
     # EXE-100, critère 11 — vrai si le tri n'a pas pu lire l'offre faute de
     # réponse (vide ou modèle injoignable), distinct d'une réponse illisible.
     no_response: bool = False
@@ -181,6 +187,28 @@ def rattraper_offres_categorisees_sans_texte(conn: sqlite3.Connection) -> int:
         )
         n += 1
     return n
+
+
+def rattraper_sans_techno_tri(conn: sqlite3.Connection, tri_model: str) -> int:
+    """Critère 7, EXE-116 — une offre déjà en base dont l'extraction_version
+    nomme le modèle de tri et dont la cause hors-périmètre est « sans techno »
+    (persistée comme définitive avant ce ticket) repasse en attente de seconde
+    passe : ce run la relit avec le modèle de précision (architecture.md,
+    exception TCK-273, 3e cas). Aucun appel LLM ici."""
+    rows = conn.execute(
+        "SELECT source, source_id FROM offers "
+        "WHERE hors_perimetre_reason = 'no_tech' AND extraction_status IS NULL "
+        "AND extraction_version LIKE ?",
+        (f"{tri_model}|%",),
+    ).fetchall()
+    for row in rows:
+        conn.execute(
+            "UPDATE offers SET extraction_status = 'second_pass_pending', "
+            "second_pass_attempts = 0 WHERE source = ? AND source_id = ?",
+            (row["source"], row["source_id"]),
+        )
+    conn.commit()
+    return len(rows)
 
 
 def rattraper_texte_recu(conn: sqlite3.Connection, offers: list[JobOffer]) -> int:
@@ -423,6 +451,33 @@ def run_tri(
 
     if hp_causes:
         causes_str = [c.value for c in hp_causes]
+        # EXE-116 — « sans techno » est la seule cause hors-périmètre incertaine
+        # (architecture.md, exception TCK-273, 3e cas) : elle attend une seconde
+        # passe au lieu d'être persistée comme définitive. mgmt_role/contrat
+        # restent définitives, inchangées.
+        if HorsPerimetreCause.no_tech in hp_causes:
+            save_offer(
+                conn,
+                offer,
+                perimetre_causes=causes_str,
+                techs_matched=a.techs_matched,
+                techs_missing=a.techs_missing,
+                ad_language=ad_lang,
+                extraction_version=version,
+                extraction_status="second_pass_pending",
+                extraction_attempts=0,
+                second_pass_attempts=0,
+            )
+            return TriOutcome(
+                outcome=OfferOutcome(
+                    perimetre_causes=causes_str,
+                    parse_failed=facts.parse_failed,
+                    extraction_status="second_pass_pending",
+                ),
+                needs_second_pass=True,
+                second_pass_reason="no_tech",
+            )
+
         save_offer(
             conn,
             offer,

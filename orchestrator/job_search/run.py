@@ -32,6 +32,8 @@ class _TriPhaseReport:
 @dataclass
 class _SecondPassReport:
     n_relues: int = 0
+    # EXE-116, critère 8 — parmi `n_relues`, combien portaient kind="no_tech".
+    n_relues_no_tech: int = 0
     batches_done: int = 0
     pause_seconds_total: float = 0.0
     stop_reason: str | None = None  # None | "cap" | "no_response"
@@ -40,7 +42,7 @@ class _SecondPassReport:
 @dataclass
 class _SecondPassEntry:
     offer: object
-    kind: str  # "category" | "unreadable"
+    kind: str  # "category" | "unreadable" | "no_tech" (EXE-116)
     category: object | None = None
     attempts_before: int = 0
 
@@ -87,6 +89,8 @@ def _tri_phase(
 
         if tri.needs_second_pass and tri.second_pass_reason == "unreadable":
             a_relire_non_lues.append((offer, row["extraction_attempts"] or 0))
+        elif tri.needs_second_pass and tri.second_pass_reason == "no_tech":
+            print("         → [sans techno] en attente de seconde passe")
         elif tri.needs_second_pass:
             print(
                 f"         → [{tri.outcome.category.value}] en attente de seconde passe"
@@ -113,7 +117,7 @@ def _resolve_second_pass_entry(
         resolve_unreadable_with_precision,
     )
 
-    if entry.kind == "category":
+    if entry.kind in ("category", "no_tech"):
         return resolve_category_second_pass(
             conn,
             entry.offer,
@@ -148,9 +152,10 @@ def _second_pass_batches(
     pause_seconds: float,
     max_batches: int,
 ) -> _SecondPassReport:
-    """Traite `queue` (parfait, puis rêve, puis non lues — ordre posé par
-    EXE-99, jamais changé ici) par lots de `batch_size`, avec une pause entre
-    deux lots (jamais après le dernier) et un plafond de `max_batches` lots
+    """Traite `queue` (parfait, puis rêve, puis non lues, puis sans techno —
+    ordre posé par EXE-99/EXE-116, jamais changé ici) par lots de `batch_size`,
+    avec une pause entre deux lots (jamais après le dernier) et un plafond de
+    `max_batches` lots
     (EXE-100, critères 1-4, 9). Décharge le modèle de tri avant le premier lot
     (critère 5) et le modèle de précision au début de chaque pause (critère 6).
     Arrête les lots après 3 offres de suite sans réponse du modèle (critère 13)."""
@@ -171,6 +176,8 @@ def _second_pass_batches(
                 conn, entry, profile, alias_table, model=precision_model, host=host
             )
             report.n_relues += 1
+            if entry.kind == "no_tech":
+                report.n_relues_no_tech += 1
             print(f"[run] seconde passe {entry.offer.title[:55]}", flush=True)
             if outcome.no_response:
                 streak += 1
@@ -190,6 +197,9 @@ def _second_pass_batches(
                     print("         → illisible")
                 elif outcome.category is not None:
                     print(f"         → [{outcome.category.value}]")
+                elif outcome.perimetre_causes:
+                    causes = ",".join(outcome.perimetre_causes)
+                    print(f"         → hors_perimetre: {causes}")
 
         idx += len(batch)
         report.batches_done += 1
@@ -233,6 +243,7 @@ def main() -> None:
     from orchestrator.job_search.ingestion import (
         rattraper_filtre_contrat,
         rattraper_offres_categorisees_sans_texte,
+        rattraper_sans_techno_tri,
         rattraper_texte_recu,
         register_offer,
     )
@@ -311,9 +322,12 @@ def main() -> None:
     n_offres_filtrees = 0
     n_offres_rattrapees = 0
     n_offres_sans_texte_rattrapees = 0
+    n_offres_sans_techno_rattrapees = 0
     n_offres_texte_recu = 0
     n_triees = 0
     n_relues = 0
+    n_sans_techno_relues = 0
+    n_sans_techno_changed = 0
     n_pending = 0
     n_retry = 0
     n_unreadable = 0
@@ -349,6 +363,16 @@ def main() -> None:
         print(
             f"[run] {n_offres_sans_texte_rattrapees} offres repassées "
             "texte manquant (rattrapage)"
+        )
+
+        # 2.7 Rattrapage sans techno (EXE-116, critère 7) — une offre déjà
+        #     persistée comme définitive hors-périmètre « sans techno » par le
+        #     modèle de tri repasse en attente de seconde passe : ce run la
+        #     relit avec le modèle de précision (5c), sans rappeler le tri.
+        n_offres_sans_techno_rattrapees = rattraper_sans_techno_tri(conn, tri_model)
+        print(
+            f"[run] {n_offres_sans_techno_rattrapees} offres sans techno "
+            "rattrapées (attente de seconde passe)"
         )
 
         # 3. Fetch — zones résolues depuis le profil
@@ -442,7 +466,8 @@ def main() -> None:
             n_triees = tri_report.n_triees
 
             # 5c. Seconde passe (LLM, modèle de précision) — parfait, puis rêve,
-            #     puis les offres que le tri n'a pas lues (EXE-99, critère 12).
+            #     puis les offres que le tri n'a pas lues (EXE-99, critère 12),
+            #     puis les offres « sans techno » (EXE-116, critères 1-2).
             #     Les offres « second_pass_pending » d'un run précédent sont
             #     reprises ici aussi, sans rappeler le modèle de tri (critère 8).
             #     EXE-100 : traitées par lots avec pause (critères 1-9) et arrêt
@@ -469,6 +494,23 @@ def main() -> None:
                         offer=offer, kind="unreadable", attempts_before=attempts_before
                     )
                 )
+            # EXE-116 — en dernier, après les trois premiers groupes.
+            # `extraction_version IS NOT NULL` exclut les offres jamais lues par
+            # aucun modèle (pas de version) — ce cas ne doit jamais être relu.
+            rows_sans_techno = conn.execute(
+                "SELECT * FROM offers WHERE extraction_status = 'second_pass_pending' "
+                "AND hors_perimetre_reason = 'no_tech' "
+                "AND extraction_version IS NOT NULL ORDER BY fetched_at"
+            ).fetchall()
+            no_tech_entries = [
+                _SecondPassEntry(
+                    offer=offer_from_row(row),
+                    kind="no_tech",
+                    attempts_before=row["second_pass_attempts"] or 0,
+                )
+                for row in rows_sans_techno
+            ]
+            second_pass_queue.extend(no_tech_entries)
 
             second_pass_started = time.perf_counter()
             second_pass_report = _second_pass_batches(
@@ -484,6 +526,22 @@ def main() -> None:
                 max_batches=max_batches,
             )
             second_pass_duration = time.perf_counter() - second_pass_started
+
+            # EXE-116, critère 8 — parmi les offres sans techno mises en file
+            # (ordre de file = ordre de traitement, cf. EXE-99), les premières
+            # `n_relues_no_tech` sont celles effectivement relues ; les autres
+            # (plafond atteint) restent en attente, inchangées.
+            relued_no_tech = no_tech_entries[: second_pass_report.n_relues_no_tech]
+            n_sans_techno_relues = len(relued_no_tech)
+            n_sans_techno_changed = 0
+            for entry in relued_no_tech:
+                row = conn.execute(
+                    "SELECT hors_perimetre_reason FROM offers "
+                    "WHERE source = ? AND source_id = ?",
+                    (entry.offer.source, entry.offer.source_id),
+                ).fetchone()
+                if row is not None and row["hors_perimetre_reason"] != "no_tech":
+                    n_sans_techno_changed += 1
         n_relues = second_pass_report.n_relues
 
         n_pending = conn.execute(
@@ -508,6 +566,10 @@ def main() -> None:
         print(
             f"[run] {n_triees} offres triées, {n_relues} relues, "
             f"{n_second_pass_pending} en attente de seconde passe"
+        )
+        print(
+            f"[run] {n_sans_techno_relues} offres sans techno relues, "
+            f"{n_sans_techno_changed} ont changé de verdict"
         )
 
         reason_txt = {
