@@ -437,7 +437,24 @@ def run_tri(
     (`second_pass_pending`, critère 2 de EXE-98 — la vue candidat la montre).
     Si le tri échoue à lire l'offre, rien n'est persisté ici : c'est à
     l'appelant de retenter avec le modèle de précision avant de décider du
-    compteur d'essais (critère 10)."""
+    compteur d'essais (critère 10).
+
+    EXE-117 — une offre « en attente » ou « à refaire » dont le texte nettoyé
+    est devenu trop court (ex. rattrapée par `rattraper_filtre_contrat` sans
+    jamais repasser par `register_offer`) arrête la cascade au même point
+    qu'à l'ingestion : aucun appel LLM, elle repasse « texte manquant »."""
+    if _cleaned_text_len(offer) < _MIN_TEXT_LENGTH:
+        ad_lang = detect_ad_language(offer.description or "")
+        save_offer(
+            conn,
+            offer,
+            extraction_status="missing_text",
+            extraction_attempts=0,
+            second_pass_attempts=0,
+            ad_language=ad_lang,
+        )
+        return TriOutcome(outcome=OfferOutcome(extraction_status="missing_text"))
+
     facts, no_response = _extract_with_no_response_flag(offer, model, host)
     if facts is None:
         return TriOutcome(
@@ -581,7 +598,24 @@ def resolve_category_second_pass(
     (critère 9).
 
     EXE-100, critère 13 — une absence de réponse ne persiste rien et ne
-    compte aucun essai : l'offre reste « en attente de seconde passe »."""
+    compte aucun essai : l'offre reste « en attente de seconde passe ».
+
+    EXE-117 — un texte nettoyé devenu trop court avant la seconde passe (ex.
+    rattrapée par `rattraper_sans_techno_tri` sans jamais repasser par
+    `register_offer`) arrête la cascade ici : aucun appel LLM, l'offre perd
+    ses faits, sa catégorie et sa cause, et repasse « texte manquant »."""
+    if _cleaned_text_len(offer) < _MIN_TEXT_LENGTH:
+        ad_lang = detect_ad_language(offer.description or "")
+        save_offer(
+            conn,
+            offer,
+            extraction_status="missing_text",
+            extraction_attempts=0,
+            second_pass_attempts=0,
+            ad_language=ad_lang,
+        )
+        return OfferOutcome(extraction_status="missing_text")
+
     facts, no_response = _extract_with_no_response_flag(offer, model, host)
     if facts is not None:
         return _persist_final(conn, offer, facts, profile, alias_table, model=model)

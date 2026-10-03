@@ -406,7 +406,9 @@ def _tri_outcome(
         no_response=no_response,
         needs_second_pass=needs_second_pass,
         second_pass_reason=reason,
-        outcome=SimpleNamespace(category=category, perimetre_causes=[]),
+        outcome=SimpleNamespace(
+            category=category, perimetre_causes=[], extraction_status=None
+        ),
     )
 
 

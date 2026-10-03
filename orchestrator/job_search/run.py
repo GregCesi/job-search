@@ -98,6 +98,10 @@ def _tri_phase(
         elif tri.outcome.perimetre_causes:
             causes = ",".join(tri.outcome.perimetre_causes)
             print(f"         → hors_perimetre: {causes}")
+        elif tri.outcome.extraction_status == "missing_text":
+            # EXE-117 — le tri a trouvé un texte devenu trop court (ex.
+            # rattrapée par rattraper_filtre_contrat) sans appeler le modèle.
+            print("         → texte manquant")
         else:
             print(f"         → [{tri.outcome.category.value}]")
 
