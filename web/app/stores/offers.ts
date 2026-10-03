@@ -139,6 +139,24 @@ export interface LettreVersion {
   created_at: string
 }
 
+export type PieceStatut = 'a_faire' | 'en_cours' | 'prete'
+
+export interface PieceInfo {
+  statut: PieceStatut
+  marque_pret_le: string | null
+}
+
+export interface Pieces {
+  cv: PieceInfo
+  lettre: PieceInfo
+  prete_a_l_envoi: boolean
+}
+
+export interface MailCandidature {
+  objet: string
+  corps: string
+}
+
 export interface Filters {
   category?: string
   exclude_category?: string

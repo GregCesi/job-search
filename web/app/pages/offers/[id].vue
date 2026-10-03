@@ -67,7 +67,7 @@
                 <div
                   tabindex="-1"
                   class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium select-none"
-                  :class="step === 'Retenue'
+                  :class="stepActive(step)
                     ? 'bg-indigo-600 text-white'
                     : 'text-gray-400'"
                 >
@@ -215,6 +215,28 @@
       </div>
       <div v-if="activeCard === 'Lettre de motivation'" class="flex-1 overflow-y-auto p-6">
         <div class="max-w-3xl mx-auto space-y-4">
+          <!-- Statut de pièce + marque Prête (EXE-101) -->
+          <div v-if="pieces" class="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div class="flex items-center gap-2 text-xs font-medium">
+              <template v-for="(step, idx) in PIECE_STEPS" :key="step.value">
+                <span :class="pieces.lettre.statut === step.value ? 'text-indigo-600' : 'text-gray-300'">{{ step.label }}</span>
+                <svg v-if="idx < PIECE_STEPS.length - 1" class="w-3 h-3 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                </svg>
+              </template>
+            </div>
+            <label class="flex items-center gap-2 text-xs text-gray-600 flex-shrink-0">
+              <input
+                type="checkbox"
+                :checked="pieces.lettre.statut === 'prete'"
+                :disabled="pieces.lettre.statut === 'a_faire'"
+                @change="toggleLettrePret"
+              >
+              Prête
+            </label>
+          </div>
+          <p v-if="lettrePretError" class="text-xs text-red-600">{{ lettrePretError }}</p>
+
           <!-- Non éligible -->
           <div v-if="!isRetenue || !ficheDone" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
             <p v-if="!isRetenue" class="text-sm text-gray-400 italic">La lettre n'est générée que pour une offre retenue.</p>
@@ -298,24 +320,29 @@
                   :disabled="lettre.regeneration_en_cours || lettreBusy"
                   class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
                 >{{ lettre.regeneration_en_cours ? 'Régénération en cours…' : 'Régénérer' }}</button>
+                <button
+                  @click="telechargerLettrePdf"
+                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                >Télécharger le PDF</button>
               </div>
               <p v-if="lettre.regeneration_error" class="text-xs text-red-600">{{ lettre.regeneration_error }}</p>
               <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
+              <p v-if="lettrePdfError" class="text-xs text-red-600">{{ lettrePdfError }}</p>
             </template>
 
             <!-- Historique des versions -->
             <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
               <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Historique des versions</h3>
-              <p v-if="!lettreVersions.length" class="text-sm text-gray-400 italic">Aucune version.</p>
-              <ul v-else class="space-y-2">
-                <li v-for="(v, i) in lettreVersions" :key="i" class="rounded border border-gray-200 bg-gray-50 p-3 space-y-1">
-                  <div class="flex items-center justify-between text-xs text-gray-500">
-                    <span>{{ v.created_at }}</span>
-                    <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{{ v.origine === 'moi' ? 'moi' : 'modèle' }}</span>
-                  </div>
-                  <p class="text-xs text-gray-700 whitespace-pre-wrap">{{ v.texte }}</p>
-                </li>
-              </ul>
+              <p v-if="!lettreVersionsRecentesDabord.length" class="text-sm text-gray-400 italic">Aucune version.</p>
+              <div v-else class="space-y-2">
+                <details v-for="(v, i) in lettreVersionsRecentesDabord" :key="i" class="rounded border border-gray-200 bg-gray-50">
+                  <summary class="cursor-pointer px-3 py-2 text-xs text-gray-500 flex items-center justify-between select-none">
+                    <span>{{ formatDateHeure(v.created_at) }}</span>
+                    <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0 ml-2">{{ v.origine === 'moi' ? 'moi' : 'modèle' }}</span>
+                  </summary>
+                  <p class="text-xs text-gray-700 whitespace-pre-wrap px-3 pb-3">{{ v.texte }}</p>
+                </details>
+              </div>
             </section>
           </template>
         </div>
@@ -324,6 +351,28 @@
       <!-- CV adapté -->
       <div v-else-if="activeCard === 'CV'" class="flex-1 overflow-y-auto p-6">
         <div class="max-w-3xl mx-auto space-y-5">
+          <!-- Statut de pièce + marque Prête (EXE-101) -->
+          <div v-if="pieces" class="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div class="flex items-center gap-2 text-xs font-medium">
+              <template v-for="(step, idx) in PIECE_STEPS" :key="step.value">
+                <span :class="pieces.cv.statut === step.value ? 'text-indigo-600' : 'text-gray-300'">{{ step.label }}</span>
+                <svg v-if="idx < PIECE_STEPS.length - 1" class="w-3 h-3 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                </svg>
+              </template>
+            </div>
+            <label class="flex items-center gap-2 text-xs text-gray-600 flex-shrink-0">
+              <input
+                type="checkbox"
+                :checked="pieces.cv.statut === 'prete'"
+                :disabled="pieces.cv.statut === 'a_faire'"
+                @change="toggleCvPret"
+              >
+              Prête
+            </label>
+          </div>
+          <p v-if="cvPretError" class="text-xs text-red-600">{{ cvPretError }}</p>
+
           <!-- Pas de CV / erreur -->
           <div v-if="!cv || cv.statut === 'error'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
             <p v-if="cv?.error_message" class="text-sm text-red-600">{{ cv.error_message }}</p>
@@ -353,14 +402,21 @@
                 <span class="text-gray-400">Titre</span> <span class="font-medium text-gray-700">{{ cv.titre ?? '—' }}</span>
                 <span class="text-gray-400 ml-3">Lieu</span> <span class="font-medium text-gray-700">{{ cv.localisation ?? '—' }}</span>
               </p>
-              <a
-                v-if="cvHtmlUrl"
-                :href="cvHtmlUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-indigo-600 hover:underline font-medium text-sm flex-shrink-0"
-              >Ouvrir le CV ↗</a>
+              <div class="flex items-center gap-3 flex-shrink-0">
+                <a
+                  v-if="cvHtmlUrl"
+                  :href="cvHtmlUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-indigo-600 hover:underline font-medium text-sm"
+                >Ouvrir le CV ↗</a>
+                <button
+                  @click="telechargerCvPdf"
+                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                >Télécharger le PDF</button>
+              </div>
             </div>
+            <p v-if="cvPdfError" class="text-xs text-red-600">{{ cvPdfError }}</p>
 
             <!-- Au CV -->
             <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
@@ -416,6 +472,40 @@
 
             <p v-if="cvActionError" class="text-xs text-red-600">{{ cvActionError }}</p>
           </template>
+        </div>
+      </div>
+
+      <!-- Mail de candidature -->
+      <div v-else-if="activeCard === 'Mail de candidature'" class="flex-1 overflow-y-auto p-6">
+        <div class="max-w-3xl mx-auto space-y-4">
+          <div v-if="mailError" class="rounded-lg border border-gray-200 bg-white p-6 flex items-center justify-center text-center text-sm text-red-600">
+            {{ mailError }}
+          </div>
+          <template v-else-if="mail">
+            <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Objet</h3>
+                <button
+                  @click="copierMailObjet"
+                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                >{{ mailObjetCopied ? 'Copié !' : 'Copier' }}</button>
+              </div>
+              <p class="text-sm text-gray-800">{{ mail.objet }}</p>
+            </section>
+            <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Corps</h3>
+                <button
+                  @click="copierMailCorps"
+                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                >{{ mailCorpsCopied ? 'Copié !' : 'Copier' }}</button>
+              </div>
+              <p class="text-sm text-gray-800 whitespace-pre-wrap">{{ mail.corps }}</p>
+            </section>
+          </template>
+          <div v-else class="rounded-lg border border-gray-200 bg-white p-6 flex items-center justify-center text-sm text-gray-400">
+            Chargement…
+          </div>
         </div>
       </div>
 
@@ -509,7 +599,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { Cv, FicheEntreprise, FicheTas, Lettre, LettrePoint, LettreVersion, OfferDetail, TechInfo } from '~/stores/offers'
+import type { Cv, FicheEntreprise, FicheTas, Lettre, LettrePoint, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -531,6 +621,7 @@ onMounted(async () => {
   await chargerLettrePoints()
   await chargerLettreVersions()
   if (shouldPollLettre(lettre.value)) startLettrePolling()
+  if (isRetenue.value) await chargerPieces()
 })
 onBeforeUnmount(() => {
   stopPolling()
@@ -538,6 +629,8 @@ onBeforeUnmount(() => {
   stopLettrePolling()
   if (cvBlobUrl) URL.revokeObjectURL(cvBlobUrl)
   if (lettreCopiedTimer) clearTimeout(lettreCopiedTimer)
+  if (mailObjetTimer) clearTimeout(mailObjetTimer)
+  if (mailCorpsTimer) clearTimeout(mailCorpsTimer)
 })
 
 async function retirerDesRetenues() {
@@ -663,16 +756,28 @@ async function expliquer(idx: number) {
   }
 }
 
+const PIECE_LABELS: Record<PieceStatut, string> = {
+  a_faire: 'à faire',
+  en_cours: 'en cours',
+  prete: 'prête',
+}
+const PIECE_BADGE_CLASS: Record<PieceStatut, string> = {
+  a_faire: 'bg-gray-100 text-gray-400',
+  en_cours: 'bg-amber-50 text-amber-600',
+  prete: 'bg-green-50 text-green-700',
+}
+
 function cardBadge(title: string): { label: string, class: string } {
   if (title === 'Entreprise' && fiche.value) {
     if (fiche.value.statut === 'pending') return { label: 'en cours', class: 'bg-amber-50 text-amber-600' }
     if (fiche.value.statut === 'done') return { label: 'prête', class: 'bg-green-50 text-green-700' }
     return { label: 'erreur', class: 'bg-red-50 text-red-600' }
   }
-  if (title === 'CV' && cv.value) {
-    if (cv.value.statut === 'pending') return { label: 'en cours', class: 'bg-amber-50 text-amber-600' }
-    if (cv.value.statut === 'done') return { label: 'prêt', class: 'bg-green-50 text-green-700' }
-    return { label: 'erreur', class: 'bg-red-50 text-red-600' }
+  if (title === 'CV' && pieces.value) {
+    return { label: PIECE_LABELS[pieces.value.cv.statut], class: PIECE_BADGE_CLASS[pieces.value.cv.statut] }
+  }
+  if (title === 'Lettre de motivation' && pieces.value) {
+    return { label: PIECE_LABELS[pieces.value.lettre.statut], class: PIECE_BADGE_CLASS[pieces.value.lettre.statut] }
   }
   return { label: 'à produire', class: 'bg-gray-100 text-gray-400' }
 }
@@ -685,6 +790,144 @@ function cardPreview(title: string): string {
     return `${cv.value.au_cv.length} compétences`
   }
   return 'Vide'
+}
+
+// ── Pieces (statut, marque Prête, PDF) — EXE-101/EXE-102 ──────────────────
+const pieces = ref<Pieces | null>(null)
+const cvPretError = ref<string | null>(null)
+const lettrePretError = ref<string | null>(null)
+const cvPdfError = ref<string | null>(null)
+const lettrePdfError = ref<string | null>(null)
+
+const PIECE_STEPS: { value: PieceStatut, label: string }[] = [
+  { value: 'a_faire', label: 'À faire' },
+  { value: 'en_cours', label: 'En cours' },
+  { value: 'prete', label: 'Prête' },
+]
+
+async function errorDetail(e: unknown): Promise<string> {
+  const data = (e as { data?: unknown })?.data
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text()) as { detail?: string }
+      return parsed.detail ?? 'Action impossible.'
+    } catch {
+      return 'Action impossible.'
+    }
+  }
+  const detail = (data as { detail?: string } | undefined)?.detail
+  return detail ?? 'Action impossible.'
+}
+
+async function chargerPieces() {
+  try {
+    pieces.value = await $fetch<Pieces>(`${config.public.apiBase}/offers/${id.value}/pieces`)
+  } catch {
+    pieces.value = null // offre non retenue : pas de statut de pièce à afficher
+  }
+}
+
+async function toggleCvPret() {
+  if (!pieces.value) return
+  const pret = pieces.value.cv.statut !== 'prete'
+  cvPretError.value = null
+  try {
+    const res = await $fetch<PieceInfo>(`${cvUrl()}/pret`, { method: 'PUT', body: { pret } })
+    pieces.value = { ...pieces.value, cv: res }
+  } catch (e) {
+    cvPretError.value = await errorDetail(e)
+  }
+}
+
+async function toggleLettrePret() {
+  if (!pieces.value) return
+  const pret = pieces.value.lettre.statut !== 'prete'
+  lettrePretError.value = null
+  try {
+    const res = await $fetch<PieceInfo>(`${lettreUrl()}/pret`, { method: 'PUT', body: { pret } })
+    pieces.value = { ...pieces.value, lettre: res }
+  } catch (e) {
+    lettrePretError.value = await errorDetail(e)
+  }
+}
+
+function declencherTelechargement(blob: Blob, contentDisposition: string | null) {
+  const match = contentDisposition?.match(/filename="?([^"]+)"?/)
+  const filename = match ? match[1]! : 'piece.pdf'
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function telechargerCvPdf() {
+  cvPdfError.value = null
+  try {
+    const res = await $fetch.raw(cvUrl() + '/pdf', { responseType: 'blob' })
+    declencherTelechargement(res._data as Blob, res.headers.get('content-disposition'))
+  } catch (e) {
+    cvPdfError.value = await errorDetail(e)
+  }
+}
+
+async function telechargerLettrePdf() {
+  lettrePdfError.value = null
+  try {
+    const res = await $fetch.raw(lettreUrl() + '/pdf', { responseType: 'blob' })
+    declencherTelechargement(res._data as Blob, res.headers.get('content-disposition'))
+  } catch (e) {
+    lettrePdfError.value = await errorDetail(e)
+  }
+}
+
+function stepActive(step: string): boolean {
+  if (step === 'Retenue') return true
+  if (step === 'Prête à l\'envoi') return !!pieces.value?.prete_a_l_envoi
+  return false
+}
+
+// ── Mail de candidature — EXE-103 ───────────────────────────────────────────
+const mail = ref<MailCandidature | null>(null)
+const mailError = ref<string | null>(null)
+const mailObjetCopied = ref(false)
+const mailCorpsCopied = ref(false)
+let mailObjetTimer: ReturnType<typeof setTimeout> | null = null
+let mailCorpsTimer: ReturnType<typeof setTimeout> | null = null
+
+async function chargerMail() {
+  mail.value = null
+  mailError.value = null
+  try {
+    mail.value = await $fetch<MailCandidature>(`${config.public.apiBase}/offers/${id.value}/mail`)
+  } catch (e) {
+    mailError.value = await errorDetail(e)
+  }
+}
+
+async function copierMailObjet() {
+  if (!mail.value) return
+  await navigator.clipboard.writeText(mail.value.objet)
+  mailObjetCopied.value = true
+  if (mailObjetTimer) clearTimeout(mailObjetTimer)
+  mailObjetTimer = setTimeout(() => { mailObjetCopied.value = false }, 1500)
+}
+
+async function copierMailCorps() {
+  if (!mail.value) return
+  await navigator.clipboard.writeText(mail.value.corps)
+  mailCorpsCopied.value = true
+  if (mailCorpsTimer) clearTimeout(mailCorpsTimer)
+  mailCorpsTimer = setTimeout(() => { mailCorpsCopied.value = false }, 1500)
+}
+
+// ── Date lisible pour l'historique de la lettre ─────────────────────────────
+function formatDateHeure(iso: string): string {
+  const d = new Date(iso)
+  const date = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }).format(d)
+  const heure = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(d)
+  return date.charAt(0).toUpperCase() + date.slice(1) + ', ' + heure
 }
 
 // ── CV adapté ────────────────────────────────────────────────────────────
@@ -732,8 +975,10 @@ function startCvPolling() {
   cvPollTimer = setInterval(async () => {
     await chargerCv()
     ticks++
-    if (cv.value?.statut !== 'pending') stopCvPolling() // done ou error : on s'arrête
-    else if (ticks >= POLL_MAX) {
+    if (cv.value?.statut !== 'pending') {
+      stopCvPolling() // done ou error : on s'arrête
+      await chargerPieces()
+    } else if (ticks >= POLL_MAX) {
       stopCvPolling()
       cv.value = { ...cv.value, statut: 'error', error_message: 'Délai dépassé. Relancer le CV.' }
     }
@@ -746,6 +991,7 @@ async function genererCv() {
     const res = await $fetch<Cv>(cvUrl(), { method: 'POST' })
     if (res.statut === 'done') {
       cv.value = res // déjà terminé : rendu tel quel, aucun rappel du modèle
+      await chargerPieces()
     } else {
       cv.value = { ...EMPTY_CV, statut: 'pending' }
       startCvPolling()
@@ -859,6 +1105,7 @@ function startLettrePolling() {
     if (!shouldPollLettre(lettre.value)) {
       stopLettrePolling()
       await chargerLettreVersions()
+      await chargerPieces()
     } else if (ticks >= POLL_MAX) {
       stopLettrePolling()
       if (lettre.value?.regeneration_en_cours) {
@@ -884,6 +1131,7 @@ async function genererLettre() {
       lettre.value = res
       texteEdit.value = res.texte ?? ''
       await chargerLettreVersions()
+      await chargerPieces()
     } else {
       lettre.value = { ...EMPTY_LETTRE, statut: 'pending' }
       startLettrePolling()
@@ -901,6 +1149,7 @@ async function regenererLettre() {
   try {
     await $fetch(`${lettreUrl()}/regenerer`, { method: 'POST' })
     if (lettre.value) lettre.value = { ...lettre.value, regeneration_en_cours: true, regeneration_error: null }
+    await chargerPieces()
     startLettrePolling()
   } catch (e) {
     lettreActionError.value = messageErreurLettre(e)
@@ -915,6 +1164,7 @@ async function sauvegarderTexte() {
     lettre.value = await $fetch<Lettre>(`${lettreUrl()}/texte`, { method: 'PUT', body: { texte: texteEdit.value } })
     texteEdit.value = lettre.value.texte ?? ''
     await chargerLettreVersions()
+    await chargerPieces()
   } catch (e) {
     lettreActionError.value = messageErreurLettre(e)
   }
@@ -948,9 +1198,15 @@ const CARDS = [
   { title: 'Entreprise' },
   { title: 'CV' },
   { title: 'Lettre de motivation' },
+  { title: 'Mail de candidature' },
 ]
 const activeCard = ref<string | null>(null)
-function openCard(title: string) { activeCard.value = title }
+function openCard(title: string) {
+  activeCard.value = title
+  if (title === 'Mail de candidature') chargerMail()
+}
+
+const lettreVersionsRecentesDabord = computed(() => [...lettreVersions.value].reverse())
 
 // ── Markdown rendering ────────────────────────────────────────────────────
 const renderedDescription = computed(() =>
