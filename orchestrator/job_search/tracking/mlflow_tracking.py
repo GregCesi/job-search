@@ -40,19 +40,21 @@ def _artifact_root_for(tracking_uri: str) -> str:
 
 
 class RunTracker:
-    """Poignée sur un run MLflow de l'expérience `run-pipeline`."""
+    """Poignée sur un run MLflow d'une expérience donnée — `run-pipeline` par
+    défaut ; `reference` (TCK-221, EXE-107) pour le rejeu du jeu de référence."""
 
-    def __init__(self) -> None:
+    def __init__(self, experiment_name: str = EXPERIMENT_NAME) -> None:
         self.active = False
         self._started = False
+        self._experiment_name = experiment_name
 
     def start(self, params: dict[str, Any]) -> None:
         try:
             client = MlflowClient()
-            experiment = client.get_experiment_by_name(EXPERIMENT_NAME)
+            experiment = client.get_experiment_by_name(self._experiment_name)
             if experiment is None:
                 experiment_id = client.create_experiment(
-                    EXPERIMENT_NAME,
+                    self._experiment_name,
                     artifact_location=_artifact_root_for(mlflow.get_tracking_uri()),
                 )
             else:

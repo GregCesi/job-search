@@ -83,6 +83,15 @@ python -m orchestrator.job_search.rescore --re-extract --profile profiles/moi.ya
 python -m orchestrator.job_search.rescore --dry-run --profile profiles/moi.yaml   # sans écrire en base
 ```
 
+### Jeu de référence
+
+Mesure la justesse d'une extraction (modèle ou prompt) contre un attendu écrit à la main, hors ingestion (TCK-221).
+
+```bash
+python -m orchestrator.job_search.reference.ajouter --ids 123,456     # ajoute des offres au jeu (préremplies, non relues)
+python -m orchestrator.job_search.reference.rejouer --model llama3    # rejoue les entrées relues, écrit un rapport + un run MLflow (expérience « reference »)
+```
+
 ## Le profil
 
 `profiles/example.yaml` montre le format : compétences notées sur deux échelles (niveau réel et envie), zones géographiques, types de contrat, plafond de séniorité. Le barème de niveau est dans `docs/bareme-niveau.md`. `profiles/alias.yaml` unifie les écritures d'une même techno (« JS », « JavaScript »…).
