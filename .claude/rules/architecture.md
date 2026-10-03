@@ -68,11 +68,17 @@ L'invariant 4 dit que le LLM intervient une seule fois par offre. Deux cas y dé
 
 **Reprise.** Une extraction échouée (aucune réponse lisible du modèle après ses tentatives) n'a produit aucun fait. L'offre reste à extraire, et un run ultérieur rappelle le modèle pour elle. Aucun fait de repli n'est enregistré ni scoré à sa place. Une extraction réussie n'est jamais refaite par ce chemin.
 
-**Seconde passe.** Le run extrait chaque offre avec un modèle de tri. Il l'extrait une seconde fois avec un modèle de précision dans deux cas seulement : le tri la classe parfait ou rêve, ou le tri n'a pas réussi à la lire. Les faits du modèle de précision remplacent alors ceux du tri, et la catégorie est recalculée en Python sur eux. Les deux modèles reçoivent le même prompt.
+**Seconde passe.** Le run extrait chaque offre avec un modèle de tri. Il l'extrait une seconde fois avec un modèle de précision dans trois cas seulement : le tri la classe parfait ou rêve, le tri n'a pas réussi à la lire, ou le tri la range « sans techno ». Les faits du modèle de précision remplacent alors ceux du tri, et la catégorie est recalculée en Python sur eux. Les deux modèles reçoivent le même prompt.
 
 Ce qui ne change pas : aucun de ces appels ne part d'un changement de `profile.yaml` ni d'un rescore, les faits extraits restent intrinsèques, et chaque appel est tracé avec son modèle.
 
 _Écrit le 2 octobre 2026, TCK-273 : le run du jour a duré 5h20 pour 52 extractions avec un seul modèle, et 148 extractions échouées ont été rangées « sans techno »._
+
+_Troisième cas ajouté le 3 octobre 2026, TCK-273 : au run du jour, le modèle de tri a rangé 46 offres sur 199 en « sans techno », sur des textes de 849 à 5329 caractères ; le modèle de précision en range 12 sur 806._
+
+**Offre sans texte.** Une offre dont le texte est absent ou trop court pour être lu n'est envoyée à aucun modèle. Elle n'a ni faits, ni catégorie, ni cause hors périmètre : elle reste visible comme « texte manquant » jusqu'à ce qu'une source rapporte son texte.
+
+_Écrit le 3 octobre 2026, TCK-273 : 8 offres Indeed sans description ont été classées sur leur titre seul, dont une en rêve en tête du digest._
 
 ## Exception encadrée : rejeu du jeu de référence (TCK-221)
 
