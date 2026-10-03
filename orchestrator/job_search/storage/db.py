@@ -107,6 +107,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             prompt_text              TEXT,  -- prompt envoyé (audit invariant)
             error_message            TEXT,
             created_at               TEXT NOT NULL,
+            marque_pret_at           TEXT,  -- EXE-101 : date/heure de ma marque « Prête », NULL sinon
             UNIQUE(offer_id)
         );
 
@@ -137,6 +138,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             created_at                TEXT NOT NULL,
             regeneration_en_cours     INTEGER NOT NULL DEFAULT 0, -- EXE-66
             regeneration_error        TEXT,  -- EXE-66 : dernier échec de régénération, distinct de error_message
+            marque_pret_at            TEXT,  -- EXE-101 : date/heure de ma marque « Prête », NULL sinon
             UNIQUE(offer_id)
         );
 
@@ -209,16 +211,16 @@ def migrate_ajouts_schema(conn: sqlite3.Connection) -> None:
 
 
 def migrate_cvs_schema(conn: sqlite3.Connection) -> None:
-    """Colonnes ajoutées après la première livraison (EXE-58) — idempotent."""
+    """Colonnes ajoutées après la première livraison (EXE-58, EXE-101) — idempotent."""
     existing = {row[1] for row in conn.execute("PRAGMA table_info(cvs)").fetchall()}
-    for col in ("groupes_json", "notions_json"):
+    for col in ("groupes_json", "notions_json", "marque_pret_at"):
         if col not in existing:
             conn.execute(f"ALTER TABLE cvs ADD COLUMN {col} TEXT")
     conn.commit()
 
 
 def migrate_lettres_schema(conn: sqlite3.Connection) -> None:
-    """Colonnes ajoutées après la première livraison (EXE-65) — idempotent."""
+    """Colonnes ajoutées après la première livraison (EXE-65, EXE-66, EXE-101) — idempotent."""
     existing = {row[1] for row in conn.execute("PRAGMA table_info(lettres)").fetchall()}
     if "regeneration_en_cours" not in existing:
         conn.execute(
@@ -227,6 +229,8 @@ def migrate_lettres_schema(conn: sqlite3.Connection) -> None:
         )
     if "regeneration_error" not in existing:
         conn.execute("ALTER TABLE lettres ADD COLUMN regeneration_error TEXT")
+    if "marque_pret_at" not in existing:
+        conn.execute("ALTER TABLE lettres ADD COLUMN marque_pret_at TEXT")
     conn.commit()
 
 

@@ -271,10 +271,11 @@ def mark_regenerating(conn: sqlite3.Connection, offer_id: int) -> None:
     """Marque une régénération en cours sans toucher à la version courante (critères
     11, 12 du ticket EXE-66) : `texte`, `tournures_signalees_json`, `nb_mots` et
     `depasse_longueur` restent ceux de la version d'avant tant que la régénération
-    n'a pas abouti."""
+    n'a pas abouti. Une marque « Prête » (EXE-101) est effacée dès le lancement :
+    le contenu va changer, la validation humaine est à refaire."""
     conn.execute(
-        "UPDATE lettres SET regeneration_en_cours=1, regeneration_error=NULL "
-        "WHERE offer_id=?",
+        "UPDATE lettres SET regeneration_en_cours=1, regeneration_error=NULL, "
+        "marque_pret_at=NULL WHERE offer_id=?",
         (offer_id,),
     )
     conn.commit()
@@ -339,7 +340,9 @@ def save_texte(conn: sqlite3.Connection, offer_id: int, texte: str) -> None:
     lettre (critère 1) : signale les tournures interdites et le dépassement de
     longueur sans jamais corriger `texte` (invariant du ticket — une tournure
     signalée reste dans le texte), puis journalise une version (critère 4).
-    Calcul 100% Python (critère 7) : aucun appel modèle.
+    Calcul 100% Python (critère 7) : aucun appel modèle. Une marque « Prête »
+    (EXE-101) est effacée par cet enregistrement : le contenu change, la
+    validation humaine est à refaire.
     """
     init_db(conn)
     row = conn.execute(
@@ -358,7 +361,8 @@ def save_texte(conn: sqlite3.Connection, offer_id: int, texte: str) -> None:
     conn.execute(
         """
         UPDATE lettres SET
-            texte=?, tournures_signalees_json=?, nb_mots=?, depasse_longueur=?
+            texte=?, tournures_signalees_json=?, nb_mots=?, depasse_longueur=?,
+            marque_pret_at=NULL
         WHERE offer_id=?
         """,
         (

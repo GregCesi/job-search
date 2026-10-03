@@ -259,7 +259,8 @@ def apply_correction(
     """Applique une correction manuelle (ajout/retrait) au CV déjà généré de
     l'offre et journalise l'entrée d'historique (EXE-59). Calcul 100% Python
     (critère 13) : aucun appel modèle, la connexion `conn` est fournie par
-    l'appelant (route API).
+    l'appelant (route API). Une marque « Prête » (EXE-101) est effacée par
+    toute correction : le contenu change, la validation humaine est à refaire.
     """
     init_db(conn)
     row = conn.execute("SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)).fetchone()
@@ -302,7 +303,7 @@ def apply_correction(
         """
         UPDATE cvs SET
             html=?, au_cv_json=?, demande_sans_y_etre_json=?,
-            groupes_json=?, notions_json=?
+            groupes_json=?, notions_json=?, marque_pret_at=NULL
         WHERE offer_id=?
         """,
         (
