@@ -16,6 +16,7 @@ export interface TraceOut {
   offer_title: string | null
   offer_company: string | null
   model: string
+  extraction_version: string | null
   temperature: number
   timestamp: string
   prompt_system: string
@@ -28,21 +29,39 @@ export interface TraceOut {
   severite: string | null
 }
 
+export interface TraceVersionCount {
+  version: string
+  count: number
+}
+
 // ── Store ──────────────────────────────────────────────────────────────────
 
 export const useTracesStore = defineStore('traces', () => {
   const config = useRuntimeConfig()
 
   const traces = ref<TraceOut[]>([])
+  const versions = ref<TraceVersionCount[]>([])
   const loading = ref(false)
+  const selectedVersion = ref<string | null>(null)
 
-  async function fetchTraces() {
+  async function fetchTraces(version: string | null = null) {
     loading.value = true
     try {
-      traces.value = await $fetch<TraceOut[]>(`${config.public.apiBase}/traces`)
+      traces.value = await $fetch<TraceOut[]>(`${config.public.apiBase}/traces`, {
+        query: version ? { version } : {},
+      })
     } finally {
       loading.value = false
     }
+  }
+
+  async function fetchVersions() {
+    versions.value = await $fetch<TraceVersionCount[]>(`${config.public.apiBase}/traces/versions`)
+  }
+
+  async function selectVersion(version: string | null) {
+    selectedVersion.value = version
+    await fetchTraces(version)
   }
 
   async function saveNote(trace_key: string, note: string, cause: string | null = null, severite: string | null = null) {
@@ -62,5 +81,15 @@ export const useTracesStore = defineStore('traces', () => {
     return `${config.public.apiBase}/traces/export`
   }
 
-  return { traces, loading, fetchTraces, saveNote, exportUrl }
+  return {
+    traces,
+    versions,
+    loading,
+    selectedVersion,
+    fetchTraces,
+    fetchVersions,
+    selectVersion,
+    saveNote,
+    exportUrl,
+  }
 })

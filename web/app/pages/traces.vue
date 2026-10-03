@@ -7,6 +7,21 @@
         ← job-search
       </NuxtLink>
       <span class="text-sm font-medium text-gray-500">Traces LLM — error analysis</span>
+
+      <label class="ml-4 flex items-center gap-2 text-xs text-gray-500">
+        Version
+        <select
+          v-model="versionFilter"
+          class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+          @change="onVersionChange"
+        >
+          <option :value="null">Toutes</option>
+          <option v-for="v in store.versions" :key="v.version" :value="v.version">
+            {{ v.version }} ({{ v.count }})
+          </option>
+        </select>
+      </label>
+
       <span class="ml-auto text-xs text-gray-400">
         {{ store.loading ? 'Chargement…' : `${store.traces.length} traces · ${groups.length} offres` }}
       </span>
@@ -68,6 +83,11 @@
             <!-- Model + temperature -->
             <span class="text-xs text-gray-400 shrink-0 font-mono">
               {{ trace.model.split(':').pop() }} · {{ trace.temperature }}°
+            </span>
+
+            <!-- Extraction version -->
+            <span class="text-xs text-gray-300 shrink-0 font-mono">
+              {{ trace.extraction_version ?? 'sans version' }}
             </span>
 
             <!-- Timestamp -->
@@ -152,6 +172,10 @@
                     <dt class="text-gray-400 shrink-0">temperature</dt>
                     <dd class="font-mono text-gray-700">{{ trace.temperature }}</dd>
                   </div>
+                  <div class="flex gap-2">
+                    <dt class="text-gray-400 shrink-0">extraction_version</dt>
+                    <dd class="font-mono text-gray-700">{{ trace.extraction_version ?? 'sans version' }}</dd>
+                  </div>
                 </dl>
               </div>
 
@@ -214,8 +238,14 @@ import type { TraceOut } from '~/stores/traces'
 const store = useTracesStore()
 const route = useRoute()
 
+const versionFilter = ref<string | null>(null)
+
+async function onVersionChange() {
+  await store.selectVersion(versionFilter.value)
+}
+
 onMounted(async () => {
-  await store.fetchTraces()
+  await Promise.all([store.fetchTraces(), store.fetchVersions()])
   const hash = route.hash
   if (hash?.startsWith('#offer-')) {
     const offerId = hash.slice(7) // '#offer-'.length

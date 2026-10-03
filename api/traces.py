@@ -4,12 +4,24 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from .db import get_conn
-from .schemas import CAUSE_VALUES, SEVERITE_VALUES, TraceNoteIn, TraceOut
-from .traces_reader import build_traces_out, count_traces_by_offer, read_traces_raw
+from .schemas import (
+    CAUSE_VALUES,
+    NO_VERSION_LABEL,
+    SEVERITE_VALUES,
+    TraceNoteIn,
+    TraceOut,
+    TraceVersionCount,
+)
+from .traces_reader import (
+    build_traces_out,
+    count_traces_by_offer,
+    count_traces_by_version,
+    read_traces_raw,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,7 +30,12 @@ router = APIRouter()
 
 
 def _ensure_trace_notes_table() -> None:
-    """Crée trace_notes si absente + ajoute colonnes manquantes (idempotent)."""
+    """Crée trace_notes si absente + ajoute colonnes manquantes (idempotent).
+
+    Jamais au chargement du module : appelée depuis chaque accès à la table,
+    pour que DB_PATH puisse être monkeypatché après l'import (tests) et pour
+    rester correcte si DB_PATH change en cours de process.
+    """
     with get_conn() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS trace_notes (
@@ -40,8 +57,6 @@ def _ensure_trace_notes_table() -> None:
         conn.commit()
 
 
-_ensure_trace_notes_table()
-
 # ── Helpers DB ────────────────────────────────────────────────────────────────
 
 
@@ -52,6 +67,7 @@ def _upsert_note(
     cause: str | None = None,
     severite: str | None = None,
 ) -> None:
+    _ensure_trace_notes_table()
     updated_at = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute(
@@ -73,6 +89,7 @@ def _fetch_annotations(trace_keys: list[str]) -> dict[str, dict]:
     """Retourne {trace_key: {note, cause, severite}} depuis trace_notes."""
     if not trace_keys:
         return {}
+    _ensure_trace_notes_table()
     placeholders = ",".join("?" * len(trace_keys))
     with get_conn() as conn:
         rows = conn.execute(
@@ -95,12 +112,31 @@ def get_traces_counts() -> dict[str, int]:
     return count_traces_by_offer()
 
 
+@router.get("/traces/versions", response_model=list[TraceVersionCount])
+def get_traces_versions() -> list[TraceVersionCount]:
+    """Versions d'extraction présentes dans les traces, avec leur nombre.
+
+    NO_VERSION_LABEL regroupe les traces écrites avant TCK-211 (champ absent).
+    0 appel LLM. Lecture seule.
+    """
+    counts = count_traces_by_version()
+    return [
+        TraceVersionCount(version=version or NO_VERSION_LABEL, count=count)
+        for version, count in sorted(
+            counts.items(), key=lambda kv: (kv[0] is None, kv[0] or "")
+        )
+    ]
+
+
 @router.get("/traces", response_model=list[TraceOut])
-def list_traces() -> list[TraceOut]:
-    """Renvoie toutes les traces (sans dédup), triées par offer_id puis timestamp.
+def list_traces(version: str | None = Query(None)) -> list[TraceOut]:
+    """Renvoie les traces (sans dédup), triées par offer_id puis timestamp.
 
     Enrichit offer_title/offer_company depuis offers.source_id.
     Joint la note depuis trace_notes (None si absente ou table inexistante).
+    `version` filtre par extraction_version exacte ; NO_VERSION_LABEL filtre
+    sur les traces sans version (champ absent, antérieures à TCK-211) ; absent
+    = toutes les traces, comme avant ce filtre.
     0 appel LLM. Lecture seule.
     """
     traces = build_traces_out(read_traces_raw())
@@ -111,6 +147,11 @@ def list_traces() -> list[TraceOut]:
             t.model_copy(update=annots[t.trace_key]) if t.trace_key in annots else t
             for t in traces
         ]
+
+    if version == NO_VERSION_LABEL:
+        traces = [t for t in traces if t.extraction_version is None]
+    elif version is not None:
+        traces = [t for t in traces if t.extraction_version == version]
 
     return traces
 
@@ -174,6 +215,7 @@ def export_traces_jsonl():
             line = {
                 "offer_id": raw.get("offer_id"),
                 "model": raw.get("model"),
+                "extraction_version": raw.get("extraction_version"),
                 "temperature": raw.get("temperature"),
                 "prompt_system": raw.get("prompt_system", ""),
                 "prompt_user": raw.get("prompt_user", ""),

@@ -67,6 +67,20 @@ def count_traces_by_offer() -> dict[str, int]:
     return counts
 
 
+def count_traces_by_version() -> dict[str | None, int]:
+    """Compte les traces par extraction_version.
+
+    None groupe les traces écrites avant TCK-211 (champ absent du JSONL).
+    Parse le JSONL une fois via read_traces_raw(). Fichier absent ou vide →
+    dict vide.
+    """
+    counts: dict[str | None, int] = {}
+    for raw in read_traces_raw():
+        version = raw.get("extraction_version")
+        counts[version] = counts.get(version, 0) + 1
+    return counts
+
+
 def _fetch_offer_info(offer_ids: list[str]) -> dict[str, tuple[str | None, str | None]]:
     """Retourne {source_id: (title, company)} pour les ids demandés.
 
@@ -103,6 +117,7 @@ def _build_one(
         offer_title=offer_title,
         offer_company=offer_company,
         model=raw["model"],
+        extraction_version=raw.get("extraction_version"),
         temperature=float(raw["temperature"]),
         timestamp=raw["timestamp"],
         prompt_system=raw.get("prompt_system", ""),

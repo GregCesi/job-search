@@ -135,6 +135,7 @@ class TraceOut(BaseModel):
     offer_title: str | None = None  # enrichi depuis offers (L3)
     offer_company: str | None = None
     model: str
+    extraction_version: str | None = None  # TCK-211 — None = antérieure
     temperature: float
     timestamp: str
     prompt_system: str
@@ -149,6 +150,16 @@ class TraceOut(BaseModel):
 
 CAUSE_VALUES = {"troncature", "bug_llm", "ok"}
 SEVERITE_VALUES = {"mineure", "majeure", "critique"}
+
+# Valeur de filtre pour les traces sans extraction_version (EXE-106). Ne peut
+# jamais collisionner avec une vraie version : son format est toujours
+# "{model}|p{hash8}|s{schema}".
+NO_VERSION_LABEL = "sans_version"
+
+
+class TraceVersionCount(BaseModel):
+    version: str  # extraction_version réelle, ou NO_VERSION_LABEL
+    count: int
 
 
 class TraceNoteIn(BaseModel):
