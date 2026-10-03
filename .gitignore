@@ -22,6 +22,9 @@ data/
 *.db
 chroma/
 
+# MLflow (EXE-105) — artefacts du backend fichier, mlflow.db déjà couvert par *.db
+mlruns/
+
 # .claude
 .claude/prompts/
 

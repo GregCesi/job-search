@@ -9,6 +9,7 @@ Usage:
 import argparse
 import os
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -236,6 +237,7 @@ def main() -> None:
     from orchestrator.job_search.scoring.extractor import (
         OllamaUnavailable,
         ensure_models_available,
+        extraction_version,
         unload_model,
     )
     from orchestrator.job_search.sources.base import JobOffer, Source
@@ -246,6 +248,8 @@ def main() -> None:
     from orchestrator.job_search.storage.db import get_connection, init_db
     from orchestrator.job_search.storage.dedup import filter_new
     from orchestrator.job_search.storage.offers import get_offers_since, offer_from_row
+    from orchestrator.job_search.tracking import extraction_stats
+    from orchestrator.job_search.tracking.mlflow_tracking import RunTracker
 
     # Modèle de tri (EXE-99, nouveau) — modèle de précision : OLLAMA_MODEL,
     # même emplacement qu'avant ce ticket (critère 15).
@@ -275,6 +279,45 @@ def main() -> None:
     except OllamaUnavailable as exc:
         print(f"[run] {exc}")
         return
+
+    # EXE-105 — un run MLflow sous l'expérience « run-pipeline », avec les
+    # réglages de ce run en paramètres. Si MLflow ne peut pas écrire (stockage
+    # absent, verrouillé ou illisible), `tracker` reste inactif : tous ses
+    # appels plus bas deviennent des no-op, et le run de la pipeline va au
+    # bout sans lui (critère 9).
+    tracker = RunTracker()
+    tracker.start(
+        {
+            "tri_model": tri_model,
+            "precision_model": precision_model,
+            "tri_extraction_version": extraction_version(tri_model),
+            "precision_extraction_version": extraction_version(precision_model),
+            "batch_size": batch_size,
+            "pause_seconds": pause_seconds,
+            "max_batches": max_batches,
+        }
+    )
+
+    # Valeurs par défaut : le bloc `finally` ci-dessous les journalise même si
+    # une étape antérieure à leur calcul a levé une exception, pour que le run
+    # MLflow porte les chiffres atteints (critère 8).
+    n_offres_recuperees = 0
+    n_offres_nouvelles = 0
+    n_offres_filtrees = 0
+    n_triees = 0
+    n_relues = 0
+    n_pending = 0
+    n_retry = 0
+    n_unreadable = 0
+    n_second_pass_pending = 0
+    category_counts: Counter = Counter()
+    n_hors_perimetre = 0
+    tri_duration = 0.0
+    second_pass_duration = 0.0
+    second_pass_report = _SecondPassReport()
+    stats = extraction_stats.ExtractionStats()
+    digest_path = None
+    stop_reason_final = "erreur"
 
     try:
         # 2. DB
@@ -310,10 +353,12 @@ def main() -> None:
             batch = src.fetch()
             print(f"[run] {label}: {len(batch)} offres")
             all_offers.extend(batch)
+        n_offres_recuperees = len(all_offers)
         print(f"[run] {len(all_offers)} offres récupérées (total)")
 
         # 4. Dédup
         new_offers = filter_new(conn, all_offers)
+        n_offres_nouvelles = len(new_offers)
         print(
             f"[run] {len(new_offers)} nouvelles ({len(all_offers) - len(new_offers)} déjà vues)"
         )
@@ -323,6 +368,7 @@ def main() -> None:
         for i, offer in enumerate(new_offers, 1):
             registered = register_offer(conn, offer, profile)
             if registered.filtered:
+                n_offres_filtrees += 1
                 print(
                     f"[run] ({i}/{len(new_offers)}) {offer.title[:55]} "
                     f"→ filtré : {registered.filter_reason}"
@@ -342,52 +388,65 @@ def main() -> None:
             flush=True,
         )
 
-        tri_report = _tri_phase(
-            conn, pending_rows, profile, alias_table, tri_model=tri_model, host=host
-        )
-        n_triees = tri_report.n_triees
+        # EXE-105 — chronomètre le tri et collecte, par modèle, la durée et
+        # l'échec de chaque appel LLM de la cascade (tri + seconde passe),
+        # pour les métriques MLflow du run (critères 5-6).
+        with extraction_stats.collect() as stats:
+            tri_started = time.perf_counter()
+            tri_report = _tri_phase(
+                conn,
+                pending_rows,
+                profile,
+                alias_table,
+                tri_model=tri_model,
+                host=host,
+            )
+            tri_duration = time.perf_counter() - tri_started
+            n_triees = tri_report.n_triees
 
-        # 5c. Seconde passe (LLM, modèle de précision) — parfait, puis rêve, puis
-        #     les offres que le tri n'a pas lues (EXE-99, critère 12). Les offres
-        #     « second_pass_pending » d'un run précédent sont reprises ici aussi,
-        #     sans rappeler le modèle de tri (critère 8). EXE-100 : traitées par
-        #     lots avec pause (critères 1-9) et arrêt sur absence de réponse
-        #     (critère 13).
-        second_pass_queue: list[_SecondPassEntry] = []
-        for cat in (Category.parfait, Category.reve):
-            rows = conn.execute(
-                "SELECT * FROM offers WHERE extraction_status = 'second_pass_pending' "
-                "AND category = ? ORDER BY fetched_at",
-                (cat.value,),
-            ).fetchall()
-            for row in rows:
+            # 5c. Seconde passe (LLM, modèle de précision) — parfait, puis rêve,
+            #     puis les offres que le tri n'a pas lues (EXE-99, critère 12).
+            #     Les offres « second_pass_pending » d'un run précédent sont
+            #     reprises ici aussi, sans rappeler le modèle de tri (critère 8).
+            #     EXE-100 : traitées par lots avec pause (critères 1-9) et arrêt
+            #     sur absence de réponse (critère 13).
+            second_pass_queue: list[_SecondPassEntry] = []
+            for cat in (Category.parfait, Category.reve):
+                rows = conn.execute(
+                    "SELECT * FROM offers WHERE extraction_status = 'second_pass_pending' "
+                    "AND category = ? ORDER BY fetched_at",
+                    (cat.value,),
+                ).fetchall()
+                for row in rows:
+                    second_pass_queue.append(
+                        _SecondPassEntry(
+                            offer=offer_from_row(row),
+                            kind="category",
+                            category=cat,
+                            attempts_before=row["second_pass_attempts"] or 0,
+                        )
+                    )
+            for offer, attempts_before in tri_report.a_relire_non_lues:
                 second_pass_queue.append(
                     _SecondPassEntry(
-                        offer=offer_from_row(row),
-                        kind="category",
-                        category=cat,
-                        attempts_before=row["second_pass_attempts"] or 0,
+                        offer=offer, kind="unreadable", attempts_before=attempts_before
                     )
                 )
-        for offer, attempts_before in tri_report.a_relire_non_lues:
-            second_pass_queue.append(
-                _SecondPassEntry(
-                    offer=offer, kind="unreadable", attempts_before=attempts_before
-                )
-            )
 
-        second_pass_report = _second_pass_batches(
-            conn,
-            second_pass_queue,
-            profile,
-            alias_table,
-            tri_model=tri_model,
-            precision_model=precision_model,
-            host=host,
-            batch_size=batch_size,
-            pause_seconds=pause_seconds,
-            max_batches=max_batches,
-        )
+            second_pass_started = time.perf_counter()
+            second_pass_report = _second_pass_batches(
+                conn,
+                second_pass_queue,
+                profile,
+                alias_table,
+                tri_model=tri_model,
+                precision_model=precision_model,
+                host=host,
+                batch_size=batch_size,
+                pause_seconds=pause_seconds,
+                max_batches=max_batches,
+            )
+            second_pass_duration = time.perf_counter() - second_pass_started
         n_relues = second_pass_report.n_relues
 
         n_pending = conn.execute(
@@ -423,6 +482,29 @@ def main() -> None:
             f"run {run_duration:.0f}s, arrêt: {reason_txt}"
         )
 
+        # EXE-105, critère 4 — catégorie finale et hors-périmètre, comptés
+        # seulement parmi les offres nouvelles de ce run (pas tout l'historique
+        # en base), et seulement si finalisées (`extraction_status IS NULL`).
+        # Une offre classée parfait/rêve par le tri porte déjà sa catégorie en
+        # base alors qu'elle attend encore la seconde passe (EXE-98, critère 2) :
+        # sans ce filtre, elle compterait deux fois — ici, puis à nouveau une
+        # fois la seconde passe terminée.
+        for offer in new_offers:
+            row = conn.execute(
+                "SELECT category, perimetre_causes, extraction_status FROM offers "
+                "WHERE source = ? AND source_id = ?",
+                (offer.source, offer.source_id),
+            ).fetchone()
+            if row is None:
+                continue
+            cat, causes, extraction_status = row
+            if extraction_status is not None:
+                continue
+            if cat:
+                category_counts[cat] += 1
+            elif causes:
+                n_hors_perimetre += 1
+
         # 6. Digest
         since = run_at - timedelta(hours=args.since_hours)
         scored = get_offers_since(conn, since)
@@ -433,12 +515,58 @@ def main() -> None:
         digest_path = REPO_ROOT / f"data/digest_{run_at.strftime('%Y%m%d_%H%M')}.txt"
         digest_path.write_text(digest)
         print(f"[run] digest → {digest_path}")
+
+        stop_reason_final = second_pass_report.stop_reason or "termine"
+    except BaseException:
+        stop_reason_final = "erreur"
+        raise
     finally:
         # EXE-100, critères 7/8 — à la fin d'un run qui va au bout comme sur une
         # erreur ou une interruption au clavier, les deux modèles sont déchargés
         # avant de rendre la main.
         unload_model(host, tri_model)
         unload_model(host, precision_model)
+
+        # EXE-105, critère 8 — le run MLflow existe même si le run s'arrête sur
+        # le plafond, sur l'absence de réponse du modèle ou sur une erreur : il
+        # porte les chiffres atteints jusque-là et la raison de l'arrêt.
+        run_duration_final = (datetime.now(timezone.utc) - run_at).total_seconds()
+        tracker.log_metrics(
+            {
+                "offres_recuperees": float(n_offres_recuperees),
+                "offres_nouvelles": float(n_offres_nouvelles),
+                "offres_filtrees": float(n_offres_filtrees),
+                "offres_triees": float(n_triees),
+                "offres_relues": float(n_relues),
+                "offres_en_attente_extraction": float(n_pending),
+                "offres_a_refaire": float(n_retry),
+                "offres_illisibles": float(n_unreadable),
+                "offres_en_attente_seconde_passe": float(n_second_pass_pending),
+                "categorie_parfait": float(
+                    category_counts.get(Category.parfait.value, 0)
+                ),
+                "categorie_reve": float(category_counts.get(Category.reve.value, 0)),
+                "categorie_atteignable": float(
+                    category_counts.get(Category.atteignable.value, 0)
+                ),
+                "categorie_hors": float(category_counts.get(Category.hors.value, 0)),
+                "offres_hors_perimetre": float(n_hors_perimetre),
+                "tri_extractions_echouees": float(stats.failure_count(tri_model)),
+                "tri_duree_mediane_s": stats.median_duration(tri_model),
+                "precision_extractions_echouees": float(
+                    stats.failure_count(precision_model)
+                ),
+                "precision_duree_mediane_s": stats.median_duration(precision_model),
+                "duree_run_s": run_duration_final,
+                "duree_tri_s": tri_duration,
+                "duree_seconde_passe_s": second_pass_duration,
+                "duree_pauses_s": second_pass_report.pause_seconds_total,
+            }
+        )
+        tracker.log_param("stop_reason", stop_reason_final)
+        if digest_path is not None:
+            tracker.log_artifact(digest_path)
+        tracker.end()
 
 
 if __name__ == "__main__":

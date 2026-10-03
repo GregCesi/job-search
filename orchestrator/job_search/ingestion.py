@@ -14,6 +14,7 @@ modèle varie.
 """
 
 import sqlite3
+import time
 from dataclasses import dataclass, field
 
 from orchestrator.job_search.matching.profile import Profile
@@ -37,6 +38,7 @@ from orchestrator.job_search.scoring.hors_perimetre import (
 )
 from orchestrator.job_search.sources.base import ExtractedFacts, JobOffer
 from orchestrator.job_search.storage.offers import save_offer
+from orchestrator.job_search.tracking import extraction_stats
 
 # Après 3 essais en échec (le 1er + 2 reprises), une offre devient « illisible »
 # et les runs suivants n'appellent plus le modèle pour elle (architecture.md TCK-273).
@@ -133,10 +135,20 @@ def _extract_with_no_response_flag(
     """Appelle `extract_facts` (seul point d'appel au LLM, inchangé pour les
     appelants existants) et distingue une absence de réponse (EXE-100, critère
     11) d'une extraction illisible mais non vide (critère 14, `facts is None`
-    sans lever)."""
+    sans lever).
+
+    EXE-105 — chronomètre cet appel et le signale au collecteur de stats du
+    run (no-op hors d'un run suivi, cf. tracking/extraction_stats.py) : échec
+    au sens de ce compteur = `facts is None` (illisible ou sans réponse,
+    scoring.md), jamais une extraction dégradée (`parse_failed=True` avec
+    faits présents)."""
+    started = time.perf_counter()
     try:
-        return extract_facts(offer, model=model, host=host), False
+        facts = extract_facts(offer, model=model, host=host)
+        extraction_stats.record(model, time.perf_counter() - started, facts is None)
+        return facts, False
     except NoResponseFromModel:
+        extraction_stats.record(model, time.perf_counter() - started, True)
         return None, True
 
 

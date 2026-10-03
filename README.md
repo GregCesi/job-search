@@ -69,6 +69,9 @@ uvicorn api.main:app --reload                     # http://localhost:8000
 
 # Interface
 cd web && npm install && npm run dev              # http://localhost:3000
+
+# Interface MLflow — suivi des runs (réglages, volumes, échecs, durées)
+mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5002   # http://localhost:5002
 ```
 
 ### Recalculer sans recollecter
