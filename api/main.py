@@ -14,6 +14,7 @@ from .expiration import router as expiration_router
 from .export import router as export_router
 from .fiche import router as fiche_router
 from .lettre import router as lettre_router
+from .mail import router as mail_router
 from .offers import router as offers_router
 from .pieces import router as pieces_router
 from .traces import router as traces_router
@@ -54,6 +55,7 @@ app.include_router(traces_router)
 app.include_router(fiche_router)
 app.include_router(cv_router)
 app.include_router(lettre_router)
+app.include_router(mail_router)
 app.include_router(pieces_router)
 app.include_router(expiration_router)
 app.include_router(ajouts_router)
