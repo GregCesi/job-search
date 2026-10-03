@@ -8,8 +8,19 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from .db import get_conn
-from .schemas import CAUSE_VALUES, SEVERITE_VALUES, TraceNoteIn, TraceOut
-from .traces_reader import build_traces_out, count_traces_by_offer, read_traces_raw
+from .schemas import (
+    CAUSE_VALUES,
+    SEVERITE_VALUES,
+    TraceNoteIn,
+    TraceOut,
+    TraceVersionCount,
+)
+from .traces_reader import (
+    build_traces_out,
+    count_traces_by_offer,
+    count_traces_by_version,
+    read_traces_raw,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -95,15 +106,37 @@ def get_traces_counts() -> dict[str, int]:
     return count_traces_by_offer()
 
 
+@router.get("/traces/versions", response_model=list[TraceVersionCount])
+def get_traces_versions() -> list[TraceVersionCount]:
+    """Versions d'extraction présentes dans les traces, avec leur nombre (TCK-211).
+
+    « sans version » (version=None) comprise. 0 appel LLM, lecture seule.
+    """
+    return count_traces_by_version()
+
+
 @router.get("/traces", response_model=list[TraceOut])
-def list_traces() -> list[TraceOut]:
-    """Renvoie toutes les traces (sans dédup), triées par offer_id puis timestamp.
+def list_traces(
+    version: str | None = None, sans_version: bool = False
+) -> list[TraceOut]:
+    """Renvoie les traces (sans dédup), triées par offer_id puis timestamp.
+
+    Sans filtre : toutes les traces, comme avant TCK-211. `version=...` ne
+    rend que les traces de cette version exacte ; `sans_version=True` ne rend
+    que celles écrites avant l'existence des versions — et prime sur `version`
+    si les deux sont fournis.
 
     Enrichit offer_title/offer_company depuis offers.source_id.
     Joint la note depuis trace_notes (None si absente ou table inexistante).
     0 appel LLM. Lecture seule.
     """
-    traces = build_traces_out(read_traces_raw())
+    raws = read_traces_raw()
+    if sans_version:
+        raws = [r for r in raws if r.get("extraction_version") is None]
+    elif version is not None:
+        raws = [r for r in raws if r.get("extraction_version") == version]
+
+    traces = build_traces_out(raws)
 
     annots = _fetch_annotations([t.trace_key for t in traces])
     if annots:

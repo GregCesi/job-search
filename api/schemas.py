@@ -135,6 +135,7 @@ class TraceOut(BaseModel):
     offer_title: str | None = None  # enrichi depuis offers (L3)
     offer_company: str | None = None
     model: str
+    extraction_version: str | None = None  # TCK-211 — absent des traces antérieures
     temperature: float
     timestamp: str
     prompt_system: str
@@ -145,6 +146,16 @@ class TraceOut(BaseModel):
     note: str | None = None  # joint depuis trace_notes (L4)
     cause: str | None = None  # troncature | bug_llm | ok | null
     severite: str | None = None  # mineure | majeure | critique | null
+
+
+class TraceVersionCount(BaseModel):
+    """Une version d'extraction présente dans les traces, avec son nombre (EXE-106).
+
+    version=None = « sans version » : traces écrites avant TCK-211.
+    """
+
+    version: str | None = None
+    count: int
 
 
 CAUSE_VALUES = {"troncature", "bug_llm", "ok"}

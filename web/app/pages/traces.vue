@@ -7,6 +7,22 @@
         ← job-search
       </NuxtLink>
       <span class="text-sm font-medium text-gray-500">Traces LLM — error analysis</span>
+
+      <select
+        :value="store.selectedVersion ?? ''"
+        class="ml-4 text-xs border border-gray-200 rounded px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+        @change="onVersionChange(($event.target as HTMLSelectElement).value)"
+      >
+        <option value="">Toutes</option>
+        <option
+          v-for="v in store.versions"
+          :key="v.version ?? SANS_VERSION"
+          :value="v.version ?? SANS_VERSION"
+        >
+          {{ v.version ?? 'sans version' }} ({{ v.count }})
+        </option>
+      </select>
+
       <span class="ml-auto text-xs text-gray-400">
         {{ store.loading ? 'Chargement…' : `${store.traces.length} traces · ${groups.length} offres` }}
       </span>
@@ -65,9 +81,10 @@
             <!-- Divider -->
             <span class="text-gray-200 shrink-0">|</span>
 
-            <!-- Model + temperature -->
+            <!-- Model + temperature + version -->
             <span class="text-xs text-gray-400 shrink-0 font-mono">
               {{ trace.model.split(':').pop() }} · {{ trace.temperature }}°
+              · {{ trace.extraction_version ?? 'sans version' }}
             </span>
 
             <!-- Timestamp -->
@@ -149,6 +166,10 @@
                     <dd class="font-mono text-gray-700">{{ trace.model }}</dd>
                   </div>
                   <div class="flex gap-2">
+                    <dt class="text-gray-400 shrink-0">extraction_version</dt>
+                    <dd class="font-mono text-gray-700">{{ trace.extraction_version ?? 'sans version' }}</dd>
+                  </div>
+                  <div class="flex gap-2">
                     <dt class="text-gray-400 shrink-0">temperature</dt>
                     <dd class="font-mono text-gray-700">{{ trace.temperature }}</dd>
                   </div>
@@ -208,14 +229,18 @@
 </template>
 
 <script setup lang="ts">
-import { useTracesStore } from '~/stores/traces'
+import { SANS_VERSION, useTracesStore } from '~/stores/traces'
 import type { TraceOut } from '~/stores/traces'
 
 const store = useTracesStore()
 const route = useRoute()
 
+async function onVersionChange(value: string) {
+  await store.setVersionFilter(value === '' ? null : value)
+}
+
 onMounted(async () => {
-  await store.fetchTraces()
+  await Promise.all([store.fetchVersions(), store.fetchTraces()])
   const hash = route.hash
   if (hash?.startsWith('#offer-')) {
     const offerId = hash.slice(7) // '#offer-'.length

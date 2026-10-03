@@ -10,7 +10,7 @@ import logging
 from orchestrator.job_search.paths import TRACES_PATH
 
 from .db import get_conn
-from .schemas import TraceOut, TraceParsedFacts
+from .schemas import TraceOut, TraceParsedFacts, TraceVersionCount
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +67,23 @@ def count_traces_by_offer() -> dict[str, int]:
     return counts
 
 
+def count_traces_by_version() -> list[TraceVersionCount]:
+    """Compte les traces par extraction_version (TCK-211).
+
+    Parse le JSONL une fois via read_traces_raw(), groupe par extraction_version.
+    version=None (« sans version ») est une entrée comme les autres, jamais
+    devinée. Triée par version (sans version en dernier) pour un rendu
+    déterministe.
+    """
+    counts: dict[str | None, int] = {}
+    for raw in read_traces_raw():
+        version = raw.get("extraction_version")
+        counts[version] = counts.get(version, 0) + 1
+
+    ordered = sorted(counts.items(), key=lambda item: (item[0] is None, item[0] or ""))
+    return [TraceVersionCount(version=v, count=c) for v, c in ordered]
+
+
 def _fetch_offer_info(offer_ids: list[str]) -> dict[str, tuple[str | None, str | None]]:
     """Retourne {source_id: (title, company)} pour les ids demandés.
 
@@ -103,6 +120,7 @@ def _build_one(
         offer_title=offer_title,
         offer_company=offer_company,
         model=raw["model"],
+        extraction_version=raw.get("extraction_version"),
         temperature=float(raw["temperature"]),
         timestamp=raw["timestamp"],
         prompt_system=raw.get("prompt_system", ""),
