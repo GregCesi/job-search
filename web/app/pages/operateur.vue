@@ -32,6 +32,12 @@
         >
           Traces LLM
         </NuxtLink>
+        <NuxtLink
+          to="/reference"
+          class="text-xs text-indigo-600 hover:underline font-medium"
+        >
+          Relecture du jeu de référence
+        </NuxtLink>
         <ExportPopover />
         <a
           :href="`${config.public.apiBase}/export/calibration`"

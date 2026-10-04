@@ -34,6 +34,14 @@
         <div class="flex items-center gap-3 flex-shrink-0">
           <button
             v-if="offer"
+            @click="ajouterAuJeuReference"
+            :disabled="ajoutReferenceEnCours"
+            class="text-sm text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
+          >
+            {{ libelleAjoutReference }}
+          </button>
+          <button
+            v-if="offer"
             @click="retirerDesRetenues"
             class="text-sm text-gray-400 hover:text-red-500 transition-colors"
           >
@@ -636,6 +644,28 @@ onBeforeUnmount(() => {
 async function retirerDesRetenues() {
   await $fetch(`${config.public.apiBase}/offers/${id.value}/verdict`, { method: 'DELETE' })
   router.back()
+}
+
+// ── Jeu de référence (EXE-123) ──────────────────────────────────────────────
+const ajoutReferenceStatut = ref<'ajoutee' | 'deja_presente' | 'sans_faits' | null>(null)
+const ajoutReferenceEnCours = ref(false)
+const libelleAjoutReference = computed(() => {
+  if (ajoutReferenceStatut.value === 'ajoutee') return 'Ajoutée au jeu de référence'
+  if (ajoutReferenceStatut.value === 'deja_presente') return 'Déjà dans le jeu de référence'
+  if (ajoutReferenceStatut.value === 'sans_faits') return 'Sans faits extraits — impossible'
+  return 'Ajouter au jeu de référence'
+})
+async function ajouterAuJeuReference() {
+  ajoutReferenceEnCours.value = true
+  try {
+    const res = await $fetch<{ statut: 'ajoutee' | 'deja_presente' | 'sans_faits' }>(
+      `${config.public.apiBase}/offers/${id.value}/reference`,
+      { method: 'POST' },
+    )
+    ajoutReferenceStatut.value = res.statut
+  } finally {
+    ajoutReferenceEnCours.value = false
+  }
 }
 
 // ── Vérification d'expiration (EXE-77) ──────────────────────────────────────

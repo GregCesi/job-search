@@ -17,6 +17,7 @@ from .lettre import router as lettre_router
 from .mail import router as mail_router
 from .offers import router as offers_router
 from .pieces import router as pieces_router
+from .reference import router as reference_router
 from .traces import router as traces_router
 
 
@@ -60,6 +61,7 @@ app.include_router(mail_router)
 app.include_router(pieces_router)
 app.include_router(expiration_router)
 app.include_router(ajouts_router)
+app.include_router(reference_router)
 
 
 @app.get("/health")
