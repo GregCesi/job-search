@@ -36,6 +36,7 @@ from orchestrator.job_search.lettre.redaction import (
 )
 from orchestrator.job_search.lettre.service import reset_pending, run_lettre
 from orchestrator.job_search.pdf.coordonnees import (
+    Coordonnees,
     CoordonneesManquantesError,
     load_coordonnees,
 )
@@ -348,43 +349,62 @@ async def regenerer_lettre(offer_id: int, response: Response) -> dict:
     return {"regeneration_en_cours": True}
 
 
+def _lettre_page_ingredients(conn, offer_id: int) -> tuple[Coordonnees, str, str]:
+    """Coordonnées, intitulé et texte nécessaires à la page de la lettre — gabarit
+    partagé par le PDF et son aperçu HTML (EXE-129) : mêmes refus, même phrase,
+    même ordre pour les deux."""
+    v = conn.execute(
+        "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
+    ).fetchone()
+    if v is None or v["status"] != "retenu":
+        raise HTTPException(
+            status_code=409,
+            detail="Le PDF n'est produit que pour une offre retenue",
+        )
+    row = conn.execute(
+        "SELECT texte FROM lettres WHERE offer_id = ? AND statut = 'done'",
+        (offer_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(
+            status_code=409, detail="La lettre n'est pas générée pour cette offre"
+        )
+    try:
+        coordonnees = load_coordonnees()
+    except CoordonneesManquantesError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    offer = conn.execute(
+        "SELECT title FROM offers WHERE id = ?", (offer_id,)
+    ).fetchone()
+    intitule = offer["title"] if offer else ""
+    return coordonnees, intitule, row["texte"]
+
+
 @router.get("/{offer_id}/lettre/pdf")
 def get_lettre_pdf(offer_id: int) -> Response:
     """PDF téléchargeable de la lettre d'une offre retenue (EXE-102) — mise en
     page du texte stocké tel quel, jamais corrigé ; aucun appel modèle (critère 17)."""
     with get_conn() as conn:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
-            raise HTTPException(
-                status_code=409,
-                detail="Le PDF n'est produit que pour une offre retenue",
-            )
-        row = conn.execute(
-            "SELECT texte FROM lettres WHERE offer_id = ? AND statut = 'done'",
-            (offer_id,),
-        ).fetchone()
-        if row is None:
-            raise HTTPException(
-                status_code=409, detail="La lettre n'est pas générée pour cette offre"
-            )
-        try:
-            coordonnees = load_coordonnees()
-        except CoordonneesManquantesError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        coordonnees, intitule, texte = _lettre_page_ingredients(conn, offer_id)
         filename = resolve_piece_filename(conn, offer_id, "Lettre", coordonnees)
-        offer = conn.execute(
-            "SELECT title FROM offers WHERE id = ?", (offer_id,)
-        ).fetchone()
-    intitule = offer["title"] if offer else ""
-    html = build_lettre_html(coordonnees, intitule, row["texte"])
+    html = build_lettre_html(coordonnees, intitule, texte)
     pdf_bytes = html_to_pdf(html)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/{offer_id}/lettre/mise-en-page")
+def get_lettre_mise_en_page(offer_id: int) -> Response:
+    """Page HTML de la lettre d'une offre retenue, mise en page comme son PDF
+    (EXE-129) : c'est la page dont le PDF est tiré, servie telle quelle plutôt
+    que convertie. Mêmes refus que le PDF, même phrase (critères 1 à 4)."""
+    with get_conn() as conn:
+        coordonnees, intitule, texte = _lettre_page_ingredients(conn, offer_id)
+    html = build_lettre_html(coordonnees, intitule, texte)
+    return Response(content=html, media_type="text/html")
 
 
 @router.get("/{offer_id}/lettre/versions")

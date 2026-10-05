@@ -196,6 +196,11 @@
               <div class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
                 <span class="text-xs text-gray-300 italic">{{ cardPreview(card.title) }}</span>
               </div>
+              <button
+                v-if="card.title === 'CV' || card.title === 'Lettre de motivation'"
+                @click.stop="activeCard = card.title"
+                class="self-start text-xs text-indigo-600 hover:underline"
+              >Détail</button>
             </div>
 
             <!-- Bouton Envoyer -->
@@ -213,6 +218,53 @@
       </div>
     </div>
 
+    <!-- Aperçu plein écran CV/Lettre, offre à côté (EXE-129) -->
+    <div
+      v-if="apercuCard"
+      class="fixed inset-0 z-50 bg-white flex flex-col"
+    >
+      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+        <h2 class="text-base font-semibold text-gray-900">{{ apercuCard }}</h2>
+        <div class="flex items-center gap-4">
+          <button @click="modifierDepuisApercu" class="text-sm text-indigo-600 hover:underline">Modifier</button>
+          <button @click="fermerApercu" class="text-gray-400 hover:text-gray-600" aria-label="Fermer l'aperçu">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-hidden flex">
+        <div v-if="offer" class="w-2/5 h-full overflow-y-auto border-r border-gray-100 p-6 flex-shrink-0">
+          <OfferSidePanel
+            :offer="offer"
+            :owned-techs="ownedTechs"
+            :missing-techs="missingTechs"
+            :rendered-description="renderedDescription"
+          />
+        </div>
+        <div class="flex-1 h-full overflow-y-auto p-6 bg-gray-50">
+          <p v-if="apercuCard === 'Lettre de motivation' && lettreMiseEnPageError" class="text-sm text-red-600">{{ lettreMiseEnPageError }}</p>
+          <iframe
+            v-if="apercuCard === 'CV' && cv?.html"
+            ref="cvFrame"
+            :srcdoc="cv.html"
+            class="w-full border-0 bg-white"
+            title="Aperçu du CV"
+            @load="resizeFrame(cvFrame)"
+          />
+          <iframe
+            v-else-if="apercuCard === 'Lettre de motivation' && lettreMiseEnPageHtml"
+            ref="lettreFrame"
+            :srcdoc="lettreMiseEnPageHtml"
+            class="w-full border-0 bg-white"
+            title="Aperçu de la lettre"
+            @load="resizeFrame(lettreFrame)"
+          />
+        </div>
+      </div>
+    </div>
+
     <!-- Overlay -->
     <div
       v-if="activeCard"
@@ -227,8 +279,17 @@
           </svg>
         </button>
       </div>
-      <div v-if="activeCard === 'Lettre de motivation'" class="flex-1 overflow-y-auto p-6">
-        <div class="max-w-3xl mx-auto space-y-4">
+      <div v-if="activeCard === 'Lettre de motivation'" class="flex-1 overflow-hidden flex">
+        <div v-if="offer" class="w-2/5 h-full overflow-y-auto border-r border-gray-100 p-6 flex-shrink-0">
+          <OfferSidePanel
+            :offer="offer"
+            :owned-techs="ownedTechs"
+            :missing-techs="missingTechs"
+            :rendered-description="renderedDescription"
+          />
+        </div>
+        <div class="flex-1 h-full overflow-y-auto p-6">
+        <div class="space-y-4">
           <!-- Statut de pièce + marque Prête (EXE-101) -->
           <div v-if="pieces" class="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
             <div class="flex items-center gap-2 text-xs font-medium">
@@ -313,10 +374,12 @@
               </div>
 
               <textarea
+                ref="texteEditRef"
                 v-model="texteEdit"
                 :disabled="lettre.regeneration_en_cours"
-                rows="14"
-                class="w-full rounded-lg border border-gray-200 p-3 text-sm text-gray-800 leading-relaxed disabled:bg-gray-50 disabled:text-gray-400"
+                rows="1"
+                class="w-full rounded-lg border border-gray-200 p-3 text-sm text-gray-800 leading-relaxed resize-none overflow-hidden disabled:bg-gray-50 disabled:text-gray-400"
+                @input="autoGrowTexte"
               />
 
               <div class="flex items-center gap-2">
@@ -360,11 +423,21 @@
             </section>
           </template>
         </div>
+        </div>
       </div>
 
       <!-- CV adapté -->
-      <div v-else-if="activeCard === 'CV'" class="flex-1 overflow-y-auto p-6">
-        <div class="max-w-3xl mx-auto space-y-5">
+      <div v-else-if="activeCard === 'CV'" class="flex-1 overflow-hidden flex">
+        <div v-if="offer" class="w-2/5 h-full overflow-y-auto border-r border-gray-100 p-6 flex-shrink-0">
+          <OfferSidePanel
+            :offer="offer"
+            :owned-techs="ownedTechs"
+            :missing-techs="missingTechs"
+            :rendered-description="renderedDescription"
+          />
+        </div>
+        <div class="flex-1 h-full overflow-y-auto p-6">
+        <div class="space-y-5">
           <!-- Statut de pièce + marque Prête (EXE-101) -->
           <div v-if="pieces" class="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
             <div class="flex items-center gap-2 text-xs font-medium">
@@ -486,6 +559,7 @@
 
             <p v-if="cvActionError" class="text-xs text-red-600">{{ cvActionError }}</p>
           </template>
+        </div>
         </div>
       </div>
 
@@ -1156,6 +1230,16 @@ const lettre = ref<Lettre | null>(null)
 const lettrePoints = ref<LettrePoint[] | null>(null)
 const lettreVersions = ref<LettreVersion[]>([])
 const texteEdit = ref('')
+const texteEditRef = ref<HTMLTextAreaElement | null>(null)
+
+function autoGrowTexte() {
+  const el = texteEditRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+watch(texteEdit, () => nextTick(autoGrowTexte))
 const lettreActionError = ref<string | null>(null)
 const lettreBusy = ref(false)
 const lettreCopied = ref(false)
@@ -1314,9 +1398,56 @@ const CARDS = [
 ]
 const activeCard = ref<string | null>(null)
 function openCard(title: string) {
+  if (title === 'CV' && cv.value?.statut === 'done') { ouvrirApercu(title); return }
+  if (title === 'Lettre de motivation' && lettre.value?.statut === 'done') { ouvrirApercu(title); return }
   activeCard.value = title
   if (title === 'Mail de candidature') chargerMail()
 }
+
+// ── Aperçu plein écran du CV et de la lettre (EXE-129) ──────────────────────
+const apercuCard = ref<string | null>(null)
+const lettreMiseEnPageHtml = ref<string | null>(null)
+const lettreMiseEnPageError = ref<string | null>(null)
+const cvFrame = ref<HTMLIFrameElement | null>(null)
+const lettreFrame = ref<HTMLIFrameElement | null>(null)
+
+function ouvrirApercu(title: string) {
+  apercuCard.value = title
+  if (title === 'Lettre de motivation' && !lettreMiseEnPageHtml.value) chargerLettreMiseEnPage()
+}
+
+function fermerApercu() {
+  apercuCard.value = null
+}
+
+function modifierDepuisApercu() {
+  const title = apercuCard.value
+  apercuCard.value = null
+  if (title) activeCard.value = title
+}
+
+async function chargerLettreMiseEnPage() {
+  lettreMiseEnPageError.value = null
+  try {
+    lettreMiseEnPageHtml.value = await $fetch<string>(`${lettreUrl()}/mise-en-page`, { responseType: 'text' })
+  } catch (e) {
+    lettreMiseEnPageHtml.value = null
+    lettreMiseEnPageError.value = await errorDetail(e)
+  }
+}
+
+function resizeFrame(frame: HTMLIFrameElement | null) {
+  const doc = frame?.contentDocument
+  if (doc) frame!.style.height = `${doc.documentElement.scrollHeight}px`
+}
+
+function onApercuKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && apercuCard.value) fermerApercu()
+}
+onMounted(() => window.addEventListener('keydown', onApercuKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onApercuKeydown))
+
+watch(activeCard, (title) => { if (title === 'Lettre de motivation') nextTick(autoGrowTexte) })
 
 const lettreVersionsRecentesDabord = computed(() => [...lettreVersions.value].reverse())
 
