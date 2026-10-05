@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div
-      v-if="ajouts.notifications.length"
+      v-if="ajouts.notifications.length || pieceNotifs.notifications.length"
       class="fixed bottom-4 right-4 z-50 w-80 flex flex-col gap-2"
       aria-live="polite"
     >
@@ -59,6 +59,33 @@
           </button>
         </template>
       </div>
+
+      <!-- Avancement des pièces d'une offre retenue (EXE-128) -->
+      <div
+        v-for="notif in pieceNotifs.notifications"
+        :key="notif.id"
+        class="relative bg-white border border-gray-200 rounded-lg shadow-lg p-3 pr-8 text-sm cursor-pointer hover:bg-gray-50"
+        role="button"
+        tabindex="0"
+        @click="ouvrirOffre(notif.offerId)"
+        @keydown.enter="ouvrirOffre(notif.offerId)"
+      >
+        <button
+          class="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+          aria-label="Fermer la notification"
+          @click.stop="pieceNotifs.fermer(notif.id)"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+
+        <p class="font-semibold" :class="notif.etat === 'terminee' ? 'text-indigo-700' : 'text-red-700'">
+          {{ titreNotification(notif) }}
+        </p>
+        <p class="text-xs text-gray-400 truncate">{{ notif.title ?? '(sans titre)' }}</p>
+        <p v-if="notif.etat === 'en_erreur' && notif.raison" class="mt-1 text-gray-700">{{ notif.raison }}</p>
+      </div>
     </div>
   </Teleport>
 </template>
@@ -67,11 +94,18 @@
 import { useAjoutsStore } from '~/stores/ajouts'
 import { useOffersStore } from '~/stores/offers'
 import type { Ajout, AjoutStatut, EnvoiEchoue } from '~/stores/ajouts'
+import { titreNotification, usePieceNotificationsStore } from '~/stores/pieceNotifications'
 
 const ajouts = useAjoutsStore()
 const offers = useOffersStore()
+const pieceNotifs = usePieceNotificationsStore()
 const route = useRoute()
 const router = useRouter()
+
+// Une notification de pièce ouvre toujours la page de l'offre, qu'elle qu'elle soit.
+function ouvrirOffre(offerId: number) {
+  router.push(`/offers/${offerId}`)
+}
 
 const TITRES: Record<Exclude<AjoutStatut, 'en_cours'>, { libelle: string; classe: string }> = {
   termine:        { libelle: 'Offre ajoutée',        classe: 'text-indigo-700' },

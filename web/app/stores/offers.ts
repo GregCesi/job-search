@@ -157,6 +157,22 @@ export interface MailCandidature {
   corps: string
 }
 
+// Avancement d'une pièce (EXE-127) — distinct de PieceStatut : dit si la
+// génération tourne, a fini ou a échoué, pas si la pièce est marquée Prête.
+export type AvancementEtat = 'en_attente' | 'en_cours' | 'terminee' | 'en_erreur'
+
+export interface AvancementPiece {
+  etat: AvancementEtat
+  raison: string | null
+}
+
+export interface Avancement {
+  fiche: AvancementPiece
+  cv: AvancementPiece
+  lettre: AvancementPiece
+  mail: AvancementPiece
+}
+
 export interface Filters {
   category?: string
   exclude_category?: string

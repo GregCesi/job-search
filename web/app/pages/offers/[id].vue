@@ -185,7 +185,13 @@
             >
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700">{{ card.title }}</span>
-                <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="cardBadge(card.title).class">{{ cardBadge(card.title).label }}</span>
+                <span class="flex items-center gap-1.5">
+                  <svg v-if="cardAvancement(card.title)?.etat === 'en_cours'" class="w-3 h-3 animate-spin text-amber-500" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                  </svg>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="cardBadge(card.title).class">{{ cardBadge(card.title).label }}</span>
+                </span>
               </div>
               <div class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
                 <span class="text-xs text-gray-300 italic">{{ cardPreview(card.title) }}</span>
@@ -246,9 +252,9 @@
           <p v-if="lettrePretError" class="text-xs text-red-600">{{ lettrePretError }}</p>
 
           <!-- Non éligible -->
-          <div v-if="!isRetenue || !ficheDone" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+          <div v-if="!isRetenue || lettreRaisonAttente" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
             <p v-if="!isRetenue" class="text-sm text-gray-400 italic">La lettre n'est générée que pour une offre retenue.</p>
-            <p v-else class="text-sm text-gray-400 italic">La fiche entreprise doit être terminée avant de générer la lettre.</p>
+            <p v-else class="text-sm text-gray-400 italic">{{ lettreRaisonAttente }}</p>
           </div>
 
           <template v-else>
@@ -607,7 +613,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { Cv, FicheEntreprise, FicheTas, Lettre, LettrePoint, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
+import type { Avancement, AvancementPiece, Cv, FicheEntreprise, FicheTas, Lettre, LettrePoint, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -629,12 +635,17 @@ onMounted(async () => {
   await chargerLettrePoints()
   await chargerLettreVersions()
   if (shouldPollLettre(lettre.value)) startLettrePolling()
-  if (isRetenue.value) await chargerPieces()
+  if (isRetenue.value) {
+    await chargerPieces()
+    await chargerAvancement()
+    if (avancementActif(avancement.value)) startAvancementPolling()
+  }
 })
 onBeforeUnmount(() => {
   stopPolling()
   stopCvPolling()
   stopLettrePolling()
+  stopAvancementPolling()
   if (cvBlobUrl) URL.revokeObjectURL(cvBlobUrl)
   if (lettreCopiedTimer) clearTimeout(lettreCopiedTimer)
   if (mailObjetTimer) clearTimeout(mailObjetTimer)
@@ -798,6 +809,15 @@ const PIECE_BADGE_CLASS: Record<PieceStatut, string> = {
 }
 
 function cardBadge(title: string): { label: string, class: string } {
+  const av = cardAvancement(title)
+  if (av && av.etat !== 'terminee') {
+    if (av.etat === 'en_cours') return { label: 'Génération…', class: 'bg-amber-50 text-amber-600' }
+    if (av.etat === 'en_erreur') return { label: 'Erreur', class: 'bg-red-50 text-red-600' }
+    return { label: av.raison ?? 'à produire', class: 'bg-gray-100 text-gray-400' } // en_attente
+  }
+  if (av?.etat === 'terminee' && title === 'Mail de candidature') {
+    return { label: 'Prêt', class: 'bg-green-50 text-green-700' }
+  }
   if (title === 'Entreprise' && fiche.value) {
     if (fiche.value.statut === 'pending') return { label: 'en cours', class: 'bg-amber-50 text-amber-600' }
     if (fiche.value.statut === 'done') return { label: 'prête', class: 'bg-green-50 text-green-700' }
@@ -813,6 +833,11 @@ function cardBadge(title: string): { label: string, class: string } {
 }
 
 function cardPreview(title: string): string {
+  const av = cardAvancement(title)
+  if (av && av.etat !== 'terminee') {
+    if (av.etat === 'en_cours') return 'Génération…'
+    return av.raison ?? 'Vide' // en_attente ou en_erreur sans raison
+  }
   if (title === 'Entreprise' && fiche.value?.statut === 'done') {
     return `${fiche.value.employeur_nom ?? 'employeur non trouvé'} · ${fiche.value.points.length} points`
   }
@@ -856,6 +881,62 @@ async function chargerPieces() {
     pieces.value = null // offre non retenue : pas de statut de pièce à afficher
   }
 }
+
+// ── Avancement des pièces (EXE-127/EXE-128) — ce que l'API rend, jamais recalculé ──
+const avancement = ref<Avancement | null>(null)
+let avancementPollTimer: ReturnType<typeof setInterval> | null = null
+
+const AVANCEMENT_KEY: Record<string, keyof Avancement> = {
+  'Entreprise': 'fiche',
+  'CV': 'cv',
+  'Lettre de motivation': 'lettre',
+  'Mail de candidature': 'mail',
+}
+
+function cardAvancement(title: string): AvancementPiece | null {
+  const key = AVANCEMENT_KEY[title]
+  return key ? avancement.value?.[key] ?? null : null
+}
+
+function avancementActif(a: Avancement | null): boolean {
+  if (!a) return false
+  return [a.fiche, a.cv, a.lettre].some(p => p.etat === 'en_attente' || p.etat === 'en_cours')
+}
+
+async function chargerAvancement() {
+  if (!isRetenue.value) { avancement.value = null; return }
+  try {
+    const next = await $fetch<Avancement>(`${config.public.apiBase}/offers/${id.value}/avancement`)
+    avancement.value = next
+    // La lettre vient de démarrer (fiche terminée côté API) : on rejoint son propre
+    // suivi, sans quoi son overlay resterait sur l'ancien statut jusqu'au rechargement.
+    if (next.lettre.etat === 'en_cours' && lettre.value?.statut !== 'pending') {
+      await chargerLettre()
+      if (lettre.value?.statut === 'pending') startLettrePolling()
+    }
+  } catch {
+    avancement.value = null
+  }
+}
+
+function stopAvancementPolling() {
+  if (avancementPollTimer) { clearInterval(avancementPollTimer); avancementPollTimer = null }
+}
+
+function startAvancementPolling() {
+  stopAvancementPolling()
+  let ticks = 0
+  avancementPollTimer = setInterval(async () => {
+    await chargerAvancement()
+    ticks++
+    if (!avancementActif(avancement.value) || ticks >= POLL_MAX) stopAvancementPolling()
+  }, 5000)
+}
+
+const lettreRaisonAttente = computed(() => {
+  const av = avancement.value?.lettre
+  return av && av.etat === 'en_attente' ? av.raison : null
+})
 
 async function toggleCvPret() {
   if (!pieces.value) return
@@ -1081,7 +1162,6 @@ const lettreCopied = ref(false)
 let lettreCopiedTimer: ReturnType<typeof setTimeout> | null = null
 let lettrePollTimer: ReturnType<typeof setInterval> | null = null
 
-const ficheDone = computed(() => fiche.value?.statut === 'done')
 const lettreUrl = () => `${config.public.apiBase}/offers/${id.value}/lettre`
 
 const EMPTY_LETTRE: Lettre = {

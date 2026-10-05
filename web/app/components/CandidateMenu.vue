@@ -43,6 +43,7 @@
 import { useOffersStore } from '~/stores/offers'
 import type { CandidateView } from '~/stores/offers'
 import { useAjoutsStore } from '~/stores/ajouts'
+import { usePieceNotificationsStore } from '~/stores/pieceNotifications'
 
 // Entrées du menu candidat, déclarées ici et nulle part ailleurs (EXE-80).
 // Une entrée `view` ouvre une vue de VIEW_PRESETS sur la page d'accueil ;
@@ -58,11 +59,16 @@ const MENU: MenuEntry[] = [
 
 const store = useOffersStore()
 const ajouts = useAjoutsStore()
+const pieceNotifs = usePieceNotificationsStore()
 const route = useRoute()
 const router = useRouter()
 
-// Le suivi des ajouts démarre une fois par session, sur la première page du cadre.
-onMounted(() => ajouts.start())
+// Le suivi des ajouts et des pièces démarre une fois par session, sur la
+// première page du cadre (EXE-128 pour les pièces).
+onMounted(() => {
+  ajouts.start()
+  pieceNotifs.start()
+})
 
 function isActive(entry: MenuEntry): boolean {
   if ('view' in entry) return route.path === '/' && store.activeView === entry.view
