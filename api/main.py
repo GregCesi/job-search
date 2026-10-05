@@ -10,6 +10,7 @@ from orchestrator.job_search.storage.db import init_db
 from .ajouts import router as ajouts_router
 from .avancement import router as avancement_router
 from .cv import router as cv_router
+from .cv import titre_defaut_router as cv_titre_defaut_router
 from .db import get_conn
 from .expiration import router as expiration_router
 from .export import router as export_router
@@ -57,6 +58,7 @@ app.include_router(export_router)
 app.include_router(traces_router)
 app.include_router(fiche_router)
 app.include_router(cv_router)
+app.include_router(cv_titre_defaut_router)
 app.include_router(lettre_router)
 app.include_router(mail_router)
 app.include_router(pieces_router)

@@ -23,8 +23,12 @@ from orchestrator.job_search.cv.corrections import (
 from orchestrator.job_search.cv.service import (
     CvNotReadyError,
     apply_correction,
+    clear_titre_defaut,
+    get_titre_defaut,
     reset_pending,
     run_cv,
+    set_titre,
+    set_titre_defaut,
 )
 from orchestrator.job_search.pdf.coordonnees import (
     CoordonneesManquantesError,
@@ -37,6 +41,9 @@ from orchestrator.job_search.pieces_state import mark_changed
 from .db import get_conn
 
 router = APIRouter(prefix="/offers")
+# Titre par défaut (EXE-130) : réglage global, pas une ressource d'offre — pas de
+# préfixe /offers/{offer_id}, à la différence du reste de ce module.
+titre_defaut_router = APIRouter()
 
 # Références fortes sur les tâches de fond (l'event loop ne garde que des références faibles).
 _tasks: set[asyncio.Task] = set()
@@ -58,6 +65,19 @@ class SkillCorrectionIn(BaseModel):
     competence: str
     maitrisee: bool | None = None
     groupe: str | None = None
+
+
+class CvTitreIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    titre: str
+    par_defaut: bool = False
+
+
+class TitreDefautIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    titre_defaut: str
 
 
 def _row_to_cv(row) -> dict:
@@ -168,6 +188,46 @@ def correct_cv_skill(offer_id: int, body: SkillCorrectionIn) -> dict:
             "SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)
         ).fetchone()
     return _row_to_cv(row)
+
+
+@router.put("/{offer_id}/cv/titre")
+def put_cv_titre(offer_id: int, body: CvTitreIn) -> dict:
+    with get_conn() as conn:
+        try:
+            titre = set_titre(conn, offer_id, body.titre)
+        except CvNotReadyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if body.par_defaut:
+            set_titre_defaut(conn, titre)
+        row = conn.execute(
+            "SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+    return _row_to_cv(row)
+
+
+@titre_defaut_router.get("/cv/titre-defaut")
+def get_cv_titre_defaut() -> dict:
+    with get_conn() as conn:
+        return {"titre_defaut": get_titre_defaut(conn)}
+
+
+@titre_defaut_router.put("/cv/titre-defaut")
+def put_cv_titre_defaut(body: TitreDefautIn) -> dict:
+    with get_conn() as conn:
+        try:
+            titre = set_titre_defaut(conn, body.titre_defaut)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"titre_defaut": titre}
+
+
+@titre_defaut_router.delete("/cv/titre-defaut")
+def delete_cv_titre_defaut() -> dict:
+    with get_conn() as conn:
+        clear_titre_defaut(conn)
+    return {"titre_defaut": None}
 
 
 @router.get("/{offer_id}/cv/pdf")

@@ -134,7 +134,8 @@ async def run_cv(offer_id: int) -> None:
                 techs_required, profile, alias_table, covered, threshold
             )
 
-            title = clean_title(offer["title"] or "")
+            titre_defaut = get_titre_defaut(conn)
+            title = titre_defaut if titre_defaut else clean_title(offer["title"] or "")
             location = detect_location(offer["location"], profile)
 
             # EXE-63 critères 3-5 : une offre qui nomme des technos toutes déjà couvertes
@@ -321,5 +322,75 @@ def apply_correction(
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         (offer_id, action, competence, int(outcome.maitrisee), outcome.groupe, _now()),
+    )
+    conn.commit()
+
+
+def set_titre(conn: sqlite3.Connection, offer_id: int, titre: str) -> str:
+    """Enregistre un titre choisi à la main pour le CV déjà généré d'une offre
+    (EXE-130), à la place du titre calculé depuis l'intitulé de l'offre.
+    Calcul 100% Python : aucun appel modèle. Une marque « Prête » (EXE-101)
+    est effacée : le contenu change, la validation humaine est à refaire.
+    """
+    init_db(conn)
+    row = conn.execute("SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)).fetchone()
+    if row is None or row["statut"] != "done":
+        raise CvNotReadyError(f"aucun CV terminé pour l'offre {offer_id}")
+    titre = titre.strip()
+    if not titre:
+        raise ValueError("le titre du CV ne peut pas être vide")
+
+    groupes = _groupes_from_json(row["groupes_json"])
+    notions = json.loads(row["notions_json"] or "[]")
+    if not CV_REFERENCE_PATH.exists():
+        raise FileNotFoundError(f"CV de référence manquant : {CV_REFERENCE_PATH}")
+    cv_html_ref = CV_REFERENCE_PATH.read_text(encoding="utf-8")
+    html = generate_cv_html(cv_html_ref, titre, row["localisation"], groupes, notions)
+
+    conn.execute(
+        "UPDATE cvs SET titre=?, html=?, marque_pret_at=NULL WHERE offer_id=?",
+        (titre, html, offer_id),
+    )
+    conn.commit()
+    return titre
+
+
+def get_titre_defaut(conn: sqlite3.Connection) -> str | None:
+    """Titre utilisé à la place de l'intitulé de l'offre pour les prochains CV
+    générés (EXE-130), ou `None` si aucun n'est enregistré. Jamais appliqué
+    aux CV déjà générés — il n'intervient qu'à la génération (`run_cv`)."""
+    init_db(conn)
+    row = conn.execute("SELECT titre_defaut FROM cv_settings WHERE id = 1").fetchone()
+    return row["titre_defaut"] if row and row["titre_defaut"] else None
+
+
+def set_titre_defaut(conn: sqlite3.Connection, titre_defaut: str) -> str:
+    """Enregistre le titre par défaut (EXE-130). Calcul 100% Python : aucun
+    appel modèle, aucune écriture sous un fichier suivi par git (table
+    `cv_settings`, dans `data/job_search.sqlite`, hors git)."""
+    init_db(conn)
+    titre_defaut = titre_defaut.strip()
+    if not titre_defaut:
+        raise ValueError("le titre par défaut ne peut pas être vide")
+    conn.execute(
+        """
+        INSERT INTO cv_settings (id, titre_defaut) VALUES (1, ?)
+        ON CONFLICT(id) DO UPDATE SET titre_defaut=excluded.titre_defaut
+        """,
+        (titre_defaut,),
+    )
+    conn.commit()
+    return titre_defaut
+
+
+def clear_titre_defaut(conn: sqlite3.Connection) -> None:
+    """Efface le titre par défaut (EXE-130) : les prochains CV reprennent
+    l'intitulé de l'offre, comme avant son enregistrement."""
+    init_db(conn)
+    conn.execute(
+        """
+        INSERT INTO cv_settings (id, titre_defaut) VALUES (1, NULL)
+        ON CONFLICT(id) DO UPDATE SET titre_defaut=NULL
+        """
     )
     conn.commit()

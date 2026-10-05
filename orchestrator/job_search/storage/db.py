@@ -111,6 +111,11 @@ def init_db(conn: sqlite3.Connection) -> None:
             UNIQUE(offer_id)
         );
 
+        CREATE TABLE IF NOT EXISTS cv_settings (
+            id           INTEGER PRIMARY KEY CHECK (id = 1), -- ligne unique (EXE-130)
+            titre_defaut TEXT  -- titre des prochains CV générés, NULL = intitulé de l'offre
+        );
+
         CREATE TABLE IF NOT EXISTS cv_corrections (
             id         INTEGER PRIMARY KEY,
             offer_id   INTEGER NOT NULL REFERENCES offers(id),

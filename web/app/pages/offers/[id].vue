@@ -484,24 +484,49 @@
 
           <!-- CV prêt -->
           <template v-else>
-            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 flex items-center justify-between gap-4">
-              <p class="text-xs text-gray-500">
-                <span class="text-gray-400">Titre</span> <span class="font-medium text-gray-700">{{ cv.titre ?? '—' }}</span>
-                <span class="text-gray-400 ml-3">Lieu</span> <span class="font-medium text-gray-700">{{ cv.localisation ?? '—' }}</span>
-              </p>
-              <div class="flex items-center gap-3 flex-shrink-0">
-                <a
-                  v-if="cvHtmlUrl"
-                  :href="cvHtmlUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-indigo-600 hover:underline font-medium text-sm"
-                >Ouvrir le CV ↗</a>
-                <button
-                  @click="telechargerCvPdf"
-                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                >Télécharger le PDF</button>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-3">
+              <div class="flex items-center justify-between gap-4">
+                <p class="text-xs text-gray-500">
+                  <span class="text-gray-400">Lieu</span> <span class="font-medium text-gray-700">{{ cv.localisation ?? '—' }}</span>
+                </p>
+                <div class="flex items-center gap-3 flex-shrink-0">
+                  <a
+                    v-if="cvHtmlUrl"
+                    :href="cvHtmlUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-indigo-600 hover:underline font-medium text-sm"
+                  >Ouvrir le CV ↗</a>
+                  <button
+                    @click="telechargerCvPdf"
+                    class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                  >Télécharger le PDF</button>
+                </div>
               </div>
+
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="cvTitreEdit"
+                  type="text"
+                  placeholder="Titre du CV"
+                  class="flex-1 rounded border border-gray-200 px-2 py-1 text-xs"
+                >
+                <button
+                  @click="enregistrerCvTitre"
+                  class="px-2.5 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-xs flex-shrink-0"
+                >Enregistrer</button>
+              </div>
+              <label class="flex items-center gap-2 text-xs text-gray-500">
+                <input type="checkbox" v-model="cvTitreParDefaut">
+                Utiliser ce titre pour les prochains CV
+              </label>
+              <p v-if="cvTitreError" class="text-xs text-red-600">{{ cvTitreError }}</p>
+
+              <div v-if="cvTitreDefaut" class="flex items-center gap-2 text-xs text-gray-500 pt-2 border-t border-gray-100">
+                <span>Titre par défaut <span class="font-medium text-gray-700">{{ cvTitreDefaut }}</span></span>
+                <button @click="effacerCvTitreDefaut" class="text-gray-400 hover:text-red-500">Effacer</button>
+              </div>
+              <p v-if="cvTitreDefautError" class="text-xs text-red-600">{{ cvTitreDefautError }}</p>
             </div>
             <p v-if="cvPdfError" class="text-xs text-red-600">{{ cvPdfError }}</p>
 
@@ -705,6 +730,7 @@ onMounted(async () => {
   if (fiche.value?.statut === 'pending') startPolling()
   await chargerCv()
   if (cv.value?.statut === 'pending') startCvPolling()
+  await chargerCvTitreDefaut()
   await chargerLettre()
   await chargerLettrePoints()
   await chargerLettreVersions()
@@ -1146,6 +1172,7 @@ const cvUrl = () => `${config.public.apiBase}/offers/${id.value}/cv`
 async function chargerCv() {
   try {
     cv.value = await $fetch<Cv>(cvUrl())
+    cvTitreEdit.value = cv.value.titre ?? ''
   } catch (e) {
     // 404 = pas encore de CV ; toute autre erreur (réseau) garde l'état courant
     if ((e as { statusCode?: number }).statusCode === 404) cv.value = null
@@ -1178,6 +1205,7 @@ async function genererCv() {
     const res = await $fetch<Cv>(cvUrl(), { method: 'POST' })
     if (res.statut === 'done') {
       cv.value = res // déjà terminé : rendu tel quel, aucun rappel du modèle
+      cvTitreEdit.value = res.titre ?? ''
       await chargerPieces()
     } else {
       cv.value = { ...EMPTY_CV, statut: 'pending' }
@@ -1216,6 +1244,47 @@ async function retirerCompetence(competence: string) {
     })
   } catch (e) {
     cvActionError.value = messageErreurCv(e)
+  }
+}
+
+// ── Titre du CV, et titre par défaut des prochains CV (EXE-130) ────────────
+const cvTitreEdit = ref('')
+const cvTitreParDefaut = ref(false)
+const cvTitreError = ref<string | null>(null)
+const cvTitreDefaut = ref<string | null>(null)
+const cvTitreDefautError = ref<string | null>(null)
+
+async function chargerCvTitreDefaut() {
+  try {
+    const res = await $fetch<{ titre_defaut: string | null }>(`${config.public.apiBase}/cv/titre-defaut`)
+    cvTitreDefaut.value = res.titre_defaut
+  } catch {
+    cvTitreDefaut.value = null
+  }
+}
+
+async function enregistrerCvTitre() {
+  cvTitreError.value = null
+  try {
+    cv.value = await $fetch<Cv>(`${cvUrl()}/titre`, {
+      method: 'PUT',
+      body: { titre: cvTitreEdit.value, par_defaut: cvTitreParDefaut.value },
+    })
+    cvTitreEdit.value = cv.value.titre ?? ''
+    await chargerPieces()
+    if (cvTitreParDefaut.value) await chargerCvTitreDefaut()
+  } catch (e) {
+    cvTitreError.value = messageErreurCv(e)
+  }
+}
+
+async function effacerCvTitreDefaut() {
+  cvTitreDefautError.value = null
+  try {
+    await $fetch(`${config.public.apiBase}/cv/titre-defaut`, { method: 'DELETE' })
+    cvTitreDefaut.value = null
+  } catch (e) {
+    cvTitreDefautError.value = messageErreurCv(e)
   }
 }
 
