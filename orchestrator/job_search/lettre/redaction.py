@@ -15,6 +15,13 @@ from pathlib import Path
 
 MAX_MOTS = 400
 
+# Raisons de blocage du lancement de la lettre (EXE-127, critère 15) — centralisées
+# ici pour que la route, l'avancement et la cascade au geste de retenir disent
+# toujours la même chose.
+RAISON_FICHE_NON_TERMINEE = "La fiche entreprise de cette offre n'est pas terminée"
+RAISON_TEXTE_MANQUANT = "Le texte de l'offre manque, impossible de générer la lettre"
+RAISON_AUCUN_POINT = "Aucun point n'est choisi pour la lettre"
+
 
 def resolve_chosen_indices(points: list[dict], stored_json: str | None) -> list[int]:
     """Indices des points choisis pour la lettre.
@@ -86,6 +93,21 @@ def resolve_offer_text(description_raw: str | None, description: str | None) -> 
     if (description or "").strip():
         return description
     return ""
+
+
+def blocage_lancement_lettre(
+    fiche_statut: str | None, offer_text: str, chosen_indices: list[int]
+) -> str | None:
+    """Raison qui empêche de lancer la lettre, ou `None` si elle peut partir
+    (EXE-127, critères 6, 7, 10, 15) : fiche pas terminée, texte d'offre manquant,
+    puis aucun point choisi — dans cet ordre, le premier qui bloque gagne."""
+    if fiche_statut != "done":
+        return RAISON_FICHE_NON_TERMINEE
+    if not offer_text:
+        return RAISON_TEXTE_MANQUANT
+    if not chosen_indices:
+        return RAISON_AUCUN_POINT
+    return None
 
 
 def build_prompt(

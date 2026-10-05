@@ -2,6 +2,11 @@
 
 Seules deux routes appellent le SDK : POST /fiche (génération, action explicite) et
 POST /fiche/points/{idx}/explain (reprise de session). PATCH ne touche que la base.
+
+Retenir une offre lance aussi la fiche (TCK-281, EXE-127) : `launch_fiche` est le
+point d'entrée idempotent partagé entre la route et la cascade de `api/cascade.py`.
+Sa fin enchaîne la lettre (`launch_lettre_if_ready`) sur les points qu'elle désigne
+elle-même — jamais sur un changement de profil ou de verdict ultérieur.
 """
 
 import asyncio
@@ -15,7 +20,9 @@ from pydantic import BaseModel, ConfigDict
 from orchestrator.job_search.fiche import intermediaires
 from orchestrator.job_search.fiche.service import reset_pending, run_fiche
 from orchestrator.job_search.paths import FICHE_CWD
+from orchestrator.job_search.pieces_state import mark_changed
 
+from . import lettre as lettre_api
 from .db import get_conn
 
 router = APIRouter(prefix="/offers")
@@ -23,6 +30,14 @@ router = APIRouter(prefix="/offers")
 # Références fortes sur les tâches de fond (l'event loop ne garde que des références faibles).
 _tasks: set[asyncio.Task] = set()
 _running: set[int] = set()
+
+
+def is_running(offer_id: int) -> bool:
+    return offer_id in _running
+
+
+def running_offer_ids() -> set[int]:
+    return set(_running)
 
 Tas = Literal["lettre", "entretien", "rien"]
 
@@ -70,6 +85,30 @@ async def _generate(offer_id: int) -> None:
         await run_fiche(offer_id)
     finally:
         _running.discard(offer_id)
+    mark_changed(offer_id)
+    # Enchaînement (TCK-281) : la fiche désigne elle-même les points de la lettre
+    # et la lance si elle peut partir — jamais depuis un autre déclencheur.
+    await lettre_api.launch_lettre_if_ready(offer_id)
+
+
+async def launch_fiche(offer_id: int) -> asyncio.Task | None:
+    """Lance la génération si elle n'est pas déjà en cours ni déjà terminée —
+    idempotent (critères 1, 11, 12 du ticket EXE-127). Rend la tâche créée, ou
+    `None` si rien n'a été lancé."""
+    if offer_id in _running:
+        return None
+    with get_conn() as conn:
+        f = conn.execute(
+            "SELECT statut FROM fiches_entreprise WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if f is not None and f["statut"] == "done":
+            return None
+        reset_pending(conn, offer_id)
+    _running.add(offer_id)
+    task = asyncio.create_task(_generate(offer_id))
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+    return task
 
 
 @router.post("/{offer_id}/fiche", status_code=202)
@@ -91,13 +130,7 @@ async def create_fiche(offer_id: int) -> dict:
                 status_code=409,
                 detail="Fiche déjà produite : la relancer effacerait les annotations",
             )
-        if offer_id not in _running:
-            reset_pending(conn, offer_id)
-    if offer_id not in _running:
-        _running.add(offer_id)
-        task = asyncio.create_task(_generate(offer_id))
-        _tasks.add(task)
-        task.add_done_callback(_tasks.discard)
+    await launch_fiche(offer_id)
     return {"statut": "pending"}
 
 

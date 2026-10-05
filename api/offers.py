@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from . import cascade
 from .db import get_conn
 from .schemas import (
     CategoryReviewIn,
@@ -576,7 +577,7 @@ def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:
 
 
 @router.put("/offers/{offer_id}/verdict", status_code=204)
-def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
+async def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
     conn = get_conn()
     try:
         offer = conn.execute(
@@ -602,6 +603,11 @@ def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
         conn.commit()
     finally:
         conn.close()
+
+    if body.status == "retenu":
+        # Geste de retenir = action explicite de lancement (TCK-281) : la fiche
+        # et le CV partent sans autre appel de ma part.
+        await cascade.launch_pieces(offer_id)
 
 
 # ---------------------------------------------------------------------------

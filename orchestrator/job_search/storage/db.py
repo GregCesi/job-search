@@ -126,6 +126,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             offer_id                  INTEGER NOT NULL REFERENCES offers(id),
             statut                    TEXT NOT NULL DEFAULT 'aucune', -- aucune|pending|done|error
             points_choisis_json       TEXT,  -- indices choisis ; NULL = défaut (tas "lettre", EXE-65 §H2)
+            points_choisis_origine    TEXT,  -- systeme|moi ; NULL = choix jamais posé (EXE-127)
             texte                     TEXT,
             tournures_signalees_json  TEXT,  -- JSON array des tournures interdites trouvées
             nb_mots                   INTEGER,
@@ -231,6 +232,8 @@ def migrate_lettres_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE lettres ADD COLUMN regeneration_error TEXT")
     if "marque_pret_at" not in existing:
         conn.execute("ALTER TABLE lettres ADD COLUMN marque_pret_at TEXT")
+    if "points_choisis_origine" not in existing:
+        conn.execute("ALTER TABLE lettres ADD COLUMN points_choisis_origine TEXT")
     conn.commit()
 
 

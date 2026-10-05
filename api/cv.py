@@ -2,6 +2,10 @@
 
 POST déclenche la génération (action explicite, offre retenue seulement — critère 2).
 Si un CV est déjà `done`, POST le rend tel quel sans rappeler le modèle (critère 1).
+
+Retenir une offre lance aussi le CV, en parallèle de la fiche (TCK-281, EXE-127) :
+`launch_cv` est le point d'entrée idempotent partagé entre la route et la cascade
+de `api/cascade.py`. Le CV est indépendant de la fiche entreprise, rien n'attend.
 """
 
 import asyncio
@@ -28,6 +32,7 @@ from orchestrator.job_search.pdf.coordonnees import (
 )
 from orchestrator.job_search.pdf.filename import resolve_piece_filename
 from orchestrator.job_search.pdf.render import html_to_pdf
+from orchestrator.job_search.pieces_state import mark_changed
 
 from .db import get_conn
 
@@ -36,6 +41,14 @@ router = APIRouter(prefix="/offers")
 # Références fortes sur les tâches de fond (l'event loop ne garde que des références faibles).
 _tasks: set[asyncio.Task] = set()
 _running: set[int] = set()
+
+
+def is_running(offer_id: int) -> bool:
+    return offer_id in _running
+
+
+def running_offer_ids() -> set[int]:
+    return set(_running)
 
 
 class SkillCorrectionIn(BaseModel):
@@ -70,6 +83,27 @@ async def _generate(offer_id: int) -> None:
         await run_cv(offer_id)
     finally:
         _running.discard(offer_id)
+    mark_changed(offer_id)
+
+
+async def launch_cv(offer_id: int) -> asyncio.Task | None:
+    """Lance la génération si elle n'est pas déjà en cours ni déjà terminée —
+    idempotent (critères 1, 11, 12 du ticket EXE-127). Rend la tâche créée, ou
+    `None` si rien n'a été lancé."""
+    if offer_id in _running:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT statut FROM cvs WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if row is not None and row["statut"] == "done":
+            return None
+        reset_pending(conn, offer_id)
+    _running.add(offer_id)
+    task = asyncio.create_task(_generate(offer_id))
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+    return task
 
 
 @router.post("/{offer_id}/cv")
@@ -89,13 +123,7 @@ async def create_cv(offer_id: int, response: Response) -> dict:
         if row is not None and row["statut"] == "done":
             response.status_code = 200
             return _row_to_cv(row)
-        if offer_id not in _running:
-            reset_pending(conn, offer_id)
-    if offer_id not in _running:
-        _running.add(offer_id)
-        task = asyncio.create_task(_generate(offer_id))
-        _tasks.add(task)
-        task.add_done_callback(_tasks.discard)
+    await launch_cv(offer_id)
     response.status_code = 202
     return {"statut": "pending"}
 

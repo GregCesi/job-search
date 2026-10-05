@@ -12,6 +12,12 @@ PUT /lettre/texte enregistre le texte repris par l'utilisateur (calcul 100% Pyth
 aucun appel modèle). POST /lettre/regenerer relance le modèle depuis le choix de
 points courant sans toucher à la version d'avant tant qu'elle n'a pas abouti.
 GET /lettre/versions rend l'historique, jamais réécrit ni tronqué.
+
+Enchaînement (TCK-281, EXE-127) : `launch_lettre_if_ready` est appelé par la fiche
+entreprise (api/fiche.py) dès qu'elle se termine — jamais par un changement de
+profil ni par un rescore. Il désigne lui-même les points (tous ceux de la fiche)
+si je n'en ai jamais choisi à la main, sans jamais remplacer un choix que j'ai
+fait (`points_choisis_origine`).
 """
 
 import asyncio
@@ -23,6 +29,7 @@ from pydantic import BaseModel, ConfigDict
 
 import orchestrator.job_search.lettre.service as lettre_service
 from orchestrator.job_search.lettre.redaction import (
+    blocage_lancement_lettre,
     point_text,
     resolve_chosen_indices,
     resolve_offer_text,
@@ -35,6 +42,7 @@ from orchestrator.job_search.pdf.coordonnees import (
 from orchestrator.job_search.pdf.filename import resolve_piece_filename
 from orchestrator.job_search.pdf.lettre_html import build_lettre_html
 from orchestrator.job_search.pdf.render import html_to_pdf
+from orchestrator.job_search.pieces_state import mark_changed
 
 from .db import get_conn
 
@@ -43,6 +51,14 @@ router = APIRouter(prefix="/offers")
 # Références fortes sur les tâches de fond (l'event loop ne garde que des références faibles).
 _tasks: set[asyncio.Task] = set()
 _running: set[int] = set()
+
+
+def is_running(offer_id: int) -> bool:
+    return offer_id in _running
+
+
+def running_offer_ids() -> set[int]:
+    return set(_running)
 
 
 class PointsChoisisIn(BaseModel):
@@ -107,9 +123,11 @@ def set_lettre_points(offer_id: int, body: PointsChoisisIn) -> list[dict]:
                 raise HTTPException(status_code=404, detail="Point inconnu")
         conn.execute(
             """
-            INSERT INTO lettres (offer_id, statut, points_choisis_json, created_at)
-            VALUES (?, 'aucune', ?, ?)
-            ON CONFLICT(offer_id) DO UPDATE SET points_choisis_json=excluded.points_choisis_json
+            INSERT INTO lettres (offer_id, statut, points_choisis_json, points_choisis_origine, created_at)
+            VALUES (?, 'aucune', ?, 'moi', ?)
+            ON CONFLICT(offer_id) DO UPDATE SET
+                points_choisis_json=excluded.points_choisis_json,
+                points_choisis_origine='moi'
             """,
             (offer_id, json.dumps(sorted(set(body.indices))), _now()),
         )
@@ -133,6 +151,7 @@ def _row_to_lettre(row) -> dict:
         "created_at": row["created_at"],
         "regeneration_en_cours": bool(row["regeneration_en_cours"]),
         "regeneration_error": row["regeneration_error"],
+        "points_choisis_origine": row["points_choisis_origine"],
     }
 
 
@@ -141,6 +160,90 @@ async def _generate(offer_id: int) -> None:
         await run_lettre(offer_id)
     finally:
         _running.discard(offer_id)
+    mark_changed(offer_id)
+
+
+async def launch_lettre(offer_id: int) -> asyncio.Task | None:
+    """Lance la génération si elle n'est pas déjà en cours ni déjà terminée —
+    idempotent (critères 2, 11, 12 du ticket EXE-127). Rend la tâche créée, ou
+    `None` si rien n'a été lancé. N'effectue aucune des gardes de lancement
+    (fiche terminée, texte présent, point choisi) : c'est à l'appelant de les
+    avoir vérifiées (route POST, ou `launch_lettre_if_ready`)."""
+    if offer_id in _running:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT statut FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if row is not None and row["statut"] == "done":
+            return None
+        reset_pending(conn, offer_id)
+    _running.add(offer_id)
+    task = asyncio.create_task(_generate(offer_id))
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+    return task
+
+
+def _fiche_statut_et_points(conn, offer_id: int) -> tuple[str | None, list[dict]]:
+    row = conn.execute(
+        "SELECT statut, points_json FROM fiches_entreprise WHERE offer_id = ?",
+        (offer_id,),
+    ).fetchone()
+    if row is None:
+        return None, []
+    return row["statut"], json.loads(row["points_json"] or "[]")
+
+
+def _offer_text(conn, offer_id: int) -> str:
+    row = conn.execute(
+        "SELECT description_raw, description FROM offers WHERE id = ?", (offer_id,)
+    ).fetchone()
+    return resolve_offer_text(
+        row["description_raw"] if row else None, row["description"] if row else None
+    )
+
+
+async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
+    """Enchaîné dès que la fiche entreprise se termine (TCK-281) : désigne tous
+    ses points pour la lettre si je n'en ai jamais choisi à la main, puis lance
+    si les trois gardes (fiche terminée, texte présent, au moins un point) sont
+    satisfaites. Ne remplace jamais un choix que j'ai fait (`points_choisis_origine
+    == 'moi'`) — critère « ne doit pas arriver » du ticket."""
+    with get_conn() as conn:
+        fiche_statut, points = _fiche_statut_et_points(conn, offer_id)
+
+        row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if row is not None and row["statut"] == "done":
+            return None
+
+        if points and (row is None or row["points_choisis_origine"] != "moi"):
+            conn.execute(
+                """
+                INSERT INTO lettres
+                    (offer_id, statut, points_choisis_json, points_choisis_origine, created_at)
+                VALUES (?, 'aucune', ?, 'systeme', ?)
+                ON CONFLICT(offer_id) DO UPDATE SET
+                    points_choisis_json=excluded.points_choisis_json,
+                    points_choisis_origine='systeme'
+                """,
+                (offer_id, json.dumps(list(range(len(points)))), _now()),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+            ).fetchone()
+
+        offer_text = _offer_text(conn, offer_id)
+        chosen = resolve_chosen_indices(
+            points, row["points_choisis_json"] if row is not None else None
+        )
+        if blocage_lancement_lettre(fiche_statut, offer_text, chosen) is not None:
+            return None
+
+    return await launch_lettre(offer_id)
 
 
 @router.post("/{offer_id}/lettre")
@@ -154,14 +257,6 @@ async def create_lettre(offer_id: int, response: Response) -> dict:
                 status_code=409,
                 detail="La lettre n'est générée que pour une offre retenue",
             )
-        f = conn.execute(
-            "SELECT statut FROM fiches_entreprise WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if f is None or f["statut"] != "done":
-            raise HTTPException(
-                status_code=409,
-                detail="La fiche entreprise de cette offre n'est pas terminée",
-            )
         row = conn.execute(
             "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
         ).fetchone()
@@ -169,34 +264,15 @@ async def create_lettre(offer_id: int, response: Response) -> dict:
             response.status_code = 200
             return _row_to_lettre(row)
 
-        o = conn.execute(
-            "SELECT description_raw, description FROM offers WHERE id = ?",
-            (offer_id,),
-        ).fetchone()
-        if not resolve_offer_text(
-            o["description_raw"] if o else None, o["description"] if o else None
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="Le texte de l'offre manque, impossible de générer la lettre",
-            )
-
-        points = _fetch_fiche_points(conn, offer_id) or []
+        fiche_statut, points = _fiche_statut_et_points(conn, offer_id)
+        offer_text = _offer_text(conn, offer_id)
         chosen = resolve_chosen_indices(
             points, row["points_choisis_json"] if row is not None else None
         )
-        if not chosen:
-            raise HTTPException(
-                status_code=409, detail="Aucun point n'est choisi pour la lettre"
-            )
-
-        if offer_id not in _running:
-            reset_pending(conn, offer_id)
-    if offer_id not in _running:
-        _running.add(offer_id)
-        task = asyncio.create_task(_generate(offer_id))
-        _tasks.add(task)
-        task.add_done_callback(_tasks.discard)
+        blocage = blocage_lancement_lettre(fiche_statut, offer_text, chosen)
+        if blocage is not None:
+            raise HTTPException(status_code=409, detail=blocage)
+    await launch_lettre(offer_id)
     response.status_code = 202
     return {"statut": "pending"}
 
@@ -239,6 +315,7 @@ async def _regenerate(offer_id: int) -> None:
         await lettre_service.run_lettre_regenerate(offer_id)
     finally:
         _running.discard(offer_id)
+    mark_changed(offer_id)
 
 
 @router.post("/{offer_id}/lettre/regenerer")
