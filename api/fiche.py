@@ -39,6 +39,7 @@ def is_running(offer_id: int) -> bool:
 def running_offer_ids() -> set[int]:
     return set(_running)
 
+
 Tas = Literal["lettre", "entretien", "rien"]
 
 

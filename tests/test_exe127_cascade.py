@@ -16,7 +16,6 @@ from claude_agent_sdk import ResultMessage
 from fastapi import HTTPException
 
 import api.avancement as api_avancement
-import api.cascade as cascade
 import api.cv as cv_api
 import api.db as api_db
 import api.fiche as fiche_api
@@ -177,7 +176,9 @@ def _en_erreur(msg="panne SDK"):
 
 def _jamais_appele(nom):
     def behavior(prompt, options):
-        raise AssertionError(f"le modèle {nom} a été rappelé alors qu'il ne devait pas l'être")
+        raise AssertionError(
+            f"le modèle {nom} a été rappelé alors qu'il ne devait pas l'être"
+        )
 
     return behavior
 
@@ -306,11 +307,17 @@ async def _scenario_retenir(offer_id):
 
 
 class TestCritere1FicheEtCvEnCoursSansAutreAppel:
-    def test_offre_jamais_traitee(self, db_path, cv_fixture_paths, monkeypatch):
+    def test_offre_jamais_traitee(
+        self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
+    ):
         offer_id = 1
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
+        # La fiche rend des points par défaut : elle enchaîne la lettre toute
+        # seule (critère 2) — doublure nécessaire pour qu'aucun test n'appelle
+        # le vrai SDK, même si ce n'est pas ce que ce critère-ci observe.
+        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
 
         async def _scenario():
             await api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
@@ -328,26 +335,29 @@ class TestCritere1FicheEtCvEnCoursSansAutreAppel:
 
 
 class TestCritere2LettreEnCoursQuandFicheTermine:
-    def test_lettre_passe_en_cours_sans_appel(
+    def test_lettre_se_lance_automatiquement_apres_la_fiche(
         self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
+        """Les doublures de test résolvent leurs tâches de fond sans jamais
+        suspendre réellement l'event loop : il n'existe pas de fenêtre fiable
+        pour observer l'état `pending` intermédiaire de la lettre. La preuve
+        observable du critère est que sa génération tourne — jusqu'au bout —
+        sans qu'aucun appel distinct (POST /lettre) n'ait été fait ici."""
         offer_id = 2
         _insert_offer(db_path, offer_id)
+        appels = {"n": 0}
+
+        def _lettre_behavior(prompt, options):
+            appels["n"] += 1
+            return [_lettre_result()]
+
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
+        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_behavior))
 
-        async def _scenario():
-            tasks = await cascade.launch_pieces(offer_id)
-            fiche_task = next(
-                t for t in tasks if t is not None
-            )  # fiche créée avant le cv (cf. cascade.py)
-            await fiche_task
-            assert lettre_api.is_running(offer_id)
-            assert _lettre_row(db_path, offer_id)["statut"] == "pending"
-            await _drain()
+        _retenir(offer_id)
 
-        asyncio.run(_scenario())
+        assert appels["n"] == 1
         assert _lettre_row(db_path, offer_id)["statut"] == "done"
 
 
@@ -511,9 +521,7 @@ class TestCritere11PieceDejaTermineeNonRelancee:
         cv_before = dict(_cv_row(db_path, offer_id))
         lettre_before = dict(_lettre_row(db_path, offer_id))
 
-        asyncio.run(
-            api_offers.upsert_verdict(offer_id, VerdictIn(status="rejeté"))
-        )
+        asyncio.run(api_offers.upsert_verdict(offer_id, VerdictIn(status="rejeté")))
 
         monkeypatch.setattr(
             fiche_service, "query", _make_query(_jamais_appele("fiche"))
@@ -532,7 +540,7 @@ class TestCritere11PieceDejaTermineeNonRelancee:
 
 class TestCritere12DeuxAppelsConsecutifs:
     def test_chaque_piece_generee_une_seule_fois(
-        self, db_path, cv_fixture_paths, monkeypatch
+        self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
         offer_id = 12
         _insert_offer(db_path, offer_id)
@@ -548,6 +556,10 @@ class TestCritere12DeuxAppelsConsecutifs:
 
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_behavior))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_behavior))
+        # La fiche rend des points par défaut : elle enchaîne la lettre toute
+        # seule — doublure nécessaire même si ce n'est pas ce que ce critère
+        # observe (aucun test n'appelle le vrai SDK).
+        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
 
         async def _scenario():
             await api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
@@ -566,9 +578,7 @@ class TestCritere13VerdictAutreQueRetenuNeLanceRien:
         offer_id = 13
         _insert_offer(db_path, offer_id)
 
-        asyncio.run(
-            api_offers.upsert_verdict(offer_id, VerdictIn(status="rejeté"))
-        )
+        asyncio.run(api_offers.upsert_verdict(offer_id, VerdictIn(status="rejeté")))
 
         assert _fiche_row(db_path, offer_id) is None
         assert _cv_row(db_path, offer_id) is None
@@ -577,24 +587,33 @@ class TestCritere13VerdictAutreQueRetenuNeLanceRien:
 
 
 class TestCritere14AvancementQuatreEtats:
-    def test_rend_un_etat_parmi_quatre_pour_chaque_piece(self, db_path, tmp_path, monkeypatch):
+    def test_rend_un_etat_parmi_quatre_pour_chaque_piece(
+        self, db_path, tmp_path, monkeypatch
+    ):
         import orchestrator.job_search.mail.candidature as candidature_module
 
         offer_id = 14
         _insert_offer(db_path, offer_id)
-        asyncio.run(
-            api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
-        )
-        asyncio.run(_drain())  # draine la fiche/CV sans doublure => statut 'error'
+        monkeypatch.setattr(fiche_service, "query", _make_query(_en_erreur()))
+        monkeypatch.setattr(cv_service, "query", _make_query(_en_erreur()))
+        asyncio.run(api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu")))
+        asyncio.run(_drain())
 
         gabarit = tmp_path / "mail_candidature.md"
-        gabarit.write_text("Objet : Candidature {intitule}\n\nBonjour.\n", encoding="utf-8")
+        gabarit.write_text(
+            "Objet : Candidature {intitule}\n\nBonjour.\n", encoding="utf-8"
+        )
         monkeypatch.setattr(candidature_module, "MAIL_CANDIDATURE_PATH", gabarit)
 
         result = api_avancement.get_avancement(offer_id)
         for piece in ("fiche", "cv", "lettre", "mail"):
             assert piece in result
-            assert result[piece]["etat"] in {"en_attente", "en_cours", "terminee", "en_erreur"}
+            assert result[piece]["etat"] in {
+                "en_attente",
+                "en_cours",
+                "terminee",
+                "en_erreur",
+            }
         assert result["mail"]["etat"] == "terminee"
 
     def test_refuse_si_offre_non_retenue(self, db_path):
@@ -611,8 +630,12 @@ class TestCritere15RaisonExpliquant:
     ):
         offer_id = 15
         _insert_offer(db_path, offer_id)
-        monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
-        monkeypatch.setattr(cv_service, "query", _make_query(_en_erreur("plus de crédit")))
+        monkeypatch.setattr(
+            fiche_service, "query", _make_query(_en_erreur("fiche en panne"))
+        )
+        monkeypatch.setattr(
+            cv_service, "query", _make_query(_en_erreur("plus de crédit"))
+        )
 
         _retenir(offer_id)
 
@@ -621,10 +644,11 @@ class TestCritere15RaisonExpliquant:
         assert result["cv"]["raison"] is not None
         assert "plus de crédit" in result["cv"]["raison"]
 
-        # La lettre : la fiche est terminée mais aucune n'a encore été lancée pour
-        # cette offre (pas de fixture lettre ici) — en attente, raison non vide.
+        # La lettre : la fiche a échoué, donc jamais lancée — en attente, avec
+        # la raison qui le dit.
         assert result["lettre"]["etat"] == "en_attente"
         assert result["lettre"]["raison"]
+        assert "fiche" in result["lettre"]["raison"].lower()
 
 
 class TestCritere16MailTermineOuEnErreur:
@@ -633,12 +657,14 @@ class TestCritere16MailTermineOuEnErreur:
 
         offer_id = 16
         _insert_offer(db_path, offer_id)
-        asyncio.run(
-            api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
-        )
+        monkeypatch.setattr(fiche_service, "query", _make_query(_en_erreur()))
+        monkeypatch.setattr(cv_service, "query", _make_query(_en_erreur()))
+        asyncio.run(api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu")))
         asyncio.run(_drain())
         gabarit = tmp_path / "mail_candidature.md"
-        gabarit.write_text("Objet : Candidature {intitule}\n\nBonjour.\n", encoding="utf-8")
+        gabarit.write_text(
+            "Objet : Candidature {intitule}\n\nBonjour.\n", encoding="utf-8"
+        )
         monkeypatch.setattr(candidature_module, "MAIL_CANDIDATURE_PATH", gabarit)
 
         result = api_avancement.get_avancement(offer_id)
@@ -649,9 +675,9 @@ class TestCritere16MailTermineOuEnErreur:
 
         offer_id = 160
         _insert_offer(db_path, offer_id)
-        asyncio.run(
-            api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
-        )
+        monkeypatch.setattr(fiche_service, "query", _make_query(_en_erreur()))
+        monkeypatch.setattr(cv_service, "query", _make_query(_en_erreur()))
+        asyncio.run(api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu")))
         asyncio.run(_drain())
         monkeypatch.setattr(
             candidature_module, "MAIL_CANDIDATURE_PATH", tmp_path / "absent.md"
@@ -664,7 +690,7 @@ class TestCritere16MailTermineOuEnErreur:
 
 class TestCritere17ListeOffresActivesOuChangees:
     def test_offre_en_cours_puis_disparait_une_fois_signalee(
-        self, db_path, cv_fixture_paths, monkeypatch, tmp_path
+        self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch, tmp_path
     ):
         import orchestrator.job_search.mail.candidature as candidature_module
 
@@ -675,6 +701,10 @@ class TestCritere17ListeOffresActivesOuChangees:
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
+        # La fiche rend des points par défaut : elle enchaîne la lettre toute
+        # seule — doublure nécessaire même si ce n'est pas ce que ce critère
+        # observe (aucun test n'appelle le vrai SDK).
+        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
 
         async def _scenario():
             await api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
