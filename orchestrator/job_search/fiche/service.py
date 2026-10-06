@@ -24,6 +24,9 @@ from orchestrator.job_search.paths import FICHE_CWD
 from orchestrator.job_search.storage.db import get_connection, init_db
 
 MAX_POINTS = 8
+# Plafond des points que la fiche désigne elle-même pour la lettre (EXE-132, H3) —
+# constaté comme maximum choisi à la main sur les fiches du 5 octobre 2026.
+MAX_LETTRE_POINTS = 4
 
 _FICHE_SCHEMA = {
     "type": "object",
@@ -67,6 +70,11 @@ _FICHE_SCHEMA = {
                 },
                 "required": ["position"],
             },
+        },
+        "points_pour_lettre": {
+            "type": "array",
+            "maxItems": MAX_LETTRE_POINTS,
+            "items": {"type": "integer"},
         },
     },
     "required": ["mode", "presentation", "employeur", "points"],
@@ -168,6 +176,17 @@ async def run_fiche(offer_id: int) -> None:
 
             out = _parse_output(result)
             employeur = out.get("employeur") or {}
+            raw_points = (out.get("points") or [])[:MAX_POINTS]
+            # Désignation pour la lettre (EXE-132) : index invalides ignorés (critère 5),
+            # seuls les quatre premiers valides, dans l'ordre désigné, sont gardés (critère 4).
+            valid_designated = [
+                i
+                for i in (out.get("points_pour_lettre") or [])
+                if isinstance(i, int)
+                and not isinstance(i, bool)
+                and 0 <= i < len(raw_points)
+            ]
+            kept_designated = set(valid_designated[:MAX_LETTRE_POINTS])
             points = [
                 {
                     "position": p.get("position"),
@@ -175,8 +194,9 @@ async def run_fiche(offer_id: int) -> None:
                     "url": p.get("url"),
                     "tas": None,
                     "explication": None,
+                    "pour_lettre": i in kept_designated,
                 }
-                for p in (out.get("points") or [])[:MAX_POINTS]
+                for i, p in enumerate(raw_points)
             ]
             conn.execute(
                 """

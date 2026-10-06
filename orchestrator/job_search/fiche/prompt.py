@@ -9,6 +9,17 @@ from orchestrator.job_search.paths import FICHE_COMMAND_PATH
 _FRONTMATTER = re.compile(r"\A---\n.*?\n---\n", re.DOTALL)
 _MANUEL = re.compile(r"<!-- MANUEL -->.*?<!-- /MANUEL -->\n?", re.DOTALL)
 
+# Consigne ajoutée en code (EXE-132) : le format de réponse de la fiche gagne un champ
+# `points_pour_lettre`, le texte de .claude/commands/fiche-entreprise.md reste inchangé
+# (H5 du ticket — aucune écriture sous .claude/).
+_CONSIGNE_POINTS_POUR_LETTRE = (
+    "En plus de l'objet JSON demandé ci-dessus, ajoute un champ `points_pour_lettre` : "
+    "un tableau des index (0-based, dans l'ordre où tu les rends dans `points`) des "
+    "points qui donnent une raison précise de vouloir ce poste dans cette entreprise, "
+    "en lien avec le profil du candidat — quatre au plus, un tableau vide si aucun "
+    "point ne s'y prête."
+)
+
 
 def load_template() -> str:
     text = FICHE_COMMAND_PATH.read_text(encoding="utf-8")
@@ -27,5 +38,6 @@ def build_prompt(offer: sqlite3.Row, cascade: CascadeResult) -> str:
         f"Entreprise annoncée : {offer['company'] or 'non précisée'}\n"
         f"Lieu : {offer['location'] or 'non précisé'}\n"
         f"{url_line}"
-        f"Description :\n{desc[:12000]}"
+        f"Description :\n{desc[:12000]}\n\n---\n"
+        f"{_CONSIGNE_POINTS_POUR_LETTRE}"
     )

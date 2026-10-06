@@ -88,7 +88,14 @@ def _make_query(behavior):
     return _query
 
 
-def _fiche_result(points, session_id="fiche-session", cost=0.1):
+def _fiche_result(
+    points, session_id="fiche-session", cost=0.1, points_pour_lettre=None
+):
+    """`points_pour_lettre` par défaut = tous les points rendus (EXE-132, critère 1) :
+    ce double représente un modèle qui désigne tout ce qu'il rend, pour ne pas changer
+    les attentes des tests EXE-127 qui ne portent pas sur la désignation elle-même."""
+    if points_pour_lettre is None:
+        points_pour_lettre = list(range(len(points)))
     return ResultMessage(
         subtype="success",
         duration_ms=1,
@@ -110,6 +117,7 @@ def _fiche_result(points, session_id="fiche-session", cost=0.1):
                 "urls": [],
             },
             "points": points,
+            "points_pour_lettre": points_pour_lettre,
         },
     )
 

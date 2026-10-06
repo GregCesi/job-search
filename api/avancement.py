@@ -73,8 +73,8 @@ def _compute_avancement(conn, offer_id: int) -> dict:
         "SELECT statut, error_message FROM cvs WHERE offer_id = ?", (offer_id,)
     ).fetchone()
     lettre_row = conn.execute(
-        "SELECT statut, error_message, points_choisis_json FROM lettres "
-        "WHERE offer_id = ?",
+        "SELECT statut, error_message, points_choisis_json, points_choisis_origine "
+        "FROM lettres WHERE offer_id = ?",
         (offer_id,),
     ).fetchone()
 
@@ -90,7 +90,8 @@ def _compute_avancement(conn, offer_id: int) -> dict:
     chosen = resolve_chosen_indices(
         points, lettre_row["points_choisis_json"] if lettre_row else None
     )
-    blocage = blocage_lancement_lettre(fiche_statut, offer_text, chosen)
+    origine = lettre_row["points_choisis_origine"] if lettre_row else None
+    blocage = blocage_lancement_lettre(fiche_statut, offer_text, chosen, origine)
 
     return {
         "fiche": generation_avancement(fiche_row, fiche_api.is_running(offer_id)),

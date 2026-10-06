@@ -21,6 +21,9 @@ MAX_MOTS = 400
 RAISON_FICHE_NON_TERMINEE = "La fiche entreprise de cette offre n'est pas terminée"
 RAISON_TEXTE_MANQUANT = "Le texte de l'offre manque, impossible de générer la lettre"
 RAISON_AUCUN_POINT = "Aucun point n'est choisi pour la lettre"
+# Distincte de RAISON_AUCUN_POINT (EXE-132, critère 7) : ici, c'est la fiche elle-même
+# qui n'a désigné aucun point — pas moi qui aurais démarqué un choix existant.
+RAISON_FICHE_AUCUNE_DESIGNATION = "La fiche n'a désigné aucun point pour la lettre"
 
 
 def resolve_chosen_indices(points: list[dict], stored_json: str | None) -> list[int]:
@@ -96,16 +99,25 @@ def resolve_offer_text(description_raw: str | None, description: str | None) -> 
 
 
 def blocage_lancement_lettre(
-    fiche_statut: str | None, offer_text: str, chosen_indices: list[int]
+    fiche_statut: str | None,
+    offer_text: str,
+    chosen_indices: list[int],
+    points_choisis_origine: str | None = None,
 ) -> str | None:
     """Raison qui empêche de lancer la lettre, ou `None` si elle peut partir
     (EXE-127, critères 6, 7, 10, 15) : fiche pas terminée, texte d'offre manquant,
-    puis aucun point choisi — dans cet ordre, le premier qui bloque gagne."""
+    puis aucun point choisi — dans cet ordre, le premier qui bloque gagne.
+
+    Sans point choisi, la phrase distingue (EXE-132, critères 6, 7) la fiche qui
+    n'a elle-même désigné aucun point (`points_choisis_origine == 'systeme'`) d'un
+    choix vide posé à la main ou jamais posé."""
     if fiche_statut != "done":
         return RAISON_FICHE_NON_TERMINEE
     if not offer_text:
         return RAISON_TEXTE_MANQUANT
     if not chosen_indices:
+        if points_choisis_origine == "systeme":
+            return RAISON_FICHE_AUCUNE_DESIGNATION
         return RAISON_AUCUN_POINT
     return None
 

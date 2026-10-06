@@ -206,11 +206,12 @@ def _offer_text(conn, offer_id: int) -> str:
 
 
 async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
-    """Enchaîné dès que la fiche entreprise se termine (TCK-281) : désigne tous
-    ses points pour la lettre si je n'en ai jamais choisi à la main, puis lance
-    si les trois gardes (fiche terminée, texte présent, au moins un point) sont
-    satisfaites. Ne remplace jamais un choix que j'ai fait (`points_choisis_origine
-    == 'moi'`) — critère « ne doit pas arriver » du ticket."""
+    """Enchaîné dès que la fiche entreprise se termine (TCK-281) : reprend les
+    points que la fiche a elle-même désignés pour la lettre (EXE-132, champ
+    `pour_lettre` de chaque point) si je n'en ai jamais choisi à la main, puis
+    lance si les trois gardes (fiche terminée, texte présent, au moins un point)
+    sont satisfaites. Ne remplace jamais un choix que j'ai fait
+    (`points_choisis_origine == 'moi'`) — critère « ne doit pas arriver » du ticket."""
     with get_conn() as conn:
         fiche_statut, points = _fiche_statut_et_points(conn, offer_id)
 
@@ -221,6 +222,7 @@ async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
             return None
 
         if points and (row is None or row["points_choisis_origine"] != "moi"):
+            designated = [i for i, p in enumerate(points) if p.get("pour_lettre")]
             conn.execute(
                 """
                 INSERT INTO lettres
@@ -230,7 +232,7 @@ async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
                     points_choisis_json=excluded.points_choisis_json,
                     points_choisis_origine='systeme'
                 """,
-                (offer_id, json.dumps(list(range(len(points)))), _now()),
+                (offer_id, json.dumps(designated), _now()),
             )
             conn.commit()
             row = conn.execute(
@@ -241,7 +243,11 @@ async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
         chosen = resolve_chosen_indices(
             points, row["points_choisis_json"] if row is not None else None
         )
-        if blocage_lancement_lettre(fiche_statut, offer_text, chosen) is not None:
+        origine = row["points_choisis_origine"] if row is not None else None
+        if (
+            blocage_lancement_lettre(fiche_statut, offer_text, chosen, origine)
+            is not None
+        ):
             return None
 
     return await launch_lettre(offer_id)
@@ -270,7 +276,8 @@ async def create_lettre(offer_id: int, response: Response) -> dict:
         chosen = resolve_chosen_indices(
             points, row["points_choisis_json"] if row is not None else None
         )
-        blocage = blocage_lancement_lettre(fiche_statut, offer_text, chosen)
+        origine = row["points_choisis_origine"] if row is not None else None
+        blocage = blocage_lancement_lettre(fiche_statut, offer_text, chosen, origine)
         if blocage is not None:
             raise HTTPException(status_code=409, detail=blocage)
     await launch_lettre(offer_id)
