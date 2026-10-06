@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from orchestrator.job_search.pieces import cv_statut, lettre_statut, prete_a_l_envoi
+
 from . import cascade
 from .db import get_conn
 from .schemas import (
@@ -192,6 +194,32 @@ def _derive_review_fields(row) -> dict:
         "review_stale": review_stale,
         "suggestion_actuelle": suggestion_actuelle,
     }
+
+
+def _derive_etape(row) -> str | None:
+    """Étape de candidature d'une offre retenue — dérivée à la lecture,
+    jamais persistée. Réutilise le calcul de la page de l'offre
+    (`orchestrator.job_search.pieces`), pas une seconde règle (EXE-144)."""
+    if row["verdict"] != "retenu":
+        return None
+    if row["envoyee_at"] is not None:
+        return "candidature_envoyee"
+    cv_row = (
+        {"marque_pret_at": row["cv_marque_pret_at"]}
+        if row["cv_id"] is not None
+        else None
+    )
+    lettre_row = (
+        {
+            "statut": row["lettre_statut_raw"],
+            "marque_pret_at": row["lettre_marque_pret_at"],
+        }
+        if row["lettre_id"] is not None
+        else None
+    )
+    if prete_a_l_envoi(cv_statut(cv_row), lettre_statut(lettre_row)):
+        return "prete_a_l_envoi"
+    return "retenue"
 
 
 # ---------------------------------------------------------------------------
@@ -387,9 +415,15 @@ def list_offers(
                o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
                o.rescored_at, o.extraction_status, o.extraction_attempts,
                v.status AS verdict,
+               v.envoyee_at AS envoyee_at,
+               c.id AS cv_id, c.marque_pret_at AS cv_marque_pret_at,
+               l.id AS lettre_id, l.statut AS lettre_statut_raw,
+               l.marque_pret_at AS lettre_marque_pret_at,
                ex.expired AS expiration_expired
         FROM offers o
         LEFT JOIN verdicts v ON v.offer_id = o.id
+        LEFT JOIN cvs c ON c.offer_id = o.id
+        LEFT JOIN lettres l ON l.offer_id = o.id
         LEFT JOIN expirations ex ON ex.offer_id = o.id
         {where}
         ORDER BY {order_clause}
@@ -410,6 +444,7 @@ def list_offers(
             contract_type=r["contract_type"],
             category=r["category"],
             verdict=r["verdict"],
+            etape=_derive_etape(r),
             hors_perimetre_reason=r["hors_perimetre_reason"],
             perimetre_causes=json.loads(r["perimetre_causes"])
             if r["perimetre_causes"]

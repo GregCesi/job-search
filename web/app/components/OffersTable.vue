@@ -97,7 +97,7 @@
           <!-- Verdict -->
           <td class="px-3 py-3 whitespace-nowrap">
             <div class="flex items-center gap-1.5">
-              <VerdictBadge :verdict="offer.verdict" />
+              <VerdictBadge :verdict="offer.verdict" :etape="offer.etape" />
               <span
                 v-if="offer.expired"
                 class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium"

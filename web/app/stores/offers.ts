@@ -11,6 +11,7 @@ export interface OfferRow {
   contract_type: string | null
   category: string | null            // parfait | reve | atteignable | hors
   verdict: string | null
+  etape: string | null               // dérivé API, offre retenue seulement (EXE-144)
   hors_perimetre_reason: string | null
   perimetre_causes: string[]
   seen_candidat: boolean

@@ -6,7 +6,7 @@
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ verdict: string | null }>()
+const props = defineProps<{ verdict: string | null; etape?: string | null }>()
 
 const MAP: Record<string, { cls: string; label: string }> = {
   retenu:                 { cls: 'bg-blue-100 text-blue-800',     label: '★ retenu' },
@@ -17,7 +17,21 @@ const MAP: Record<string, { cls: string; label: string }> = {
   hors_perimetre_faux_pos:{ cls: 'bg-red-100 text-red-700',       label: '✗ faux positif' },
 }
 
-const entry = computed(() => (props.verdict ? MAP[props.verdict] : null))
+// Étape de candidature (EXE-144) : remplace le badge générique « retenu »
+// dans les tableaux, l'API la rend déjà calculée (frontend.md — zéro calcul
+// métier côté front).
+const ETAPE_MAP: Record<string, { cls: string; label: string }> = {
+  retenue:             { cls: 'bg-blue-100 text-blue-800',       label: '★ retenue' },
+  prete_a_l_envoi:     { cls: 'bg-amber-100 text-amber-800',     label: '➜ prête à l\'envoi' },
+  candidature_envoyee: { cls: 'bg-emerald-100 text-emerald-800', label: '✓ candidature envoyée' },
+}
+
+const entry = computed(() => {
+  if (props.verdict === 'retenu' && props.etape) {
+    return ETAPE_MAP[props.etape] ?? MAP.retenu
+  }
+  return props.verdict ? MAP[props.verdict] : null
+})
 const cls   = computed(() => entry.value?.cls ?? '')
 const label = computed(() => entry.value?.label ?? '')
 </script>

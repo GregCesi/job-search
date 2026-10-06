@@ -14,6 +14,8 @@ class OfferRow(BaseModel):
     contract_type: str | None
     category: str | None = None  # parfait | reve | atteignable | hors
     verdict: str | None
+    # dérivé, offre retenue seulement : retenue | prete_a_l_envoi | candidature_envoyee (EXE-144)
+    etape: str | None = None
     hors_perimetre_reason: str | None = None
     perimetre_causes: list[str] = []
     seen_candidat: bool
