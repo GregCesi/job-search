@@ -291,11 +291,11 @@
               <button
                 @click="telechargerTout"
                 :disabled="!!telechargerToutLabel || telechargerToutBusy"
+                :title="telechargerToutLabel ?? undefined"
                 class="w-full px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {{ telechargerToutBusy ? 'Téléchargement…' : 'Tout télécharger' }}
               </button>
-              <p v-if="telechargerToutLabel" class="text-xs text-gray-400 text-center">{{ telechargerToutLabel }}</p>
               <p v-if="cvPdfError" class="text-xs text-red-600 text-center">{{ cvPdfError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600 text-center">{{ lettrePdfError }}</p>
 
@@ -304,6 +304,7 @@
                 <button
                   @click="marquerEnvoyee"
                   :disabled="!pieces?.prete_a_l_envoi || envoyeeBusy"
+                  :title="envoyeeRaison ?? undefined"
                   class="w-full px-4 py-2.5 rounded-lg border border-indigo-200 text-indigo-700 text-sm font-medium hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400"
                 >
                   Candidature envoyée
@@ -311,7 +312,7 @@
                 <p v-if="envoyeeRaison" class="text-xs text-gray-400 text-center">{{ envoyeeRaison }}</p>
               </template>
               <div v-else class="flex items-center justify-center gap-2 text-xs text-gray-500">
-                <span>Envoyée le {{ pieces.envoyee_le.slice(0, 10) }}</span>
+                <span>Envoyée le {{ formatDateFr(pieces.envoyee_le) }}</span>
                 <button @click="annulerEnvoyee" :disabled="envoyeeBusy" class="text-indigo-600 hover:underline disabled:opacity-50">Annuler</button>
               </div>
               <p v-if="envoyeeError" class="text-xs text-red-600 text-center">{{ envoyeeError }}</p>
@@ -328,14 +329,16 @@
       class="fixed inset-0 z-50 bg-white flex flex-col"
     >
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-        <h2 class="text-base font-semibold text-gray-900">{{ apercuCard }}</h2>
         <div class="flex items-center gap-4">
+          <h2 class="text-base font-semibold text-gray-900">{{ apercuCard }}</h2>
           <PieceReadyToggle
             v-if="pieces"
             :pret="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'prete'"
             :disabled="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
             @toggle="apercuCard === 'CV' ? toggleCvPret() : toggleLettrePret()"
           />
+        </div>
+        <div class="flex items-center gap-4">
           <button @click="modifierDepuisApercu" class="text-sm text-indigo-600 hover:underline">Modifier</button>
           <button @click="fermerApercu" class="text-gray-400 hover:text-gray-600" aria-label="Fermer l'aperçu">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -384,14 +387,16 @@
       @click.self="activeCard = null"
     >
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-        <h2 class="text-base font-semibold text-gray-900">{{ activeCard }}</h2>
         <div class="flex items-center gap-4">
+          <h2 class="text-base font-semibold text-gray-900">{{ activeCard }}</h2>
           <PieceReadyToggle
             v-if="pieces && (activeCard === 'CV' || activeCard === 'Lettre de motivation')"
             :pret="(activeCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'prete'"
             :disabled="(activeCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
             @toggle="activeCard === 'CV' ? toggleCvPret() : toggleLettrePret()"
           />
+        </div>
+        <div class="flex items-center gap-4">
           <button @click="activeCard = null" class="text-gray-400 hover:text-gray-600">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -1163,8 +1168,8 @@ async function toggleCvPret() {
   const pret = pieces.value.cv.statut !== 'prete'
   cvPretError.value = null
   try {
-    const res = await $fetch<PieceInfo>(`${cvUrl()}/pret`, { method: 'PUT', body: { pret } })
-    pieces.value = { ...pieces.value, cv: res }
+    await $fetch<PieceInfo>(`${cvUrl()}/pret`, { method: 'PUT', body: { pret } })
+    await chargerPieces() // relit prete_a_l_envoi et envoyee_le, pas seulement la pièce modifiée
   } catch (e) {
     cvPretError.value = await errorDetail(e)
   }
@@ -1175,8 +1180,8 @@ async function toggleLettrePret() {
   const pret = pieces.value.lettre.statut !== 'prete'
   lettrePretError.value = null
   try {
-    const res = await $fetch<PieceInfo>(`${lettreUrl()}/pret`, { method: 'PUT', body: { pret } })
-    pieces.value = { ...pieces.value, lettre: res }
+    await $fetch<PieceInfo>(`${lettreUrl()}/pret`, { method: 'PUT', body: { pret } })
+    await chargerPieces() // relit prete_a_l_envoi et envoyee_le, pas seulement la pièce modifiée
   } catch (e) {
     lettrePretError.value = await errorDetail(e)
   }
@@ -1295,6 +1300,11 @@ async function copierMailCorps() {
   mailCorpsCopied.value = true
   if (mailCorpsTimer) clearTimeout(mailCorpsTimer)
   mailCorpsTimer = setTimeout(() => { mailCorpsCopied.value = false }, 1500)
+}
+
+// ── Date lisible, fuseau local (EXE-143) ────────────────────────────────────
+function formatDateFr(iso: string): string {
+  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
 }
 
 // ── Date lisible pour l'historique de la lettre ─────────────────────────────
