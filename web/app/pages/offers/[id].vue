@@ -175,74 +175,115 @@
         </div>
 
         <!-- Colonne droite (1/3) -->
-        <div class="w-1/3 flex flex-col gap-3 p-6 bg-gray-50">
-          <template v-if="offer">
-            <!-- Trois cartes -->
+        <div class="w-1/3 flex flex-col overflow-hidden bg-gray-50">
+          <div v-if="offer" class="flex-1 overflow-y-auto p-6 flex flex-col gap-3">
+
+            <!-- Entreprise -->
             <div
-              v-for="card in CARDS" :key="card.title"
-              @click="openCard(card.title)"
+              @click="openCard('Entreprise')"
               class="rounded-lg border border-gray-200 bg-white p-4 cursor-pointer hover:border-indigo-200 hover:shadow-sm transition-all flex flex-col gap-2"
             >
               <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-gray-700">{{ card.title }}</span>
+                <span class="text-sm font-medium text-gray-700">Entreprise</span>
                 <span class="flex items-center gap-1.5">
-                  <svg v-if="cardAvancement(card.title)?.etat === 'en_cours'" class="w-3 h-3 animate-spin text-amber-500" fill="none" viewBox="0 0 24 24">
+                  <svg v-if="cardAvancement('Entreprise')?.etat === 'en_cours'" class="w-3 h-3 animate-spin text-amber-500" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
                   </svg>
-                  <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="cardBadge(card.title).class">{{ cardBadge(card.title).label }}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="cardBadge('Entreprise').class">{{ cardBadge('Entreprise').label }}</span>
                 </span>
               </div>
+              <div class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
+                <span class="text-xs text-gray-300 italic">{{ cardPreview('Entreprise') }}</span>
+              </div>
+            </div>
 
-              <label
-                v-if="pieces && (card.title === 'CV' || card.title === 'Lettre de motivation')"
-                @click.stop
-                class="flex items-center gap-1.5 text-[11px] text-gray-500 select-none"
+            <!-- CV et Lettre, côte à côte -->
+            <div class="flex gap-3">
+              <div
+                ref="cvCardEl"
+                @click="openCard('CV')"
+                class="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white p-4 cursor-pointer hover:border-indigo-200 hover:shadow-sm transition-all flex flex-col gap-2"
               >
-                <input
-                  type="checkbox"
-                  :checked="(card.title === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'prete'"
-                  :disabled="(card.title === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
-                  @change="card.title === 'CV' ? toggleCvPret() : toggleLettrePret()"
+                <div class="flex items-center justify-between">
+                  <span class="text-sm font-medium text-gray-700">CV</span>
+                  <span class="flex items-center gap-1.5">
+                    <svg v-if="cardAvancement('CV')?.etat === 'en_cours'" class="w-3 h-3 animate-spin text-amber-500" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="cardBadge('CV').class">{{ cardBadge('CV').label }}</span>
+                  </span>
+                </div>
+                <div
+                  v-if="miniatureVisible('CV')"
+                  class="relative mx-auto overflow-hidden rounded border border-gray-100 bg-white"
+                  :style="{ width: `${miniatureLargeur}px`, height: `${miniatureHauteur}px` }"
                 >
-                Prête
-              </label>
-
-              <div
-                v-if="card.title === 'CV' && miniatureVisible('CV')"
-                class="relative mx-auto overflow-hidden rounded border border-gray-100 bg-white"
-                :style="{ width: `${MINIATURE_LARGEUR}px`, height: `${MINIATURE_HAUTEUR}px` }"
-              >
-                <iframe
-                  :srcdoc="cv?.html ?? ''"
-                  class="absolute top-0 left-0 origin-top-left border-0 pointer-events-none"
-                  :style="{ width: '794px', height: '1123px', transform: `scale(${MINIATURE_ECHELLE})` }"
-                  tabindex="-1"
-                  title="Miniature du CV"
-                />
-              </div>
-              <div
-                v-else-if="card.title === 'Lettre de motivation' && miniatureVisible('Lettre de motivation')"
-                class="relative mx-auto overflow-hidden rounded border border-gray-100 bg-white"
-                :style="{ width: `${MINIATURE_LARGEUR}px`, height: `${MINIATURE_HAUTEUR}px` }"
-              >
-                <iframe
-                  :srcdoc="lettreMiseEnPageHtml ?? ''"
-                  class="absolute top-0 left-0 origin-top-left border-0 pointer-events-none"
-                  :style="{ width: '794px', height: '1123px', transform: `scale(${MINIATURE_ECHELLE})` }"
-                  tabindex="-1"
-                  title="Miniature de la lettre"
-                />
-              </div>
-              <div v-else class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
-                <span class="text-xs text-gray-300 italic">{{ cardPreview(card.title) }}</span>
+                  <iframe
+                    :srcdoc="cv?.html ?? ''"
+                    class="absolute top-0 left-0 origin-top-left border-0 pointer-events-none"
+                    :style="{ width: '794px', height: '1123px', transform: `scale(${miniatureEchelle})` }"
+                    tabindex="-1"
+                    title="Miniature du CV"
+                  />
+                </div>
+                <div v-else class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
+                  <span class="text-xs text-gray-300 italic">{{ cardPreview('CV') }}</span>
+                </div>
               </div>
 
-              <button
-                v-if="card.title === 'CV' || card.title === 'Lettre de motivation'"
-                @click.stop="activeCard = card.title"
-                class="self-start text-xs text-indigo-600 hover:underline"
-              >Détail</button>
+              <div
+                @click="openCard('Lettre de motivation')"
+                class="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white p-4 cursor-pointer hover:border-indigo-200 hover:shadow-sm transition-all flex flex-col gap-2"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-sm font-medium text-gray-700">Lettre de motivation</span>
+                  <span class="flex items-center gap-1.5">
+                    <svg v-if="cardAvancement('Lettre de motivation')?.etat === 'en_cours'" class="w-3 h-3 animate-spin text-amber-500" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="cardBadge('Lettre de motivation').class">{{ cardBadge('Lettre de motivation').label }}</span>
+                  </span>
+                </div>
+                <div
+                  v-if="miniatureVisible('Lettre de motivation')"
+                  class="relative mx-auto overflow-hidden rounded border border-gray-100 bg-white"
+                  :style="{ width: `${miniatureLargeur}px`, height: `${miniatureHauteur}px` }"
+                >
+                  <iframe
+                    :srcdoc="lettreMiseEnPageHtml ?? ''"
+                    class="absolute top-0 left-0 origin-top-left border-0 pointer-events-none"
+                    :style="{ width: '794px', height: '1123px', transform: `scale(${miniatureEchelle})` }"
+                    tabindex="-1"
+                    title="Miniature de la lettre"
+                  />
+                </div>
+                <div v-else class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
+                  <span class="text-xs text-gray-300 italic">{{ cardPreview('Lettre de motivation') }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Mail de candidature -->
+            <div
+              @click="openCard('Mail de candidature')"
+              class="rounded-lg border border-gray-200 bg-white p-4 cursor-pointer hover:border-indigo-200 hover:shadow-sm transition-all flex flex-col gap-2"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-gray-700">Mail de candidature</span>
+                <span class="flex items-center gap-1.5">
+                  <svg v-if="cardAvancement('Mail de candidature')?.etat === 'en_cours'" class="w-3 h-3 animate-spin text-amber-500" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                  </svg>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="cardBadge('Mail de candidature').class">{{ cardBadge('Mail de candidature').label }}</span>
+                </span>
+              </div>
+              <div class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
+                <span class="text-xs text-gray-300 italic">{{ cardPreview('Mail de candidature') }}</span>
+              </div>
             </div>
 
             <!-- Bouton Tout télécharger -->
@@ -258,7 +299,7 @@
               <p v-if="cvPdfError" class="text-xs text-red-600 text-center">{{ cvPdfError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600 text-center">{{ lettrePdfError }}</p>
             </div>
-          </template>
+          </div>
         </div>
 
       </div>
@@ -272,15 +313,12 @@
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
         <h2 class="text-base font-semibold text-gray-900">{{ apercuCard }}</h2>
         <div class="flex items-center gap-4">
-          <label v-if="pieces" class="flex items-center gap-2 text-xs text-gray-600">
-            <input
-              type="checkbox"
-              :checked="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'prete'"
-              :disabled="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
-              @change="apercuCard === 'CV' ? toggleCvPret() : toggleLettrePret()"
-            >
-            Prête
-          </label>
+          <PieceReadyToggle
+            v-if="pieces"
+            :pret="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'prete'"
+            :disabled="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
+            @toggle="apercuCard === 'CV' ? toggleCvPret() : toggleLettrePret()"
+          />
           <button @click="modifierDepuisApercu" class="text-sm text-indigo-600 hover:underline">Modifier</button>
           <button @click="fermerApercu" class="text-gray-400 hover:text-gray-600" aria-label="Fermer l'aperçu">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -357,15 +395,11 @@
                 </svg>
               </template>
             </div>
-            <label class="flex items-center gap-2 text-xs text-gray-600 flex-shrink-0">
-              <input
-                type="checkbox"
-                :checked="pieces.lettre.statut === 'prete'"
-                :disabled="pieces.lettre.statut === 'a_faire'"
-                @change="toggleLettrePret"
-              >
-              Prête
-            </label>
+            <PieceReadyToggle
+              :pret="pieces.lettre.statut === 'prete'"
+              :disabled="pieces.lettre.statut === 'a_faire'"
+              @toggle="toggleLettrePret"
+            />
           </div>
           <p v-if="lettrePretError" class="text-xs text-red-600">{{ lettrePretError }}</p>
 
@@ -505,15 +539,11 @@
                 </svg>
               </template>
             </div>
-            <label class="flex items-center gap-2 text-xs text-gray-600 flex-shrink-0">
-              <input
-                type="checkbox"
-                :checked="pieces.cv.statut === 'prete'"
-                :disabled="pieces.cv.statut === 'a_faire'"
-                @change="toggleCvPret"
-              >
-              Prête
-            </label>
+            <PieceReadyToggle
+              :pret="pieces.cv.statut === 'prete'"
+              :disabled="pieces.cv.statut === 'a_faire'"
+              @toggle="toggleCvPret"
+            />
           </div>
           <p v-if="cvPretError" class="text-xs text-red-600">{{ cvPretError }}</p>
 
@@ -1541,16 +1571,28 @@ async function copierTexte() {
 const STEPS = ['Retenue', 'Prête à l\'envoi', 'Candidature envoyée', 'Entretien à préparer']
 
 // ── Cartes + overlay ──────────────────────────────────────────────────────
-const CARDS = [
-  { title: 'Entreprise' },
-  { title: 'CV' },
-  { title: 'Lettre de motivation' },
-  { title: 'Mail de candidature' },
-]
-// Miniature CV/lettre sur la carte — page A4 réelle réduite (EXE-134)
-const MINIATURE_LARGEUR = 220
-const MINIATURE_HAUTEUR = Math.round(MINIATURE_LARGEUR * 1123 / 794)
-const MINIATURE_ECHELLE = MINIATURE_LARGEUR / 794
+// Miniature CV/lettre sur la carte — page A4 réelle réduite à la largeur de
+// la carte, mesurée sur la carte CV (identique à celle de la lettre, les deux
+// se partagent la ligne à parts égales) (EXE-134, EXE-135).
+const cvCardEl = ref<HTMLElement | null>(null)
+const miniatureLargeur = ref(220)
+const miniatureHauteur = computed(() => Math.round(miniatureLargeur.value * 1123 / 794))
+const miniatureEchelle = computed(() => miniatureLargeur.value / 794)
+let miniatureResizeObserver: ResizeObserver | null = null
+
+// La carte n'existe qu'une fois l'offre chargée (v-if="offer") : on observe
+// dès que la ref s'attache, pas seulement au montage du composant.
+watch(cvCardEl, (el) => {
+  miniatureResizeObserver?.disconnect()
+  miniatureResizeObserver = null
+  if (!el) return
+  miniatureResizeObserver = new ResizeObserver((entries) => {
+    const largeur = entries[0]?.contentRect.width
+    if (largeur) miniatureLargeur.value = largeur
+  })
+  miniatureResizeObserver.observe(el)
+})
+onBeforeUnmount(() => miniatureResizeObserver?.disconnect())
 
 function miniatureVisible(title: string): boolean {
   const av = cardAvancement(title)
