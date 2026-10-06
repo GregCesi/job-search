@@ -5,15 +5,16 @@
       class="fixed bottom-4 right-4 z-50 w-80 flex flex-col gap-2"
       aria-live="polite"
     >
-      <div
+      <NotificationToast
         v-for="notif in ajouts.notifications"
         :key="notif.id"
-        class="relative bg-white border border-gray-200 rounded-lg shadow-lg p-3 pr-8 text-sm"
+        :auto-retrait="autoRetraitAjout(notif)"
         :class="ouvrable(notif) ? 'cursor-pointer hover:bg-gray-50' : ''"
         :role="ouvrable(notif) ? 'button' : undefined"
         :tabindex="ouvrable(notif) ? 0 : undefined"
         @click="ouvrable(notif) && ouvrir(notif as Ajout)"
         @keydown.enter="ouvrable(notif) && ouvrir(notif as Ajout)"
+        @fermer="ajouts.fermer(notif.id)"
       >
         <button
           class="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
@@ -58,17 +59,19 @@
             Rouvrir le formulaire
           </button>
         </template>
-      </div>
+      </NotificationToast>
 
       <!-- Avancement des pièces d'une offre retenue (EXE-128) -->
-      <div
+      <NotificationToast
         v-for="notif in pieceNotifs.notifications"
         :key="notif.id"
-        class="relative bg-white border border-gray-200 rounded-lg shadow-lg p-3 pr-8 text-sm cursor-pointer hover:bg-gray-50"
+        :auto-retrait="autoRetraitPiece(notif)"
+        class="cursor-pointer hover:bg-gray-50"
         role="button"
         tabindex="0"
         @click="ouvrirOffre(notif.offerId)"
         @keydown.enter="ouvrirOffre(notif.offerId)"
+        @fermer="pieceNotifs.fermer(notif.id)"
       >
         <button
           class="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
@@ -85,7 +88,7 @@
         </p>
         <p class="text-xs text-gray-400 truncate">{{ notif.title ?? '(sans titre)' }}</p>
         <p v-if="notif.etat === 'en_erreur' && notif.raison" class="mt-1 text-gray-700">{{ notif.raison }}</p>
-      </div>
+      </NotificationToast>
     </div>
   </Teleport>
 </template>
@@ -95,6 +98,7 @@ import { useAjoutsStore } from '~/stores/ajouts'
 import { useOffersStore } from '~/stores/offers'
 import type { Ajout, AjoutStatut, EnvoiEchoue } from '~/stores/ajouts'
 import { titreNotification, usePieceNotificationsStore } from '~/stores/pieceNotifications'
+import type { PieceNotification } from '~/stores/pieceNotifications'
 
 const ajouts = useAjoutsStore()
 const offers = useOffersStore()
@@ -120,6 +124,16 @@ const OUVRABLES: AjoutStatut[] = ['termine', 'filtree', 'hors_perimetre', 'deja_
 
 function ouvrable(notif: Ajout | EnvoiEchoue): boolean {
   return typeof notif.id === 'number' && OUVRABLES.includes(notif.statut) && (notif as Ajout).offer_id !== null
+}
+
+// Un échec ou une notification à bouton d'action (coller le texte, rouvrir
+// le formulaire) ne se retire jamais seul (EXE-136).
+function autoRetraitAjout(notif: Ajout | EnvoiEchoue): boolean {
+  return OUVRABLES.includes(notif.statut)
+}
+
+function autoRetraitPiece(notif: PieceNotification): boolean {
+  return notif.etat === 'terminee'
 }
 
 // Le détail s'ouvre sur la page d'accueil, quelle que soit la catégorie de l'offre.

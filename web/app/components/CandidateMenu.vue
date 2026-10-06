@@ -34,8 +34,26 @@
       </p>
     </div>
 
+    <!-- Panneau de suivi des notifications (EXE-136) -->
+    <div class="px-3 pb-3 border-t border-gray-100 pt-2">
+      <button
+        class="relative w-full px-3 py-1.5 rounded-md text-sm font-medium text-left text-gray-600 hover:bg-gray-100 transition-colors"
+        aria-label="Ouvrir le panneau de notifications"
+        @click="panel.ouvrir()"
+      >
+        Notifications
+        <span
+          v-if="panel.nonVues"
+          class="absolute top-1 right-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold"
+        >
+          {{ panel.nonVues }}
+        </span>
+      </button>
+    </div>
+
     <AjoutForm />
     <AjoutNotifications />
+    <NotificationsPanel />
   </aside>
 </template>
 
@@ -44,6 +62,7 @@ import { useOffersStore } from '~/stores/offers'
 import type { CandidateView } from '~/stores/offers'
 import { useAjoutsStore } from '~/stores/ajouts'
 import { usePieceNotificationsStore } from '~/stores/pieceNotifications'
+import { useNotificationsPanelStore } from '~/stores/notificationsPanel'
 
 // Entrées du menu candidat, déclarées ici et nulle part ailleurs (EXE-80).
 // Une entrée `view` ouvre une vue de VIEW_PRESETS sur la page d'accueil ;
@@ -60,6 +79,7 @@ const MENU: MenuEntry[] = [
 const store = useOffersStore()
 const ajouts = useAjoutsStore()
 const pieceNotifs = usePieceNotificationsStore()
+const panel = useNotificationsPanelStore()
 const route = useRoute()
 const router = useRouter()
 
