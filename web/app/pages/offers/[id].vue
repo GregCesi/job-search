@@ -1482,7 +1482,10 @@ const lettreFrame = ref<HTMLIFrameElement | null>(null)
 
 function ouvrirApercu(title: string) {
   apercuCard.value = title
-  if (title === 'Lettre de motivation' && !lettreMiseEnPageHtml.value) chargerLettreMiseEnPage()
+  if (title === 'Lettre de motivation') {
+    lettreMiseEnPageHtml.value = null
+    chargerLettreMiseEnPage()
+  }
 }
 
 function fermerApercu() {
