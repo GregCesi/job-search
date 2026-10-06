@@ -298,6 +298,23 @@
               <p v-if="telechargerToutLabel" class="text-xs text-gray-400 text-center">{{ telechargerToutLabel }}</p>
               <p v-if="cvPdfError" class="text-xs text-red-600 text-center">{{ cvPdfError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600 text-center">{{ lettrePdfError }}</p>
+
+              <!-- Candidature envoyée (EXE-139) -->
+              <template v-if="!pieces?.envoyee_le">
+                <button
+                  @click="marquerEnvoyee"
+                  :disabled="!pieces?.prete_a_l_envoi || envoyeeBusy"
+                  class="w-full px-4 py-2.5 rounded-lg border border-indigo-200 text-indigo-700 text-sm font-medium hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400"
+                >
+                  Candidature envoyée
+                </button>
+                <p v-if="envoyeeRaison" class="text-xs text-gray-400 text-center">{{ envoyeeRaison }}</p>
+              </template>
+              <div v-else class="flex items-center justify-center gap-2 text-xs text-gray-500">
+                <span>Envoyée le {{ pieces.envoyee_le.slice(0, 10) }}</span>
+                <button @click="annulerEnvoyee" :disabled="envoyeeBusy" class="text-indigo-600 hover:underline disabled:opacity-50">Annuler</button>
+              </div>
+              <p v-if="envoyeeError" class="text-xs text-red-600 text-center">{{ envoyeeError }}</p>
             </div>
           </div>
         </div>
@@ -1201,7 +1218,49 @@ async function telechargerLettrePdf() {
 function stepActive(step: string): boolean {
   if (step === 'Retenue') return true
   if (step === 'Prête à l\'envoi') return !!pieces.value?.prete_a_l_envoi
+  if (step === 'Candidature envoyée') return !!pieces.value?.envoyee_le
   return false
+}
+
+// ── Candidature envoyée (EXE-139) — marque humaine, distincte du statut
+// retenu/rejeté/candidaté et des statuts de pièce ────────────────────────
+const envoyeeBusy = ref(false)
+const envoyeeError = ref<string | null>(null)
+const envoyeeRaison = computed(() => {
+  const cvPret = pieces.value?.cv.statut === 'prete'
+  const lettrePret = pieces.value?.lettre.statut === 'prete'
+  if (cvPret && lettrePret) return null
+  if (!cvPret && !lettrePret) return 'Le CV et la lettre ne sont pas encore prêts.'
+  if (!cvPret) return 'Le CV n\'est pas encore prêt.'
+  return 'La lettre n\'est pas encore prête.'
+})
+
+async function marquerEnvoyee() {
+  if (!pieces.value) return
+  envoyeeError.value = null
+  envoyeeBusy.value = true
+  try {
+    const res = await $fetch<{ envoyee_le: string | null }>(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: true } })
+    pieces.value = { ...pieces.value, envoyee_le: res.envoyee_le }
+  } catch (e) {
+    envoyeeError.value = await errorDetail(e)
+  } finally {
+    envoyeeBusy.value = false
+  }
+}
+
+async function annulerEnvoyee() {
+  if (!pieces.value) return
+  envoyeeError.value = null
+  envoyeeBusy.value = true
+  try {
+    const res = await $fetch<{ envoyee_le: string | null }>(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: false } })
+    pieces.value = { ...pieces.value, envoyee_le: res.envoyee_le }
+  } catch (e) {
+    envoyeeError.value = await errorDetail(e)
+  } finally {
+    envoyeeBusy.value = false
+  }
 }
 
 // ── Mail de candidature — EXE-103 ───────────────────────────────────────────

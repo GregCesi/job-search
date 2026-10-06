@@ -180,6 +180,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     migrate_cvs_schema(conn)
     migrate_lettres_schema(conn)
     migrate_ajouts_schema(conn)
+    migrate_verdicts_schema(conn)
 
 
 def migrate_ajouts_schema(conn: sqlite3.Connection) -> None:
@@ -214,6 +215,17 @@ def migrate_ajouts_schema(conn: sqlite3.Connection) -> None:
         ALTER TABLE ajouts_exe82 RENAME TO ajouts;
         COMMIT;
     """)
+
+
+def migrate_verdicts_schema(conn: sqlite3.Connection) -> None:
+    """EXE-139 : date/heure de ma marque « Candidature envoyée », distincte du
+    statut retenu/rejeté/candidaté — idempotent."""
+    existing = {
+        row[1] for row in conn.execute("PRAGMA table_info(verdicts)").fetchall()
+    }
+    if "envoyee_at" not in existing:
+        conn.execute("ALTER TABLE verdicts ADD COLUMN envoyee_at TEXT")
+    conn.commit()
 
 
 def migrate_cvs_schema(conn: sqlite3.Connection) -> None:

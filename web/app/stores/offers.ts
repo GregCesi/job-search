@@ -150,6 +150,7 @@ export interface Pieces {
   cv: PieceInfo
   lettre: PieceInfo
   prete_a_l_envoi: boolean
+  envoyee_le: string | null
 }
 
 export interface MailCandidature {
