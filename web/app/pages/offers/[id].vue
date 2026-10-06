@@ -193,9 +193,51 @@
                   <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="cardBadge(card.title).class">{{ cardBadge(card.title).label }}</span>
                 </span>
               </div>
-              <div class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
+
+              <label
+                v-if="pieces && (card.title === 'CV' || card.title === 'Lettre de motivation')"
+                @click.stop
+                class="flex items-center gap-1.5 text-[11px] text-gray-500 select-none"
+              >
+                <input
+                  type="checkbox"
+                  :checked="(card.title === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'prete'"
+                  :disabled="(card.title === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
+                  @change="card.title === 'CV' ? toggleCvPret() : toggleLettrePret()"
+                >
+                Prête
+              </label>
+
+              <div
+                v-if="card.title === 'CV' && miniatureVisible('CV')"
+                class="relative mx-auto overflow-hidden rounded border border-gray-100 bg-white"
+                :style="{ width: `${MINIATURE_LARGEUR}px`, height: `${MINIATURE_HAUTEUR}px` }"
+              >
+                <iframe
+                  :srcdoc="cv?.html ?? ''"
+                  class="absolute top-0 left-0 origin-top-left border-0 pointer-events-none"
+                  :style="{ width: '794px', height: '1123px', transform: `scale(${MINIATURE_ECHELLE})` }"
+                  tabindex="-1"
+                  title="Miniature du CV"
+                />
+              </div>
+              <div
+                v-else-if="card.title === 'Lettre de motivation' && miniatureVisible('Lettre de motivation')"
+                class="relative mx-auto overflow-hidden rounded border border-gray-100 bg-white"
+                :style="{ width: `${MINIATURE_LARGEUR}px`, height: `${MINIATURE_HAUTEUR}px` }"
+              >
+                <iframe
+                  :srcdoc="lettreMiseEnPageHtml ?? ''"
+                  class="absolute top-0 left-0 origin-top-left border-0 pointer-events-none"
+                  :style="{ width: '794px', height: '1123px', transform: `scale(${MINIATURE_ECHELLE})` }"
+                  tabindex="-1"
+                  title="Miniature de la lettre"
+                />
+              </div>
+              <div v-else class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
                 <span class="text-xs text-gray-300 italic">{{ cardPreview(card.title) }}</span>
               </div>
+
               <button
                 v-if="card.title === 'CV' || card.title === 'Lettre de motivation'"
                 @click.stop="activeCard = card.title"
@@ -203,14 +245,18 @@
               >Détail</button>
             </div>
 
-            <!-- Bouton Envoyer -->
-            <div class="mt-auto pt-2">
+            <!-- Bouton Tout télécharger -->
+            <div class="mt-auto pt-2 space-y-1">
               <button
-                @click="() => {}"
-                class="w-full px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+                @click="telechargerTout"
+                :disabled="!!telechargerToutLabel || telechargerToutBusy"
+                class="w-full px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Envoyer
+                {{ telechargerToutBusy ? 'Téléchargement…' : 'Tout télécharger' }}
               </button>
+              <p v-if="telechargerToutLabel" class="text-xs text-gray-400 text-center">{{ telechargerToutLabel }}</p>
+              <p v-if="cvPdfError" class="text-xs text-red-600 text-center">{{ cvPdfError }}</p>
+              <p v-if="lettrePdfError" class="text-xs text-red-600 text-center">{{ lettrePdfError }}</p>
             </div>
           </template>
         </div>
@@ -226,6 +272,15 @@
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
         <h2 class="text-base font-semibold text-gray-900">{{ apercuCard }}</h2>
         <div class="flex items-center gap-4">
+          <label v-if="pieces" class="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              :checked="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'prete'"
+              :disabled="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
+              @change="apercuCard === 'CV' ? toggleCvPret() : toggleLettrePret()"
+            >
+            Prête
+          </label>
           <button @click="modifierDepuisApercu" class="text-sm text-indigo-600 hover:underline">Modifier</button>
           <button @click="fermerApercu" class="text-gray-400 hover:text-gray-600" aria-label="Fermer l'aperçu">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -235,7 +290,7 @@
         </div>
       </div>
       <div class="flex-1 overflow-hidden flex">
-        <div v-if="offer" class="w-2/5 h-full overflow-y-auto border-r border-gray-100 p-6 flex-shrink-0">
+        <div v-if="offer" class="flex-1 min-w-0 h-full overflow-y-auto border-r border-gray-100 p-6">
           <OfferSidePanel
             :offer="offer"
             :owned-techs="ownedTechs"
@@ -243,13 +298,14 @@
             :rendered-description="renderedDescription"
           />
         </div>
-        <div class="flex-1 h-full overflow-y-auto p-6 bg-gray-50">
-          <p v-if="apercuCard === 'Lettre de motivation' && lettreMiseEnPageError" class="text-sm text-red-600">{{ lettreMiseEnPageError }}</p>
+        <div class="flex-shrink-0 h-full overflow-y-auto p-3 bg-gray-50">
+          <p v-if="apercuCard === 'Lettre de motivation' && lettreMiseEnPageError" class="text-sm text-red-600" style="width: 210mm">{{ lettreMiseEnPageError }}</p>
           <iframe
             v-if="apercuCard === 'CV' && cv?.html"
             ref="cvFrame"
             :srcdoc="cv.html"
-            class="w-full border-0 bg-white"
+            class="border-0 bg-white"
+            style="width: 210mm"
             title="Aperçu du CV"
             @load="resizeFrame(cvFrame)"
           />
@@ -257,7 +313,8 @@
             v-else-if="apercuCard === 'Lettre de motivation' && lettreMiseEnPageHtml"
             ref="lettreFrame"
             :srcdoc="lettreMiseEnPageHtml"
-            class="w-full border-0 bg-white"
+            class="border-0 bg-white"
+            style="width: 210mm"
             title="Aperçu de la lettre"
             @load="resizeFrame(lettreFrame)"
           />
@@ -280,7 +337,7 @@
         </button>
       </div>
       <div v-if="activeCard === 'Lettre de motivation'" class="flex-1 overflow-hidden flex">
-        <div v-if="offer" class="w-2/5 h-full overflow-y-auto border-r border-gray-100 p-6 flex-shrink-0">
+        <div v-if="offer" class="flex-1 min-w-0 h-full overflow-y-auto border-r border-gray-100 p-6">
           <OfferSidePanel
             :offer="offer"
             :owned-techs="ownedTechs"
@@ -288,10 +345,10 @@
             :rendered-description="renderedDescription"
           />
         </div>
-        <div class="flex-1 h-full overflow-y-auto p-6">
-        <div class="space-y-4">
+        <div class="flex-shrink-0 h-full overflow-y-auto p-3">
+        <div class="space-y-4 mx-auto" style="width: 210mm">
           <!-- Statut de pièce + marque Prête (EXE-101) -->
-          <div v-if="pieces" class="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
+          <div v-if="pieces" class="sticky top-0 z-10 rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
             <div class="flex items-center gap-2 text-xs font-medium">
               <template v-for="(step, idx) in PIECE_STEPS" :key="step.value">
                 <span :class="pieces.lettre.statut === step.value ? 'text-indigo-600' : 'text-gray-300'">{{ step.label }}</span>
@@ -428,7 +485,7 @@
 
       <!-- CV adapté -->
       <div v-else-if="activeCard === 'CV'" class="flex-1 overflow-hidden flex">
-        <div v-if="offer" class="w-2/5 h-full overflow-y-auto border-r border-gray-100 p-6 flex-shrink-0">
+        <div v-if="offer" class="flex-1 min-w-0 h-full overflow-y-auto border-r border-gray-100 p-6">
           <OfferSidePanel
             :offer="offer"
             :owned-techs="ownedTechs"
@@ -436,10 +493,10 @@
             :rendered-description="renderedDescription"
           />
         </div>
-        <div class="flex-1 h-full overflow-y-auto p-6">
-        <div class="space-y-5">
+        <div class="flex-shrink-0 h-full overflow-y-auto p-3">
+        <div class="space-y-5 mx-auto" style="width: 210mm">
           <!-- Statut de pièce + marque Prête (EXE-101) -->
-          <div v-if="pieces" class="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
+          <div v-if="pieces" class="sticky top-0 z-10 rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
             <div class="flex items-center gap-2 text-xs font-medium">
               <template v-for="(step, idx) in PIECE_STEPS" :key="step.value">
                 <span :class="pieces.cv.statut === step.value ? 'text-indigo-600' : 'text-gray-300'">{{ step.label }}</span>
@@ -732,6 +789,7 @@ onMounted(async () => {
   if (cv.value?.statut === 'pending') startCvPolling()
   await chargerCvTitreDefaut()
   await chargerLettre()
+  await syncLettreMiseEnPage()
   await chargerLettrePoints()
   await chargerLettreVersions()
   if (shouldPollLettre(lettre.value)) startLettrePolling()
@@ -1037,6 +1095,27 @@ const lettreRaisonAttente = computed(() => {
   const av = avancement.value?.lettre
   return av && av.etat === 'en_attente' ? av.raison : null
 })
+
+// ── Tout télécharger — CV + lettre en PDF, si les deux sont Prêtes (EXE-134) ──
+const telechargerToutBusy = ref(false)
+const telechargerToutLabel = computed(() => {
+  const cvPret = pieces.value?.cv.statut === 'prete'
+  const lettrePret = pieces.value?.lettre.statut === 'prete'
+  if (cvPret && lettrePret) return null
+  if (!cvPret && !lettrePret) return 'Le CV et la lettre ne sont pas encore prêts.'
+  if (!cvPret) return 'Le CV n\'est pas encore prêt.'
+  return 'La lettre n\'est pas encore prête.'
+})
+
+async function telechargerTout() {
+  telechargerToutBusy.value = true
+  try {
+    await telechargerCvPdf()
+    await telechargerLettrePdf()
+  } finally {
+    telechargerToutBusy.value = false
+  }
+}
 
 async function toggleCvPret() {
   if (!pieces.value) return
@@ -1371,6 +1450,7 @@ function startLettrePolling() {
       stopLettrePolling()
       await chargerLettreVersions()
       await chargerPieces()
+      await syncLettreMiseEnPage()
     } else if (ticks >= POLL_MAX) {
       stopLettrePolling()
       if (lettre.value?.regeneration_en_cours) {
@@ -1397,6 +1477,7 @@ async function genererLettre() {
       texteEdit.value = res.texte ?? ''
       await chargerLettreVersions()
       await chargerPieces()
+      await syncLettreMiseEnPage()
     } else {
       lettre.value = { ...EMPTY_LETTRE, statut: 'pending' }
       startLettrePolling()
@@ -1430,6 +1511,7 @@ async function sauvegarderTexte() {
     texteEdit.value = lettre.value.texte ?? ''
     await chargerLettreVersions()
     await chargerPieces()
+    await syncLettreMiseEnPage()
   } catch (e) {
     lettreActionError.value = messageErreurLettre(e)
   }
@@ -1465,6 +1547,19 @@ const CARDS = [
   { title: 'Lettre de motivation' },
   { title: 'Mail de candidature' },
 ]
+// Miniature CV/lettre sur la carte — page A4 réelle réduite (EXE-134)
+const MINIATURE_LARGEUR = 220
+const MINIATURE_HAUTEUR = Math.round(MINIATURE_LARGEUR * 1123 / 794)
+const MINIATURE_ECHELLE = MINIATURE_LARGEUR / 794
+
+function miniatureVisible(title: string): boolean {
+  const av = cardAvancement(title)
+  if (av && av.etat !== 'terminee') return false
+  if (title === 'CV') return cv.value?.statut === 'done' && !!cv.value.html
+  if (title === 'Lettre de motivation') return lettre.value?.statut === 'done' && !!lettreMiseEnPageHtml.value
+  return false
+}
+
 const activeCard = ref<string | null>(null)
 function openCard(title: string) {
   if (title === 'CV' && cv.value?.statut === 'done') { ouvrirApercu(title); return }
@@ -1506,6 +1601,13 @@ async function chargerLettreMiseEnPage() {
     lettreMiseEnPageHtml.value = null
     lettreMiseEnPageError.value = await errorDetail(e)
   }
+}
+
+// Tient la miniature de la carte à jour avec la mise en page rendue par l'API,
+// sans attendre l'ouverture de l'aperçu plein écran (EXE-134).
+async function syncLettreMiseEnPage() {
+  if (lettre.value?.statut === 'done') await chargerLettreMiseEnPage()
+  else lettreMiseEnPageHtml.value = null
 }
 
 function resizeFrame(frame: HTMLIFrameElement | null) {
