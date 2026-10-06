@@ -62,9 +62,16 @@ const offers = useOffersStore()
 const route = useRoute()
 const router = useRouter()
 
+// Une ligne ouvre exactement ce qu'ouvre la notification dont elle vient
+// (EXE-138) : une pièce vers la page de l'offre retenue, un ajout vers la
+// page d'accueil, comme leurs toasts respectifs (AjoutNotifications.vue).
 function ouvrirOffre(entree: EntreeHistorique) {
   if (entree.offerId === null) return
   panel.fermer()
+  if (entree.cle.startsWith('piece:')) {
+    router.push(`/offers/${entree.offerId}`)
+    return
+  }
   if (route.path === '/') {
     offers.openDetail(entree.offerId)
     return

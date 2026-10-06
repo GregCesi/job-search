@@ -368,11 +368,19 @@
     >
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
         <h2 class="text-base font-semibold text-gray-900">{{ activeCard }}</h2>
-        <button @click="activeCard = null" class="text-gray-400 hover:text-gray-600">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
+        <div class="flex items-center gap-4">
+          <PieceReadyToggle
+            v-if="pieces && (activeCard === 'CV' || activeCard === 'Lettre de motivation')"
+            :pret="(activeCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'prete'"
+            :disabled="(activeCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
+            @toggle="activeCard === 'CV' ? toggleCvPret() : toggleLettrePret()"
+          />
+          <button @click="activeCard = null" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
       </div>
       <div v-if="activeCard === 'Lettre de motivation'" class="flex-1 overflow-hidden flex">
         <div v-if="offer" class="flex-1 min-w-0 h-full overflow-y-auto border-r border-gray-100 p-6">
@@ -385,21 +393,14 @@
         </div>
         <div class="flex-shrink-0 h-full overflow-y-auto p-3">
         <div class="space-y-4 mx-auto" style="width: 210mm">
-          <!-- Statut de pièce + marque Prête (EXE-101) -->
-          <div v-if="pieces" class="sticky top-0 z-10 rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
-            <div class="flex items-center gap-2 text-xs font-medium">
-              <template v-for="(step, idx) in PIECE_STEPS" :key="step.value">
-                <span :class="pieces.lettre.statut === step.value ? 'text-indigo-600' : 'text-gray-300'">{{ step.label }}</span>
-                <svg v-if="idx < PIECE_STEPS.length - 1" class="w-3 h-3 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
-                </svg>
-              </template>
-            </div>
-            <PieceReadyToggle
-              :pret="pieces.lettre.statut === 'prete'"
-              :disabled="pieces.lettre.statut === 'a_faire'"
-              @toggle="toggleLettrePret"
-            />
+          <!-- Statut de pièce (EXE-101) ; la marque Prête vit dans la barre du haut (EXE-138) -->
+          <div v-if="pieces" class="sticky top-0 z-10 rounded-lg border border-gray-200 bg-white p-4 flex items-center gap-2 text-xs font-medium flex-wrap">
+            <template v-for="(step, idx) in PIECE_STEPS" :key="step.value">
+              <span :class="pieces.lettre.statut === step.value ? 'text-indigo-600' : 'text-gray-300'">{{ step.label }}</span>
+              <svg v-if="idx < PIECE_STEPS.length - 1" class="w-3 h-3 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+              </svg>
+            </template>
           </div>
           <p v-if="lettrePretError" class="text-xs text-red-600">{{ lettrePretError }}</p>
 
@@ -529,21 +530,14 @@
         </div>
         <div class="flex-shrink-0 h-full overflow-y-auto p-3">
         <div class="space-y-5 mx-auto" style="width: 210mm">
-          <!-- Statut de pièce + marque Prête (EXE-101) -->
-          <div v-if="pieces" class="sticky top-0 z-10 rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4 flex-wrap">
-            <div class="flex items-center gap-2 text-xs font-medium">
-              <template v-for="(step, idx) in PIECE_STEPS" :key="step.value">
-                <span :class="pieces.cv.statut === step.value ? 'text-indigo-600' : 'text-gray-300'">{{ step.label }}</span>
-                <svg v-if="idx < PIECE_STEPS.length - 1" class="w-3 h-3 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
-                </svg>
-              </template>
-            </div>
-            <PieceReadyToggle
-              :pret="pieces.cv.statut === 'prete'"
-              :disabled="pieces.cv.statut === 'a_faire'"
-              @toggle="toggleCvPret"
-            />
+          <!-- Statut de pièce (EXE-101) ; la marque Prête vit dans la barre du haut (EXE-138) -->
+          <div v-if="pieces" class="sticky top-0 z-10 rounded-lg border border-gray-200 bg-white p-4 flex items-center gap-2 text-xs font-medium flex-wrap">
+            <template v-for="(step, idx) in PIECE_STEPS" :key="step.value">
+              <span :class="pieces.cv.statut === step.value ? 'text-indigo-600' : 'text-gray-300'">{{ step.label }}</span>
+              <svg v-if="idx < PIECE_STEPS.length - 1" class="w-3 h-3 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+              </svg>
+            </template>
           </div>
           <p v-if="cvPretError" class="text-xs text-red-600">{{ cvPretError }}</p>
 
