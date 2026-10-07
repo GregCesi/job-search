@@ -48,7 +48,7 @@ class RunTracker:
         self._started = False
         self._experiment_name = experiment_name
 
-    def start(self, params: dict[str, Any]) -> None:
+    def start(self, params: dict[str, Any], run_name: str | None = None) -> None:
         try:
             client = MlflowClient()
             experiment = client.get_experiment_by_name(self._experiment_name)
@@ -60,7 +60,7 @@ class RunTracker:
             else:
                 experiment_id = experiment.experiment_id
             mlflow.set_experiment(experiment_id=experiment_id)
-            mlflow.start_run()
+            mlflow.start_run(run_name=run_name)
             self._started = True
             mlflow.log_params(params)
             self.active = True
@@ -84,6 +84,15 @@ class RunTracker:
             mlflow.log_metrics(metrics)
         except Exception as exc:
             print(f"[run] suivi MLflow a échoué (métriques) : {exc}")
+            self.active = False
+
+    def log_table(self, data: dict[str, list[Any]], artifact_file: str) -> None:
+        if not self.active:
+            return
+        try:
+            mlflow.log_table(data, artifact_file=artifact_file)
+        except Exception as exc:
+            print(f"[run] suivi MLflow a échoué (table) : {exc}")
             self.active = False
 
     def log_artifact(self, path: Path) -> None:
