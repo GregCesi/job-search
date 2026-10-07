@@ -94,6 +94,13 @@ def parser_config(spec: str) -> ConfigNommee:
             raise ConfigurationInvalideError(f"configuration invalide : « {spec} »")
         roles[cle] = valeur
 
+    # EXE-155, H2 : « generique » n'est le nom d'aucun modèle — il ne vaut que
+    # pour le rôle tamis (critères 5-10). Pour redaction/juge, explicite ou via le
+    # modèle de base, c'est une configuration invalide.
+    for role, valeur in roles.items():
+        if role != "tamis" and valeur == GENERIQUE_ID:
+            raise ConfigurationInvalideError(f"configuration invalide : « {spec} »")
+
     return ConfigNommee(
         label=spec,
         config=ConfigBoucle(

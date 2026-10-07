@@ -359,6 +359,17 @@ def _parser_tamis(texte: str) -> tuple[int | None, str]:
 
 def noeud_tamis(state: EtatBoucle) -> dict:
     repertoire = state["repertoire"]
+
+    # EXE-155, critères 5-10 : le banc demande la lettre générique via
+    # `modele_tamis == GENERIQUE_ID` — aucun modèle n'est appelé pour le tamis, le
+    # nœud résout directement le texte type générique (même porte de disponibilité
+    # que la résolution normale : texte absent du répertoire → même arrêt).
+    if state["config"].modele_tamis == GENERIQUE_ID:
+        texte_type = next(tt for tt in repertoire.textes_types if tt.id == GENERIQUE_ID)
+        if not (texte_type.texte or "").strip():
+            return {"erreur": {"noeud": "tamis", "raison": RAISON_GENERIQUE_MANQUANT}}
+        return {"fait_retenu": None, "texte_type": texte_type}
+
     prompt = _prompt_tamis(
         state["titre"], state["texte_offre"], state["points_fiche"], repertoire
     )
@@ -496,6 +507,10 @@ def _prompt_redaction(state: EtatBoucle) -> str:
         "uniquement le texte de la lettre.\n\n"
         f"**Offre** : {state['titre']}\n"
         f"**Entreprise** : {state['entreprise']}\n\n"
+        # EXE-155, critères 1-4 : le texte intégral de l'annonce, sans bloc de
+        # style/script ni balise (`strip_html`), jamais raccourci — à chaque tour,
+        # y compris les reprises après remarques du juge.
+        f"**Texte de l'offre** :\n{strip_html(state['texte_offre'])}\n\n"
         f"**Posture** :\n{posture_txt}\n\n"
         f"**Forme** :\n{forme_txt}\n\n"
         f"**Sujets interdits** :\n{sujets_interdits_txt}\n\n"
