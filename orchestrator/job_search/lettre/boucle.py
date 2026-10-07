@@ -35,6 +35,7 @@ from orchestrator.job_search.lettre.redaction import (
     load_tournures_interdites,
     resolve_offer_text,
     strip_html,
+    strip_style_and_script,
 )
 from orchestrator.job_search.lettre.repertoire import (
     Repertoire,
@@ -329,7 +330,7 @@ def _prompt_tamis(
         "donne une raison précise de vouloir rejoindre cette entreprise, entre dans "
         "une des familles de bonne accroche, et auquel un texte type répond sans "
         "forcer. Une accroche faible vaut « générique ».\n\n"
-        f"**Offre** :\n{titre}\n\n{texte_offre}\n\n"
+        f"**Offre** :\n{titre}\n\n{strip_style_and_script(texte_offre)}\n\n"
         f"**Points de la fiche entreprise** :\n{points_txt}\n\n"
         f"**Textes types disponibles** (id : sujet) :\n{textes_types_txt}\n\n"
         f"**Ce qui fait une bonne accroche** :\n{bonne_accroche_txt}\n\n"

@@ -46,10 +46,21 @@ def point_text(point: dict) -> str:
     return position
 
 
+def strip_style_and_script(raw: str) -> str:
+    """Retire les blocs <style> et <script> en entier — balise et contenu — avant
+    tout autre nettoyage (EXE-153, critères 1, 2, 5) : leur contenu (CSS, JS) n'est
+    jamais du texte visible, contrairement au contenu des autres balises."""
+    return re.sub(
+        r"<(style|script)\b[^>]*>.*?</\1>", "", raw, flags=re.IGNORECASE | re.DOTALL
+    )
+
+
 def strip_html(raw: str) -> str:
-    """Texte sans balise HTML (critère 13) : tags retirés, entités décodées, espaces
-    simples resserrés (les sauts de ligne sont conservés)."""
-    text = re.sub(r"<[^>]+>", " ", raw)
+    """Texte sans balise HTML (critère 13) : blocs <style>/<script> retirés en
+    entier (EXE-153), tags retirés, entités décodées, espaces simples resserrés
+    (les sauts de ligne sont conservés)."""
+    text = strip_style_and_script(raw)
+    text = re.sub(r"<[^>]+>", " ", text)
     text = html_lib.unescape(text)
     return re.sub(r"[ \t]+", " ", text).strip()
 
