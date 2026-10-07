@@ -37,3 +37,6 @@ COORDONNEES_PATH = REPO_ROOT / "data" / "lettre" / "coordonnees.txt"
 # Gabarit du mail de candidature (EXE-103, H3) : hors git, posé à part comme les
 # autres fichiers de data/lettre/.
 MAIL_CANDIDATURE_PATH = REPO_ROOT / "data" / "lettre" / "mail_candidature.md"
+# Répertoire de la lettre (EXE-146, H5) : textes types, posture, sujets interdits —
+# hors git, posé à part comme les autres fichiers de data/lettre/.
+REPERTOIRE_LETTRE_PATH = REPO_ROOT / "data" / "lettre" / "repertoire.yaml"
