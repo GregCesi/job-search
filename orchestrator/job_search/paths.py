@@ -40,3 +40,10 @@ MAIL_CANDIDATURE_PATH = REPO_ROOT / "data" / "lettre" / "mail_candidature.md"
 # Répertoire de la lettre (EXE-146, H5) : textes types, posture, sujets interdits —
 # hors git, posé à part comme les autres fichiers de data/lettre/.
 REPERTOIRE_LETTRE_PATH = REPO_ROOT / "data" / "lettre" / "repertoire.yaml"
+# cwd des trois nœuds de la boucle LangGraph (EXE-147) : un répertoire par nœud, pour
+# que la rédaction et le juge ne partagent jamais une session de modèle (ticket,
+# « ce qui ne doit pas arriver »). Pas de `resume` ici : chaque appel est une session
+# neuve, la continuité d'un tour à l'autre passe par le contenu du prompt (critère 15).
+BOUCLE_TAMIS_CWD = Path.home() / ".cache" / "job-search" / "boucle_tamis_cwd"
+BOUCLE_REDACTION_CWD = Path.home() / ".cache" / "job-search" / "boucle_redaction_cwd"
+BOUCLE_JUGE_CWD = Path.home() / ".cache" / "job-search" / "boucle_juge_cwd"

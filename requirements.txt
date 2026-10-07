@@ -12,3 +12,4 @@ claude-agent-sdk>=0.2.159
 ruamel.yaml>=0.18
 playwright>=1.47
 mlflow
+langgraph>=1.2
