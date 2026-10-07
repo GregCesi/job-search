@@ -96,10 +96,12 @@ _Écrit le 2 octobre 2026, TCK-221._
 
 ## Exception encadrée : banc de la lettre (TCK-251)
 
-Le banc de la lettre appelle des modèles hors des routes des pièces, pour comparer des modèles sur la boucle de la lettre (tamis, rédaction, juge recruteur) avant qu'elle soit branchée à l'application. Il part uniquement d'une commande lancée à la main, sur des offres retenues dont la fiche entreprise est terminée : jamais d'un run, jamais d'un changement de `profile.yaml`, jamais d'un rescore, jamais du geste de retenir, jamais d'une route de l'API.
+Le banc de la lettre appelle des modèles hors des routes des pièces, pour comparer des modèles sur la boucle de la lettre (tamis, rédaction, juge recruteur) avant qu'elle soit branchée à l'application. Il part uniquement d'une commande lancée à la main, sur des offres retenues : jamais d'un run, jamais d'un changement de `profile.yaml`, jamais d'un rescore, jamais du geste de retenir, jamais d'une route de l'API.
 
-Il lit `offers`, `verdicts`, `fiches_entreprise` et les fichiers de `data/lettre/`. Il n'écrit dans aucune table. Ses résultats vivent dans son rapport et dans MLflow. Le nombre d'appels de modèle par offre est borné par le plafond de tours de la boucle, et chaque appel est tracé avec son modèle.
+Il travaille en deux commandes. La préparation du jeu d'évaluation lit `offers` et `verdicts`, lance pour chaque offre la recherche d'entreprise avec la demande de la fiche entreprise, et range les faits trouvés dans un fichier figé sous `data/lettre/banc/`. Le banc lit ce fichier et les fichiers de `data/lettre/` : il n'ouvre pas la base. Aucune des deux commandes n'écrit dans une table, et la table `fiches_entreprise` n'est ni lue ni écrite. Les résultats vivent dans le rapport du banc et dans MLflow. Le nombre d'appels de modèle par offre est borné par le plafond de tours de la boucle, et chaque appel est tracé avec son modèle.
 
 Le lancement au geste de retenir n'est pas touché : la phrase « Aucun appel de modèle ne s'ajoute aux trois existants » reste vraie pour lui.
+
+_Jeu d'évaluation figé ajouté le 7 octobre 2026 : le premier banc lisait les fiches de l'application, et tester la nouvelle recherche d'entreprise a obligé à retirer deux fiches de la base._
 
 _Écrit le 7 octobre 2026, TCK-251 : la lettre écrite en un seul appel a été jugée non envoyable le 5 octobre 2026, et deux lettres écrites à la main sur une deuxième offre ont été rejetées faute d'un répertoire des textes de Grégoire._
