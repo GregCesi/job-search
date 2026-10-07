@@ -32,3 +32,9 @@
 - `claude-agent-sdk` (login Claude, `api_key_source` attendu `none`), jamais `subprocess`/`claude -p` en applicatif. Chaque appel déclare `tools`, `allowed_tools` et `disallowed_tools` (seul `tools` fixe les outils disponibles).
 - `cwd` de session fixe (`paths.FICHE_CWD`) : la reprise de session (`resume`) retrouve la session par répertoire.
 - Le prompt vit dans `.claude/commands/fiche-entreprise.md` (source unique, commande manuelle + service).
+
+## Boucle de la lettre — LangGraph (TCK-251)
+- `langgraph` orchestre la boucle de la lettre : un graphe d'états, un nœud par étape, des arêtes conditionnelles pour la reprise demandée par le juge.
+- Un nœud appelle Claude par `claude-agent-sdk`, aux règles de la fiche entreprise ci-dessus (`tools`, `allowed_tools` et `disallowed_tools` déclarés à chaque appel), ou un modèle local par `ollama`. Aucune clé d'API payante.
+- LangGraph n'apporte que l'orchestration. Aucun client de modèle LangChain n'est ajouté (`langchain-anthropic`, `langchain-ollama`, `langchain-openai`) : ils demandent une clé d'API ou doublent un client déjà présent.
+- Le répertoire de la lettre vit dans `data/lettre/repertoire.yaml`, hors git comme tout `data/`.
