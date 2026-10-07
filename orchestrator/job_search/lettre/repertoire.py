@@ -101,6 +101,7 @@ class Repertoire(BaseModel):
     version: int | None = None
     posture: Posture = Field(default_factory=Posture)
     ce_qui_fait_une_bonne_accroche: list[str] = Field(default_factory=list)
+    ce_qui_est_vrai_sur_moi: list[str] = Field(default_factory=list)
     sujets_interdits: list[SujetInterdit] = Field(default_factory=list)
     conditions_generales: list[str] = Field(default_factory=list)
     pour_l_entretien_pas_pour_la_lettre: list[PourEntretien] = Field(

@@ -62,6 +62,15 @@ def exceeds_length(nb_mots: int, max_mots: int = MAX_MOTS) -> bool:
     return nb_mots > max_mots
 
 
+def ecart_longueur_mots(nb_mots: int, longueur_cible_mots: int | None) -> int | None:
+    """Écart signé en mots à la longueur cible du répertoire (EXE-152, banc,
+    critère 8) — absent si aucune cible n'est déclarée, jamais remplacé par
+    zéro (critère 9)."""
+    if longueur_cible_mots is None:
+        return None
+    return nb_mots - longueur_cible_mots
+
+
 def load_tournures_interdites(path: Path) -> list[str]:
     """Une tournure par ligne (H3 du ticket). Fichier absent → liste vide : ce n'est
     pas un critère de blocage de la génération, seulement de son signalement."""

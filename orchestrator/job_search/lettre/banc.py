@@ -31,12 +31,15 @@ from pathlib import Path
 from orchestrator.job_search.lettre.boucle import (
     GENERIQUE_ID,
     MAX_TOURS,
+    MODELES_CLAUDE,
     RAISON_PLAFOND,
+    RAISON_RIEN_A_REDIRE,
     Appel,
     ConfigBoucle,
     ResultatBoucle,
     generer_lettre_depuis_donnees,
 )
+from orchestrator.job_search.lettre.redaction import ecart_longueur_mots
 from orchestrator.job_search.lettre.repertoire import (
     RepertoireError,
     charger_repertoire,
@@ -250,6 +253,13 @@ class ResumeConfig:
     tours_moyen: float | None
     plafonds_atteints: int
     lettres_generiques: int
+    # EXE-152, critères 10-15 : mesures de tenue de la lettre, sans aucun modèle.
+    lettres_sans_tournures: int
+    total_tournures: int
+    ecart_moyen_abs_mots: float | None
+    juge_rien_a_redire: int
+    erreurs_reponse_illisible: int
+    erreurs_appel_echoue: int
     table: dict[str, list] = field(default_factory=dict)
 
 
@@ -262,10 +272,16 @@ def _fait_retenu_texte(fait_retenu) -> str:
 
 
 def resumer_config(
-    config_nommee: ConfigNommee, offres: list[OffreBanc], passages: list[Passage]
+    config_nommee: ConfigNommee,
+    offres: list[OffreBanc],
+    passages: list[Passage],
+    longueur_cible_mots: int | None = None,
 ) -> ResumeConfig:
-    """Les sept observables du tableau de comparaison (critère 11) et la table
-    du run MLflow, une ligne par offre dans l'ordre demandé (critères 17-19)."""
+    """Les observables du tableau de comparaison (critères 11, 10-15) et la
+    table du run MLflow, une ligne par offre dans l'ordre demandé
+    (critères 17-19). Aucune mesure n'appelle de modèle : tout vient des
+    champs déjà calculés par la boucle (tournures, mots) ou d'un calcul
+    Python pur sur eux (écart à `longueur_cible_mots`)."""
     de_cette_config = [p for p in passages if p.config_label == config_nommee.label]
     ran = [p for p in de_cette_config if p.resultat is not None]
     avec_lettres = [p for p in ran if p.resultat.lettres]
@@ -285,12 +301,22 @@ def resumer_config(
         "duree_s": [],
         "cout_usd": [],
         "raison_fin": [],
+        "tournures_lettre_finale": [],
+        "ecart_mots": [],
     }
     par_offre = {p.offer_id: p for p in de_cette_config}
+    ecarts_abs: list[int] = []
     for offre in offres:
         passage = par_offre[offre.offer_id]
         resultat = passage.resultat
         derniere = resultat.lettres[-1] if resultat and resultat.lettres else None
+        ecart = (
+            ecart_longueur_mots(derniere["nb_mots"], longueur_cible_mots)
+            if derniere
+            else None
+        )
+        if ecart is not None:
+            ecarts_abs.append(abs(ecart))
         table["offre"].append(offre.offer_id)
         table["entreprise"].append(offre.entreprise)
         table["intitule"].append(offre.titre)
@@ -306,6 +332,10 @@ def resumer_config(
         table["raison_fin"].append(
             passage.skip_reason or (resultat.raison_fin if resultat else None)
         )
+        table["tournures_lettre_finale"].append(
+            derniere["tournures_signalees"] if derniere else None
+        )
+        table["ecart_mots"].append(ecart)
 
     return ResumeConfig(
         config_nommee=config_nommee,
@@ -321,6 +351,24 @@ def resumer_config(
         ),
         lettres_generiques=sum(
             1 for p in avec_lettres if p.resultat.texte_type_id == GENERIQUE_ID
+        ),
+        lettres_sans_tournures=sum(
+            1 for p in avec_lettres if not p.resultat.lettres[-1]["tournures_signalees"]
+        ),
+        total_tournures=sum(
+            len(p.resultat.lettres[-1]["tournures_signalees"]) for p in avec_lettres
+        ),
+        ecart_moyen_abs_mots=(
+            sum(ecarts_abs) / len(ecarts_abs) if ecarts_abs else None
+        ),
+        juge_rien_a_redire=sum(
+            1 for p in avec_lettres if p.resultat.raison_fin == RAISON_RIEN_A_REDIRE
+        ),
+        erreurs_reponse_illisible=sum(
+            1 for p in ran if p.resultat.erreur_type == "reponse_illisible"
+        ),
+        erreurs_appel_echoue=sum(
+            1 for p in ran if p.resultat.erreur_type == "appel_echoue"
         ),
         table=table,
     )
@@ -340,8 +388,11 @@ def _fmt(valeur, suffixe: str = "", precision: int = 1) -> str:
 def _tableau_comparaison(resumes: list[ResumeConfig]) -> str:
     lignes = [
         "| Configuration | Lettres produites | Durée totale | Durée moyenne/lettre "
-        "| Coût total | Tours en moyenne | Plafonds atteints | Lettres génériques |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Coût total | Tours en moyenne | Plafonds atteints | Lettres génériques "
+        "| Lettres sans tournure interdite | Tournures interdites trouvées "
+        "| Écart moyen (abs) à la longueur cible | Lettres sans rien à redire "
+        "| Réponses illisibles | Appels échoués |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for resume in resumes:
         lignes.append(
@@ -350,13 +401,39 @@ def _tableau_comparaison(resumes: list[ResumeConfig]) -> str:
             f"| {_fmt(resume.duree_moyenne_par_lettre_s, 's')} "
             f"| {_fmt(resume.cout_total_usd, '$', 4)} "
             f"| {_fmt(resume.tours_moyen, '', 1)} "
-            f"| {resume.plafonds_atteints} | {resume.lettres_generiques} |"
+            f"| {resume.plafonds_atteints} | {resume.lettres_generiques} "
+            f"| {resume.lettres_sans_tournures} | {resume.total_tournures} "
+            f"| {_fmt(resume.ecart_moyen_abs_mots, ' mot(s)', 1)} "
+            f"| {resume.juge_rien_a_redire} "
+            f"| {resume.erreurs_reponse_illisible} | {resume.erreurs_appel_echoue} |"
         )
     return "\n".join(lignes)
 
 
+def _tournures_txt(tournures: list[str]) -> str:
+    """EXE-152, critères 6, 7 : les tournures interdites sont citées telles
+    qu'écrites dans la lettre, jamais corrigées — ou leur absence est dite."""
+    if not tournures:
+        return "Aucune tournure interdite."
+    citations = ", ".join(f"« {t} »" for t in tournures)
+    return f"Tournures interdites : {citations}"
+
+
+def _ecart_txt(nb_mots: int, longueur_cible_mots: int | None) -> str | None:
+    """EXE-152, critères 8, 9 : `None` quand le répertoire ne porte pas de
+    longueur cible — absent du rapport, jamais remplacé par un zéro."""
+    ecart = ecart_longueur_mots(nb_mots, longueur_cible_mots)
+    if ecart is None:
+        return None
+    signe = "+" if ecart >= 0 else ""
+    return f"Écart à la longueur cible : {signe}{ecart} mot(s)"
+
+
 def _section_offre(
-    offre: OffreBanc, configs: list[ConfigNommee], passages: list[Passage]
+    offre: OffreBanc,
+    configs: list[ConfigNommee],
+    passages: list[Passage],
+    longueur_cible_mots: int | None,
 ) -> str:
     titre_section = f"## Offre {offre.offer_id} — {offre.entreprise or offre.titre}"
     if offre.skip_reason is not None:
@@ -394,6 +471,11 @@ def _section_offre(
         )
         lignes_lettres.append(derniere["texte"])
         lignes_lettres.append("")
+        lignes_lettres.append(_tournures_txt(derniere["tournures_signalees"]))
+        ecart_txt = _ecart_txt(derniere["nb_mots"], longueur_cible_mots)
+        if ecart_txt is not None:
+            lignes_lettres.append(ecart_txt)
+        lignes_lettres.append("")
 
     return titre_section + "\n\n" + "\n".join(lignes_fait) + "\n".join(lignes_lettres)
 
@@ -413,7 +495,14 @@ def _annexe_passage(passage: Passage) -> str:
         lignes.append("")
     lignes.append("Durée des nœuds :")
     for appel in resultat.appels:
-        lignes.append(f"- {appel.noeud} ({appel.modele}) : {appel.duree_s:.2f}s")
+        # EXE-152, critères 19, 20 : jetons lus, seulement pour un modèle local
+        # et seulement s'ils sont rendus — jamais un zéro à la place.
+        jetons_txt = ""
+        if appel.modele not in MODELES_CLAUDE and appel.nb_jetons is not None:
+            jetons_txt = f", {appel.nb_jetons} jeton(s) lus"
+        lignes.append(
+            f"- {appel.noeud} ({appel.modele}) : {appel.duree_s:.2f}s{jetons_txt}"
+        )
     if resultat.lettres == [] and resultat.raison_fin:
         lignes.append(f"\nArrêt sans lettre : {resultat.raison_fin}")
     return "\n".join(lignes)
@@ -427,6 +516,7 @@ def construire_rapport(
     passages: list[Passage],
     resumes: list[ResumeConfig],
     horodatage: str,
+    longueur_cible_mots: int | None = None,
 ) -> str:
     entete = (
         f"# Banc de la lettre — {horodatage}\n\n"
@@ -436,7 +526,8 @@ def construire_rapport(
     )
     tableau = "## Tableau de comparaison\n\n" + _tableau_comparaison(resumes)
     sections_offres = "\n\n".join(
-        _section_offre(offre, configs, passages) for offre in offres
+        _section_offre(offre, configs, passages, longueur_cible_mots)
+        for offre in offres
     )
     annexe = "## Annexe — détail de chaque passage\n\n" + "\n\n".join(
         _annexe_passage(p) for p in passages
@@ -479,6 +570,12 @@ def _logger_config(
         "duree_totale_s": resume.duree_totale_s,
         "plafonds_atteints": float(resume.plafonds_atteints),
         "lettres_generiques": float(resume.lettres_generiques),
+        # EXE-152, critère 16 : les six mesures 10-15 du tableau de comparaison.
+        "lettres_sans_tournures": float(resume.lettres_sans_tournures),
+        "total_tournures": float(resume.total_tournures),
+        "juge_rien_a_redire": float(resume.juge_rien_a_redire),
+        "erreurs_reponse_illisible": float(resume.erreurs_reponse_illisible),
+        "erreurs_appel_echoue": float(resume.erreurs_appel_echoue),
     }
     if resume.duree_moyenne_par_lettre_s is not None:
         metrics["duree_moyenne_par_lettre_s"] = resume.duree_moyenne_par_lettre_s
@@ -486,6 +583,8 @@ def _logger_config(
         metrics["cout_total_usd"] = resume.cout_total_usd
     if resume.tours_moyen is not None:
         metrics["tours_moyen"] = resume.tours_moyen
+    if resume.ecart_moyen_abs_mots is not None:
+        metrics["ecart_moyen_abs_mots"] = resume.ecart_moyen_abs_mots
     tracker.log_metrics(metrics)
     tracker.log_table(resume.table, artifact_file="passages.json")
     tracker.log_artifact(rapport_path)
@@ -532,6 +631,12 @@ def lancer_banc(
     )
     offres = _resoudre_offres_depuis_jeu(jeu, ids_resolus)
 
+    # EXE-152, critères 8, 9, 12, 17 : la longueur cible vient du répertoire,
+    # lu une seule fois ici — calcul Python pur, aucun modèle appelé.
+    longueur_cible_mots = charger_repertoire(
+        repertoire_path
+    ).repertoire.forme.longueur_cible_mots
+
     passages = executer_passages(
         offres,
         configs,
@@ -539,11 +644,21 @@ def lancer_banc(
         cv_reference_path=cv_reference_path,
         tournures_path=tournures_path,
     )
-    resumes = [resumer_config(config, offres, passages) for config in configs]
+    resumes = [
+        resumer_config(config, offres, passages, longueur_cible_mots)
+        for config in configs
+    ]
 
     horodatage = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     texte_rapport = construire_rapport(
-        jeu.get("nom", ""), ids_resolus, configs, offres, passages, resumes, horodatage
+        jeu.get("nom", ""),
+        ids_resolus,
+        configs,
+        offres,
+        passages,
+        resumes,
+        horodatage,
+        longueur_cible_mots,
     )
     rapport_path = _ecrire_rapport(texte_rapport, Path(banc_dir), horodatage)
 

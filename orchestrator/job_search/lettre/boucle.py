@@ -59,6 +59,7 @@ TIMEOUT_CLAUDE_S = 300  # H8, repris de la lettre actuelle
 TIMEOUT_OLLAMA_S = 900  # H8, défaut non mesuré
 
 _OLLAMA_HOST = "http://localhost:11434"
+NUM_CTX_OLLAMA = 8192  # critère 18 : fenêtre de contexte d'un appel à un modèle local
 _CWD_PAR_NOEUD = {
     "tamis": BOUCLE_TAMIS_CWD,
     "redaction": BOUCLE_REDACTION_CWD,
@@ -106,6 +107,9 @@ class ReponseModele:
     texte: str
     duree_s: float
     cout_usd: float | None
+    nb_jetons: int | None = (
+        None  # critère 19 : lu par un modèle local, jamais par Claude
+    )
 
 
 @dataclass
@@ -118,6 +122,7 @@ class Appel:
     cout_usd: float | None
     demande: str
     reponse: str
+    nb_jetons: int | None = None  # EXE-152, critères 19, 20
 
 
 @dataclass
@@ -135,6 +140,9 @@ class ResultatBoucle:
     nb_tours: int
     raison_fin: str
     appels: list[Appel]
+    # EXE-152, critères 14, 15 : nature de l'arrêt pour le banc, sans reparser
+    # `raison_fin` — None si la boucle s'est terminée sans erreur.
+    erreur_type: Literal["reponse_illisible", "appel_echoue"] | None = None
 
 
 class EtatBoucle(TypedDict):
@@ -210,7 +218,7 @@ def _appeler_ollama(
             model=modele,
             messages=[{"role": "user", "content": prompt_text}],
             format=schema if schema is not None else "",
-            options={"temperature": 0.1},
+            options={"temperature": 0.1, "num_ctx": NUM_CTX_OLLAMA},
             think=False,
         )
     except Exception as exc:  # noqa: BLE001 — l'échec est une donnée pour le nœud
@@ -219,7 +227,8 @@ def _appeler_ollama(
     texte = (resp.message.content or "").strip()
     if not texte:
         raise AppelModeleError("réponse vide du modèle")
-    return ReponseModele(texte=texte, duree_s=duree, cout_usd=None)
+    nb_jetons = getattr(resp, "prompt_eval_count", None)
+    return ReponseModele(texte=texte, duree_s=duree, cout_usd=None, nb_jetons=nb_jetons)
 
 
 def appeler_modele(
@@ -260,6 +269,33 @@ def _sujets_interdits_txt(repertoire: Repertoire) -> str:
             for s in repertoire.sujets_interdits
         )
         or "(aucun)"
+    )
+
+
+def _bloc_ce_qui_est_vrai_sur_moi(repertoire: Repertoire) -> str:
+    """EXE-152, critères 1-3 : présentation identique pour la rédaction et le
+    juge — bloc entièrement omis (jamais de rubrique vide ni de « None »)
+    quand le répertoire ne porte pas la liste, ou qu'elle est vide."""
+    phrases = repertoire.ce_qui_est_vrai_sur_moi
+    if not phrases:
+        return ""
+    lignes = "\n".join(f"- {p}" for p in phrases)
+    return (
+        "**Ce qui est vrai sur moi, qu'une lettre ne doit jamais contredire** :\n"
+        f"{lignes}\n\n"
+    )
+
+
+def _bloc_lettre_de_reference(repertoire: Repertoire) -> str:
+    """EXE-152, critères 4-5 : réservé au juge — omis entièrement si le
+    répertoire ne porte pas de lettre de référence."""
+    lettre = (repertoire.forme.lettre_de_reference or "").strip()
+    if not lettre:
+        return ""
+    return (
+        "**Lettre de référence, que j'ai validée — ses phrases ne sont pas à "
+        "contester** :\n"
+        f"{lettre}\n\n"
     )
 
 
@@ -334,6 +370,7 @@ def noeud_tamis(state: EtatBoucle) -> dict:
             "erreur": {
                 "noeud": "tamis",
                 "raison": raison_appel_echoue("tamis", str(exc)),
+                "type": "appel_echoue",
             }
         }
 
@@ -341,7 +378,11 @@ def noeud_tamis(state: EtatBoucle) -> dict:
         point_index, texte_type_id = _parser_tamis(reponse.texte)
     except (ValueError, json.JSONDecodeError):
         return {
-            "erreur": {"noeud": "tamis", "raison": raison_reponse_illisible("tamis")}
+            "erreur": {
+                "noeud": "tamis",
+                "raison": raison_reponse_illisible("tamis"),
+                "type": "reponse_illisible",
+            }
         }
 
     appel = Appel(
@@ -351,6 +392,7 @@ def noeud_tamis(state: EtatBoucle) -> dict:
         cout_usd=reponse.cout_usd,
         demande=prompt,
         reponse=reponse.texte,
+        nb_jetons=reponse.nb_jetons,
     )
 
     texte_type = next(
@@ -456,6 +498,7 @@ def _prompt_redaction(state: EtatBoucle) -> str:
         f"**Posture** :\n{posture_txt}\n\n"
         f"**Forme** :\n{forme_txt}\n\n"
         f"**Sujets interdits** :\n{sujets_interdits_txt}\n\n"
+        f"{_bloc_ce_qui_est_vrai_sur_moi(repertoire)}"
         f"{fait_txt}"
         f"**Texte type** :\n{texte_type_txt}\n\n"
         f"**CV de référence** :\n{state['cv_reference_text']}"
@@ -472,6 +515,7 @@ def noeud_redaction(state: EtatBoucle) -> dict:
             "erreur": {
                 "noeud": "redaction",
                 "raison": raison_appel_echoue("redaction", str(exc)),
+                "type": "appel_echoue",
             }
         }
 
@@ -490,6 +534,7 @@ def noeud_redaction(state: EtatBoucle) -> dict:
         cout_usd=reponse.cout_usd,
         demande=prompt,
         reponse=texte,
+        nb_jetons=reponse.nb_jetons,
     )
     return {
         "appels": state["appels"] + [appel],
@@ -521,6 +566,8 @@ def _prompt_juge(state: EtatBoucle) -> str:
         f"**Règles de posture** :\n{regles_txt}\n\n"
         f"**Formulations rejetées** :\n{formulations_txt}\n\n"
         f"**Sujets interdits** :\n{sujets_interdits_txt}\n\n"
+        f"{_bloc_ce_qui_est_vrai_sur_moi(repertoire)}"
+        f"{_bloc_lettre_de_reference(repertoire)}"
         'Rends un JSON {"rien_a_redire": <bool>, "remarques": <texte ou null>}.'
     )
 
@@ -546,13 +593,23 @@ def noeud_juge(state: EtatBoucle) -> dict:
         )
     except AppelModeleError as exc:
         return {
-            "erreur": {"noeud": "juge", "raison": raison_appel_echoue("juge", str(exc))}
+            "erreur": {
+                "noeud": "juge",
+                "raison": raison_appel_echoue("juge", str(exc)),
+                "type": "appel_echoue",
+            }
         }
 
     try:
         rien_a_redire, remarques = _parser_juge(reponse.texte)
     except (ValueError, json.JSONDecodeError):
-        return {"erreur": {"noeud": "juge", "raison": raison_reponse_illisible("juge")}}
+        return {
+            "erreur": {
+                "noeud": "juge",
+                "raison": raison_reponse_illisible("juge"),
+                "type": "reponse_illisible",
+            }
+        }
 
     appel = Appel(
         noeud="juge",
@@ -561,6 +618,7 @@ def noeud_juge(state: EtatBoucle) -> dict:
         cout_usd=reponse.cout_usd,
         demande=prompt,
         reponse=reponse.texte,
+        nb_jetons=reponse.nb_jetons,
     )
     lettres = list(state["lettres"])
     lettres[-1] = {
@@ -631,6 +689,9 @@ def _invoquer_graphe(etat_initial: EtatBoucle) -> ResultatBoucle:
 
     erreur = etat_final.get("erreur")
     raison = erreur["raison"] if erreur else etat_final["raison_fin"]
+    # RAISON_GENERIQUE_MANQUANT (texte générique absent du répertoire) ne porte
+    # pas de "type" : ni une réponse illisible, ni un appel échoué.
+    erreur_type = erreur.get("type") if erreur else None
     fait = etat_final.get("fait_retenu")
     texte_type = etat_final.get("texte_type")
 
@@ -641,6 +702,7 @@ def _invoquer_graphe(etat_initial: EtatBoucle) -> ResultatBoucle:
         nb_tours=etat_final["tour"],
         raison_fin=raison,
         appels=etat_final["appels"],
+        erreur_type=erreur_type,
     )
 
 

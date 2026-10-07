@@ -498,6 +498,10 @@ def test_critere18_table_une_ligne_par_offre_avec_les_colonnes_attendues(
         "duree_s",
         "cout_usd",
         "raison_fin",
+        # EXE-152, critère 17 : tournures interdites et écart de longueur de
+        # la lettre finale, ajoutés à la table du run MLflow.
+        "tournures_lettre_finale",
+        "ecart_mots",
     }
     ligne = dict(zip(table["columns"], table["data"][0]))
     assert ligne["offre"] == 1
