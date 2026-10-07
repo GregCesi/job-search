@@ -1,16 +1,21 @@
-"""EXE-148 — le banc de la lettre : une commande passe les mêmes offres dans la
-boucle (EXE-147) sous plusieurs configurations de modèles, et compare leurs
-lettres, leur durée et leur coût sur une seule page et dans MLflow.
+"""EXE-148 — le banc de la lettre : une commande passe les offres d'un jeu
+d'évaluation figé dans la boucle (EXE-147) sous plusieurs configurations de
+modèles, et compare leurs lettres, leur durée et leur coût sur une seule page
+et dans MLflow.
 
-Aucun test n'appelle un modèle réel : `boucle.appeler_modele` est remplacé par
-une doublure programmable (reprise de test_exe147_boucle_lettre.py). Aucun
-test ne lit ni n'écrit sous data/ ou le mlflow.db du dépôt : la base, le
-répertoire, le CV de référence, les tournures interdites et les rapports sont
-posés dans tmp_path ; l'isolation MLflow est globale (conftest.py).
+Réécrit pour EXE-151 : le banc ne résout plus ses offres depuis la base
+(`offers`, `verdicts`, `fiches_entreprise`) mais depuis un jeu déjà préparé
+(dict en mémoire dans ces tests) — voir test_exe151_jeu_banc_lettre.py pour
+les critères propres au jeu et à cette frontière.
+
+Aucun test n'appelle un modèle réel : `boucle.appeler_modele` est remplacé
+par une doublure programmable (reprise de test_exe147_boucle_lettre.py).
+Aucun test ne lit ni n'écrit sous data/ ou le mlflow.db du dépôt : le
+répertoire, le CV de référence, les tournures interdites et les rapports
+sont posés dans tmp_path ; l'isolation MLflow est globale (conftest.py).
 """
 
 import json
-import sqlite3
 
 import mlflow
 import pytest
@@ -20,11 +25,6 @@ from mlflow.tracking import MlflowClient
 import orchestrator.job_search.lettre.boucle as boucle
 from orchestrator.job_search.lettre import banc
 from orchestrator.job_search.lettre.boucle import ReponseModele
-from orchestrator.job_search.lettre.redaction import (
-    RAISON_FICHE_NON_TERMINEE,
-    RAISON_TEXTE_MANQUANT,
-)
-from orchestrator.job_search.storage.db import init_db
 
 CV_HTML = "<html><body><p>Contenu CV de test</p></body></html>"
 TOURNURES_INTERDITES = "je veux\n"
@@ -114,55 +114,40 @@ def banc_dir(tmp_path):
     return tmp_path / "banc"
 
 
-@pytest.fixture
-def db_path(tmp_path):
-    chemin = tmp_path / "job_search.sqlite"
-    conn = sqlite3.connect(chemin)
-    init_db(conn)
-    conn.close()
-    return chemin
-
-
-def _conn(db_path):
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _points_fiche() -> list[dict]:
-    return [
-        {"position": "Point 0", "citation": "Citation 0", "url": "https://ex.test/0"}
-    ]
-
-
-def _poser_offre(
-    conn,
+def _entree_jeu(
     offer_id,
     *,
-    retenue=True,
-    fiche_terminee=True,
-    texte="Texte de l'offre.",
     titre="Titre de l'offre",
-    entreprise="Entreprise X SAS",
-    employeur_nom="Entreprise X",
+    entreprise="Entreprise X",
+    texte="Texte de l'offre.",
+    faits=None,
 ):
-    conn.execute(
-        "INSERT INTO offers (id, source, source_id, fingerprint, title, company, "
-        "description_raw) VALUES (?, 'test', ?, 'fp', ?, ?, ?)",
-        (offer_id, str(offer_id), titre, entreprise, texte),
-    )
-    if retenue:
-        conn.execute(
-            "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, 'retenu', '2026-10-07')",
-            (offer_id,),
-        )
-    if fiche_terminee:
-        conn.execute(
-            "INSERT INTO fiches_entreprise (offer_id, statut, presentation, points_json, "
-            "employeur_nom, created_at) VALUES (?, 'done', 'Présentation', ?, ?, '2026-10-07')",
-            (offer_id, json.dumps(_points_fiche()), employeur_nom),
-        )
-    conn.commit()
+    return {
+        "offer_id": offer_id,
+        "intitule": titre,
+        "entreprise": entreprise,
+        "texte_offre": texte,
+        "faits": faits
+        if faits is not None
+        else [
+            {
+                "position": "Point 0",
+                "citation": "Citation 0",
+                "url": "https://ex.test/0",
+                "famille": None,
+                "date": None,
+            }
+        ],
+        "raison_echec_recherche": None,
+    }
+
+
+def _jeu(*offer_ids, **kwargs) -> dict:
+    return {
+        "nom": "essai",
+        "prepare_le": "2026-10-07T00:00:00Z",
+        "offres": [_entree_jeu(i, **kwargs) for i in offer_ids],
+    }
 
 
 _TAMIS_POINT_0 = json.dumps({"point_index": 0, "texte_type_id": "prototyper"})
@@ -176,7 +161,7 @@ def _programmer_passage_simple(modeles, lettre="Lettre finale."):
 
 
 def _lancer(
-    db_path,
+    jeu,
     repertoire_path,
     cv_path,
     tournures_path,
@@ -185,37 +170,29 @@ def _lancer(
     config_specs,
     tracker_factory=None,
 ):
-    conn = _conn(db_path)
-    try:
-        kwargs = dict(
-            repertoire_path=repertoire_path,
-            cv_reference_path=cv_path,
-            tournures_path=tournures_path,
-            banc_dir=banc_dir,
-        )
-        if tracker_factory is not None:
-            kwargs["tracker_factory"] = tracker_factory
-        return banc.lancer_banc(conn, offer_ids, config_specs, **kwargs)
-    finally:
-        conn.close()
+    kwargs = dict(
+        repertoire_path=repertoire_path,
+        cv_reference_path=cv_path,
+        tournures_path=tournures_path,
+        banc_dir=banc_dir,
+    )
+    if tracker_factory is not None:
+        kwargs["tracker_factory"] = tracker_factory
+    return banc.lancer_banc(jeu, offer_ids, config_specs, **kwargs)
 
 
 # --- critère 1 : six passages pour 2 offres × 3 configurations -------------
 
 
 def test_critere1_boucle_tourne_pour_chaque_offre_sous_chaque_configuration(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 179)
-    _poser_offre(conn, 1677)
-    conn.close()
-
+    jeu = _jeu(179, 1677)
     for _ in range(6):
         _programmer_passage_simple(modeles)
 
     resultat = _lancer(
-        db_path,
+        jeu,
         repertoire_path,
         cv_path,
         tournures_path,
@@ -239,15 +216,13 @@ def test_critere1_boucle_tourne_pour_chaque_offre_sous_chaque_configuration(
 
 
 def test_critere2_configuration_a_un_seul_modele(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles)
 
     resultat = _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["llama3"]
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["llama3"]
     )
 
     appel = next(p for p in resultat.passages)
@@ -255,15 +230,13 @@ def test_critere2_configuration_a_un_seul_modele(
 
 
 def test_critere3_juge_different_garde_tamis_et_redaction(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles)
 
     resultat = _lancer(
-        db_path,
+        jeu,
         repertoire_path,
         cv_path,
         tournures_path,
@@ -281,117 +254,23 @@ def test_critere3_juge_different_garde_tamis_et_redaction(
     }
 
 
-# --- critères 4-7 : offres sautées -------------------------------------------
-
-
-def test_critere4_offre_non_retenue_sautee_pour_toutes_les_configurations(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
-):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1, retenue=False)
-    _poser_offre(conn, 2)
-    conn.close()
-    _programmer_passage_simple(modeles)
-    _programmer_passage_simple(modeles)
-
-    resultat = _lancer(
-        db_path,
-        repertoire_path,
-        cv_path,
-        tournures_path,
-        banc_dir,
-        [1, 2],
-        ["sonnet", "opus"],
-    )
-
-    sautees = [p for p in resultat.passages if p.offer_id == 1]
-    assert len(sautees) == 2
-    for p in sautees:
-        assert p.resultat is None
-        assert p.skip_reason is not None
-    autres = [p for p in resultat.passages if p.offer_id == 2]
-    assert all(p.resultat is not None for p in autres)
-
-
-def test_critere5_offre_sans_fiche_terminee_sautee(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
-):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1, fiche_terminee=False)
-    conn.close()
-
-    resultat = _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
-    )
-
-    passage = resultat.passages[0]
-    assert passage.resultat is None
-    assert passage.skip_reason == RAISON_FICHE_NON_TERMINEE
-
-
-def test_critere6_offre_sans_texte_sautee(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
-):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1, texte="")
-    conn.close()
-
-    resultat = _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
-    )
-
-    passage = resultat.passages[0]
-    assert passage.resultat is None
-    assert passage.skip_reason == RAISON_TEXTE_MANQUANT
-
-
-def test_critere7_numero_inconnu_sautee_les_autres_passent(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
-):
-    conn = _conn(db_path)
-    _poser_offre(conn, 2)
-    conn.close()
-    _programmer_passage_simple(modeles)
-
-    resultat = _lancer(
-        db_path,
-        repertoire_path,
-        cv_path,
-        tournures_path,
-        banc_dir,
-        [999, 2],
-        ["sonnet"],
-    )
-
-    inconnue = next(p for p in resultat.passages if p.offer_id == 999)
-    assert inconnue.resultat is None
-    assert inconnue.skip_reason is not None
-    connue = next(p for p in resultat.passages if p.offer_id == 2)
-    assert connue.resultat is not None
-
-
-# --- critère 8 : répertoire absent ou mal formé -----------------------------
+# --- critère 8 (devenu « répertoire absent ») -------------------------------
 
 
 def test_critere8_repertoire_absent_le_banc_ne_part_pas(
-    db_path, cv_path, tournures_path, banc_dir, tmp_path, modeles, capsys
+    cv_path, tournures_path, banc_dir, tmp_path, modeles, capsys
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeux_dir = tmp_path / "jeux"
+    jeux_dir.mkdir()
+    (jeux_dir / "essai.json").write_text(json.dumps(_jeu(1)), encoding="utf-8")
 
     code = banc.main(
-        [
-            "--offres",
-            "1",
-            "--config",
-            "sonnet",
-        ],
+        ["--jeu", "essai", "--config", "sonnet"],
         repertoire_path=tmp_path / "absent.yaml",
         cv_reference_path=cv_path,
         tournures_path=tournures_path,
         banc_dir=banc_dir,
-        db_path=db_path,
+        jeux_dir=jeux_dir,
     )
 
     assert code == 1
@@ -403,16 +282,12 @@ def test_critere8_repertoire_absent_le_banc_ne_part_pas(
 
 
 def test_critere9_ligne_imprimee_par_passage(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles, capsys
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles, capsys
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 179)
-    conn.close()
+    jeu = _jeu(179)
     _programmer_passage_simple(modeles, lettre="Lettre.")
 
-    _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [179], ["sonnet"]
-    )
+    _lancer(jeu, repertoire_path, cv_path, tournures_path, banc_dir, [179], ["sonnet"])
 
     sortie = capsys.readouterr().out
     assert "sonnet" in sortie
@@ -425,22 +300,14 @@ def test_critere9_ligne_imprimee_par_passage(
 
 
 def test_critere10_un_seul_rapport_horodate(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles)
     _programmer_passage_simple(modeles)
 
     resultat = _lancer(
-        db_path,
-        repertoire_path,
-        cv_path,
-        tournures_path,
-        banc_dir,
-        [1],
-        ["sonnet", "opus"],
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet", "opus"]
     )
 
     fichiers = list(banc_dir.glob("*.md"))
@@ -450,20 +317,17 @@ def test_critere10_un_seul_rapport_horodate(
 
 
 def test_critere11_tableau_de_comparaison(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles, lettre="Lettre.")
 
     resultat = _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
     )
 
     texte = resultat.rapport_path.read_text(encoding="utf-8")
     assert "sonnet" in texte
-    # Les 7 observables du critère 11.
     for mot in [
         "lettres produites",
         "durée totale",
@@ -477,15 +341,13 @@ def test_critere11_tableau_de_comparaison(
 
 
 def test_critere12_offre_par_offre_fait_retenu_et_texte_type(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles, lettre="Lettre.")
 
     resultat = _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
     )
 
     texte = resultat.rapport_path.read_text(encoding="utf-8")
@@ -494,17 +356,15 @@ def test_critere12_offre_par_offre_fait_retenu_et_texte_type(
 
 
 def test_critere13_lettre_finale_entiere_avec_tours_mots_duree_cout(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(
         modeles, lettre="Voici le texte complet de la lettre finale."
     )
 
     resultat = _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
     )
 
     texte = resultat.rapport_path.read_text(encoding="utf-8")
@@ -515,11 +375,9 @@ def test_critere13_lettre_finale_entiere_avec_tours_mots_duree_cout(
 
 
 def test_critere14_annexe_lettres_intermediaires_et_duree_des_noeuds(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     modeles.programmer("tamis", _TAMIS_POINT_0)
     modeles.programmer("redaction", "Lettre 1.", "Lettre 2.")
     modeles.programmer(
@@ -529,7 +387,7 @@ def test_critere14_annexe_lettres_intermediaires_et_duree_des_noeuds(
     )
 
     resultat = _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
     )
 
     texte = resultat.rapport_path.read_text(encoding="utf-8")
@@ -540,23 +398,14 @@ def test_critere14_annexe_lettres_intermediaires_et_duree_des_noeuds(
 
 
 def test_critere15_passage_sans_lettre_figure_avec_sa_raison(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    _poser_offre(conn, 2)
-    conn.close()
+    jeu = _jeu(1, 2)
     modeles.programmer("tamis", "ceci n'est pas du JSON")
     _programmer_passage_simple(modeles, lettre="Lettre OK.")
 
     resultat = _lancer(
-        db_path,
-        repertoire_path,
-        cv_path,
-        tournures_path,
-        banc_dir,
-        [1, 2],
-        ["sonnet"],
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1, 2], ["sonnet"]
     )
 
     texte = resultat.rapport_path.read_text(encoding="utf-8")
@@ -569,27 +418,15 @@ def test_critere15_passage_sans_lettre_figure_avec_sa_raison(
 # --- critères 16-20 : MLflow --------------------------------------------------
 
 
-def _config_param_names():
-    return {
-        "modele_tamis",
-        "modele_redaction",
-        "modele_juge",
-        "plafond_tours",
-        "offres",
-    }
-
-
 def test_critere16_un_run_mlflow_par_configuration_avec_ses_parametres(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 179)
-    conn.close()
+    jeu = _jeu(179)
     _programmer_passage_simple(modeles)
     _programmer_passage_simple(modeles)
 
     _lancer(
-        db_path,
+        jeu,
         repertoire_path,
         cv_path,
         tournures_path,
@@ -616,16 +453,12 @@ def test_critere16_un_run_mlflow_par_configuration_avec_ses_parametres(
 
 
 def test_critere17_metriques_du_run_reprennent_la_ligne_du_tableau(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles)
 
-    _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
-    )
+    _lancer(jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"])
 
     client = MlflowClient()
     experiment = client.get_experiment_by_name(banc.EXPERIMENT_NAME)
@@ -638,16 +471,12 @@ def test_critere17_metriques_du_run_reprennent_la_ligne_du_tableau(
 
 
 def test_critere18_table_une_ligne_par_offre_avec_les_colonnes_attendues(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles, lettre="Lettre complète.")
 
-    _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
-    )
+    _lancer(jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"])
 
     client = MlflowClient()
     experiment = client.get_experiment_by_name(banc.EXPERIMENT_NAME)
@@ -676,17 +505,14 @@ def test_critere18_table_une_ligne_par_offre_avec_les_colonnes_attendues(
 
 
 def test_critere19_memes_colonnes_et_memes_offres_entre_deux_runs(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    _poser_offre(conn, 2, retenue=False)
-    conn.close()
-    _programmer_passage_simple(modeles)
-    _programmer_passage_simple(modeles)
+    jeu = _jeu(1, 2)
+    for _ in range(4):
+        _programmer_passage_simple(modeles)
 
     _lancer(
-        db_path,
+        jeu,
         repertoire_path,
         cv_path,
         tournures_path,
@@ -716,15 +542,13 @@ def test_critere19_memes_colonnes_et_memes_offres_entre_deux_runs(
 
 
 def test_critere20_le_run_porte_en_piece_le_rapport(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles)
 
     resultat = _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
     )
 
     client = MlflowClient()
@@ -738,11 +562,9 @@ def test_critere20_le_run_porte_en_piece_le_rapport(
 
 
 def test_critere21_mlflow_ne_peut_pas_ecrire_le_banc_va_au_bout(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles, capsys
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles, capsys
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles)
 
     class _TrackerEnPanne:
@@ -765,7 +587,7 @@ def test_critere21_mlflow_ne_peut_pas_ecrire_le_banc_va_au_bout(
             pass
 
     resultat = _lancer(
-        db_path,
+        jeu,
         repertoire_path,
         cv_path,
         tournures_path,
@@ -779,83 +601,18 @@ def test_critere21_mlflow_ne_peut_pas_ecrire_le_banc_va_au_bout(
     assert "suivi MLflow a échoué" in capsys.readouterr().out
 
 
-# --- critères 22-23 : la base est intacte -------------------------------------
-
-
-def test_critere22_meme_nombre_de_lignes_apres_le_banc(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
-):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
-    _programmer_passage_simple(modeles)
-
-    def _comptes(db_path):
-        conn = sqlite3.connect(db_path)
-        tables = [
-            r[0]
-            for r in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-        ]
-        comptes = {
-            t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in tables
-        }
-        conn.close()
-        return comptes
-
-    avant = _comptes(db_path)
-    _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
-    )
-    apres = _comptes(db_path)
-
-    assert avant == apres
-
-
-def test_critere23_lettre_enregistree_inchangee(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
-):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.execute(
-        "INSERT INTO lettres (offer_id, statut, texte, created_at) "
-        "VALUES (1, 'done', 'Lettre déjà enregistrée', '2026-10-01')"
-    )
-    conn.commit()
-    conn.close()
-    _programmer_passage_simple(modeles, lettre="Lettre du banc, jamais enregistrée.")
-
-    _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
-    )
-
-    conn = sqlite3.connect(db_path)
-    texte = conn.execute("SELECT texte FROM lettres WHERE offer_id=1").fetchone()[0]
-    conn.close()
-    assert texte == "Lettre déjà enregistrée"
-
-
 # --- ce qui ne doit pas arriver ----------------------------------------------
 
 
 def test_un_seul_rapport_pas_un_par_configuration(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles)
     _programmer_passage_simple(modeles)
 
     _lancer(
-        db_path,
-        repertoire_path,
-        cv_path,
-        tournures_path,
-        banc_dir,
-        [1],
-        ["sonnet", "opus"],
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet", "opus"]
     )
 
     assert len(list(banc_dir.glob("*.md"))) == 1
@@ -867,16 +624,23 @@ def test_rapport_hors_git_dans_data_lettre_banc():
     assert LETTRE_BANC_REPORTS_DIR == REPO_ROOT / "data" / "lettre" / "banc"
 
 
+def test_jeux_sous_le_dossier_du_banc():
+    from orchestrator.job_search.paths import (
+        LETTRE_BANC_JEUX_DIR,
+        LETTRE_BANC_REPORTS_DIR,
+    )
+
+    assert LETTRE_BANC_JEUX_DIR == LETTRE_BANC_REPORTS_DIR / "jeux"
+
+
 def test_aucune_note_de_qualite_dans_le_rapport(
-    db_path, repertoire_path, cv_path, tournures_path, banc_dir, modeles
+    repertoire_path, cv_path, tournures_path, banc_dir, modeles
 ):
-    conn = _conn(db_path)
-    _poser_offre(conn, 1)
-    conn.close()
+    jeu = _jeu(1)
     _programmer_passage_simple(modeles)
 
     resultat = _lancer(
-        db_path, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
+        jeu, repertoire_path, cv_path, tournures_path, banc_dir, [1], ["sonnet"]
     )
 
     texte = resultat.rapport_path.read_text(encoding="utf-8").lower()

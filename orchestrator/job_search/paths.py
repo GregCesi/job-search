@@ -50,3 +50,6 @@ BOUCLE_JUGE_CWD = Path.home() / ".cache" / "job-search" / "boucle_juge_cwd"
 # Rapports du banc de la lettre (EXE-148) : hors git, posés à part comme les autres
 # fichiers de data/lettre/.
 LETTRE_BANC_REPORTS_DIR = REPO_ROOT / "data" / "lettre" / "banc"
+# Jeux d'évaluation figés du banc (EXE-151) : préparés une fois par une commande à
+# part, lus par le banc sans ouvrir la base — hors git comme le reste de data/.
+LETTRE_BANC_JEUX_DIR = LETTRE_BANC_REPORTS_DIR / "jeux"

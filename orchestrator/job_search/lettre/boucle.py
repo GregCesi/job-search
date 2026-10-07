@@ -626,6 +626,64 @@ def dessiner_graphe() -> str:
     return _GRAPHE.get_graph().draw_mermaid()
 
 
+def _invoquer_graphe(etat_initial: EtatBoucle) -> ResultatBoucle:
+    etat_final = _GRAPHE.invoke(etat_initial)
+
+    erreur = etat_final.get("erreur")
+    raison = erreur["raison"] if erreur else etat_final["raison_fin"]
+    fait = etat_final.get("fait_retenu")
+    texte_type = etat_final.get("texte_type")
+
+    return ResultatBoucle(
+        fait_retenu=fait if fait is not None else GENERIQUE_ID,
+        texte_type_id=texte_type.id if texte_type is not None else GENERIQUE_ID,
+        lettres=etat_final["lettres"],
+        nb_tours=etat_final["tour"],
+        raison_fin=raison,
+        appels=etat_final["appels"],
+    )
+
+
+def generer_lettre_depuis_donnees(
+    titre: str,
+    texte_offre: str,
+    entreprise: str,
+    points_fiche: list[dict],
+    config: ConfigBoucle,
+    repertoire_path: str | Path = REPERTOIRE_LETTRE_PATH,
+    cv_reference_path: str | Path = CV_REFERENCE_PATH,
+    tournures_path: str | Path = LETTRE_TOURNURES_PATH,
+) -> ResultatBoucle:
+    """Lance la boucle tamis → rédaction → juge sur des données déjà résolues
+    (EXE-151) — n'ouvre et ne lit aucune table, contrairement à
+    `generer_lettre_boucle` qui résout depuis `offers` et `fiches_entreprise`.
+    Sert la préparation du jeu du banc (`lettre/jeu.py`), qui résout ses offres
+    depuis le jeu plutôt que depuis la base."""
+    charge = charger_repertoire(repertoire_path)
+    cv_reference_text = strip_html(Path(cv_reference_path).read_text(encoding="utf-8"))
+    tournures = load_tournures_interdites(Path(tournures_path))
+
+    etat_initial: EtatBoucle = {
+        "titre": titre,
+        "texte_offre": texte_offre,
+        "entreprise": entreprise,
+        "points_fiche": points_fiche,
+        "cv_reference_text": cv_reference_text,
+        "tournures_interdites": tournures,
+        "repertoire": charge.repertoire,
+        "config": config,
+        "fait_retenu": None,
+        "texte_type": None,
+        "lettres": [],
+        "tour": 0,
+        "appels": [],
+        "erreur": None,
+        "fin": False,
+        "raison_fin": None,
+    }
+    return _invoquer_graphe(etat_initial)
+
+
 def generer_lettre_boucle(
     conn: sqlite3.Connection,
     offer_id: int,
@@ -637,8 +695,6 @@ def generer_lettre_boucle(
     """Lance la boucle tamis → rédaction → juge sur une offre (critère 1).
 
     Lecture seule de `offers` et `fiches_entreprise` — n'écrit dans aucune table."""
-    charge = charger_repertoire(repertoire_path)
-
     offer = conn.execute(
         "SELECT title, description_raw, description, company FROM offers WHERE id = ?",
         (offer_id,),
@@ -657,42 +713,15 @@ def generer_lettre_boucle(
     points_fiche = json.loads(fiche["points_json"] or "[]")
     entreprise = fiche["employeur_nom"] or offer["company"] or ""
 
-    cv_reference_text = strip_html(Path(cv_reference_path).read_text(encoding="utf-8"))
-    tournures = load_tournures_interdites(Path(tournures_path))
-
-    etat_initial: EtatBoucle = {
-        "titre": offer["title"] or "",
-        "texte_offre": texte_offre,
-        "entreprise": entreprise,
-        "points_fiche": points_fiche,
-        "cv_reference_text": cv_reference_text,
-        "tournures_interdites": tournures,
-        "repertoire": charge.repertoire,
-        "config": config,
-        "fait_retenu": None,
-        "texte_type": None,
-        "lettres": [],
-        "tour": 0,
-        "appels": [],
-        "erreur": None,
-        "fin": False,
-        "raison_fin": None,
-    }
-
-    etat_final = _GRAPHE.invoke(etat_initial)
-
-    erreur = etat_final.get("erreur")
-    raison = erreur["raison"] if erreur else etat_final["raison_fin"]
-    fait = etat_final.get("fait_retenu")
-    texte_type = etat_final.get("texte_type")
-
-    return ResultatBoucle(
-        fait_retenu=fait if fait is not None else GENERIQUE_ID,
-        texte_type_id=texte_type.id if texte_type is not None else GENERIQUE_ID,
-        lettres=etat_final["lettres"],
-        nb_tours=etat_final["tour"],
-        raison_fin=raison,
-        appels=etat_final["appels"],
+    return generer_lettre_depuis_donnees(
+        offer["title"] or "",
+        texte_offre,
+        entreprise,
+        points_fiche,
+        config,
+        repertoire_path=repertoire_path,
+        cv_reference_path=cv_reference_path,
+        tournures_path=tournures_path,
     )
 
 

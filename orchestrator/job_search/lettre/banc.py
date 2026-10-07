@@ -1,25 +1,27 @@
-"""Banc de la lettre (EXE-148) : passe les mêmes offres dans la boucle LangGraph
-(EXE-147) sous plusieurs configurations de modèles, pour comparer leurs lettres,
-leur durée et leur coût sur une seule page et dans MLflow (architecture.md,
-« Exception encadrée : banc de la lettre »).
+"""Banc de la lettre (EXE-148, refait EXE-151) : passe les offres d'un jeu
+d'évaluation figé dans la boucle LangGraph (EXE-147) sous plusieurs
+configurations de modèles, pour comparer leurs lettres, leur durée et leur
+coût sur une seule page et dans MLflow (architecture.md, « Exception
+encadrée : banc de la lettre »).
 
 Part uniquement d'une commande lancée à la main (`python -m
-orchestrator.job_search.lettre.banc --offres ... --config ...`). Lecture seule
-de `offers`, `verdicts`, `fiches_entreprise` — n'écrit dans aucune table. Un
-seul rapport est écrit pour toutes les configurations ; chaque configuration a
-en plus son propre run MLflow, sous l'expérience « lettre-banc », qui porte le
-même rapport en pièce.
+orchestrator.job_search.lettre.banc --jeu ... --config ...`). N'ouvre aucune
+connexion à la base — toutes les offres (titre, entreprise, texte, faits de la
+recherche d'entreprise) viennent du jeu, préparé à part par
+`lettre/jeu.py`. Un seul rapport est écrit pour toutes les configurations ;
+chaque configuration a en plus son propre run MLflow, sous l'expérience
+« lettre-banc », qui porte le même rapport et le jeu en pièce.
 
-Une offre non retenue, sans fiche entreprise terminée, sans texte ou absente
-de la base est sautée pour toutes les configurations (une seule fois, avant
+Une offre du jeu marquée d'une raison d'échec de recherche, ou absente du
+jeu, est sautée pour toutes les configurations (une seule fois, avant
 d'itérer les configurations) : ce calcul partagé garantit que chaque run
-MLflow porte la même liste d'offres, dans le même ordre (critère 19).
+MLflow porte la même liste d'offres, dans le même ordre.
 """
 
 from __future__ import annotations
 
 import argparse
-import sqlite3
+import json
 import sys
 import time
 from dataclasses import dataclass, field
@@ -33,12 +35,7 @@ from orchestrator.job_search.lettre.boucle import (
     Appel,
     ConfigBoucle,
     ResultatBoucle,
-    generer_lettre_boucle,
-)
-from orchestrator.job_search.lettre.redaction import (
-    RAISON_FICHE_NON_TERMINEE,
-    RAISON_TEXTE_MANQUANT,
-    resolve_offer_text,
+    generer_lettre_depuis_donnees,
 )
 from orchestrator.job_search.lettre.repertoire import (
     RepertoireError,
@@ -46,21 +43,24 @@ from orchestrator.job_search.lettre.repertoire import (
 )
 from orchestrator.job_search.paths import (
     CV_REFERENCE_PATH,
+    LETTRE_BANC_JEUX_DIR,
     LETTRE_BANC_REPORTS_DIR,
     LETTRE_TOURNURES_PATH,
     REPERTOIRE_LETTRE_PATH,
 )
-from orchestrator.job_search.storage.db import DB_PATH, init_db
 from orchestrator.job_search.tracking.mlflow_tracking import RunTracker
 
 EXPERIMENT_NAME = "lettre-banc"
 
-RAISON_OFFRE_INTROUVABLE = "aucune offre ne correspond à ce numéro"
-RAISON_NON_RETENUE = "l'offre n'est pas retenue"
+RAISON_ABSENTE_DU_JEU = "cette offre n'est pas dans le jeu"
 
 
 class ConfigurationInvalideError(ValueError):
     """Une configuration passée à `--config` n'est pas lisible (H2 du ticket)."""
+
+
+class JeuIntrouvableError(ValueError):
+    """Le jeu désigné par `--jeu` n'existe pas ou n'est pas un JSON lisible (EXE-151)."""
 
 
 @dataclass(frozen=True)
@@ -101,55 +101,58 @@ def parser_config(spec: str) -> ConfigNommee:
     )
 
 
+def charger_jeu(nom: str, jeux_dir: str | Path) -> dict:
+    """Lit le jeu `nom` sous `jeux_dir` (critères 15, 16 — refuse sans appeler
+    aucun modèle si le nom est absent ou le fichier illisible)."""
+    chemin = Path(jeux_dir) / f"{nom}.json"
+    if not chemin.exists():
+        raise JeuIntrouvableError(f"jeu introuvable : « {nom} » ({chemin})")
+    try:
+        return json.loads(chemin.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise JeuIntrouvableError(f"jeu illisible : « {nom} » ({exc})") from exc
+
+
 @dataclass(frozen=True)
 class OffreBanc:
-    """Résolution d'un numéro d'offre, partagée par toutes les configurations
-    (critères 4 à 7) : soit prête à passer dans la boucle, soit sautée avec sa
-    raison."""
+    """Résolution d'une offre du jeu, partagée par toutes les configurations :
+    soit prête à passer dans la boucle, soit sautée avec sa raison (jeu
+    absent, ou raison d'échec de recherche portée par le jeu)."""
 
     offer_id: int
     skip_reason: str | None
     titre: str = ""
     entreprise: str = ""
+    texte_offre: str = ""
+    faits: list = field(default_factory=list)
 
 
-def _resoudre_offre(conn: sqlite3.Connection, offer_id: int) -> OffreBanc:
-    offer = conn.execute(
-        "SELECT title, company, description_raw, description FROM offers WHERE id = ?",
-        (offer_id,),
-    ).fetchone()
-    if offer is None:
-        return OffreBanc(offer_id, RAISON_OFFRE_INTROUVABLE)
-
-    titre = offer["title"] or ""
-
-    verdict = conn.execute(
-        "SELECT status FROM verdicts WHERE offer_id = ? ORDER BY id DESC LIMIT 1",
-        (offer_id,),
-    ).fetchone()
-    if verdict is None or verdict["status"] != "retenu":
-        return OffreBanc(offer_id, RAISON_NON_RETENUE, titre, offer["company"] or "")
-
-    fiche = conn.execute(
-        "SELECT statut, employeur_nom FROM fiches_entreprise WHERE offer_id = ?",
-        (offer_id,),
-    ).fetchone()
-    entreprise = (fiche["employeur_nom"] if fiche else None) or offer["company"] or ""
-    if fiche is None or fiche["statut"] != "done":
-        return OffreBanc(offer_id, RAISON_FICHE_NON_TERMINEE, titre, entreprise)
-
-    texte = resolve_offer_text(offer["description_raw"], offer["description"])
-    if not texte:
-        return OffreBanc(offer_id, RAISON_TEXTE_MANQUANT, titre, entreprise)
-
-    return OffreBanc(offer_id, None, titre, entreprise)
+def _resoudre_offres_depuis_jeu(jeu: dict, offer_ids: list[int]) -> list[OffreBanc]:
+    par_id = {entree["offer_id"]: entree for entree in jeu.get("offres", [])}
+    offres = []
+    for offer_id in offer_ids:
+        entree = par_id.get(offer_id)
+        if entree is None:
+            offres.append(OffreBanc(offer_id, RAISON_ABSENTE_DU_JEU))
+            continue
+        offres.append(
+            OffreBanc(
+                offer_id,
+                entree.get("raison_echec_recherche"),
+                entree.get("intitule") or "",
+                entree.get("entreprise") or "",
+                entree.get("texte_offre") or "",
+                entree.get("faits") or [],
+            )
+        )
+    return offres
 
 
 @dataclass
 class Passage:
     """Un passage = une offre sous une configuration (critère 1). `resultat`
-    est `None` quand l'offre a été sautée (critères 4 à 7) — `skip_reason`
-    porte alors la raison affichée (critère 9) et écrite au rapport."""
+    est `None` quand l'offre a été sautée — `skip_reason` porte alors la
+    raison affichée (critère 9) et écrite au rapport."""
 
     config_label: str
     offer_id: int
@@ -181,7 +184,6 @@ def _ligne_passage(passage: Passage) -> str:
 
 
 def executer_passages(
-    conn: sqlite3.Connection,
     offres: list[OffreBanc],
     configs: list[ConfigNommee],
     *,
@@ -192,7 +194,7 @@ def executer_passages(
     """Fait tourner la boucle pour chaque offre résolue sous chaque
     configuration (critère 1), dans l'ordre configurations × offres. Une
     offre sautée (`skip_reason` posé) l'est pour toutes les configurations,
-    sans appeler la boucle (critères 4 à 7)."""
+    sans appeler la boucle."""
     passages: list[Passage] = []
     for config in configs:
         for offre in offres:
@@ -209,9 +211,11 @@ def executer_passages(
                 )
             else:
                 debut = time.perf_counter()
-                resultat = generer_lettre_boucle(
-                    conn,
-                    offre.offer_id,
+                resultat = generer_lettre_depuis_donnees(
+                    offre.titre,
+                    offre.texte_offre,
+                    offre.entreprise,
+                    offre.faits,
                     config.config,
                     repertoire_path=repertoire_path,
                     cv_reference_path=cv_reference_path,
@@ -322,7 +326,7 @@ def resumer_config(
     )
 
 
-# --- le rapport (critères 10-15) --------------------------------------------
+# --- le rapport (critères 10-15, 21) ----------------------------------------
 
 
 def _fmt(valeur, suffixe: str = "", precision: int = 1) -> str:
@@ -416,6 +420,7 @@ def _annexe_passage(passage: Passage) -> str:
 
 
 def construire_rapport(
+    jeu_nom: str,
     offer_ids: list[int],
     configs: list[ConfigNommee],
     offres: list[OffreBanc],
@@ -425,6 +430,7 @@ def construire_rapport(
 ) -> str:
     entete = (
         f"# Banc de la lettre — {horodatage}\n\n"
+        f"Jeu : {jeu_nom}\n"
         f"Offres : {', '.join(str(o) for o in offer_ids)}\n"
         f"Configurations : {', '.join(c.label for c in configs)}\n"
     )
@@ -445,13 +451,15 @@ def _ecrire_rapport(texte: str, banc_dir: Path, horodatage: str) -> Path:
     return chemin
 
 
-# --- MLflow (critères 16-21) -------------------------------------------------
+# --- MLflow (critères 16-22) -------------------------------------------------
 
 
 def _logger_config(
     resume: ResumeConfig,
     offer_ids: list[int],
+    jeu_nom: str,
     rapport_path: Path,
+    jeu_path: Path | None,
     tracker_factory,
 ) -> None:
     tracker = tracker_factory(experiment_name=EXPERIMENT_NAME)
@@ -462,6 +470,7 @@ def _logger_config(
             "modele_juge": resume.config_nommee.config.modele_juge,
             "plafond_tours": MAX_TOURS,
             "offres": ",".join(str(o) for o in offer_ids),
+            "jeu": jeu_nom,
         },
         run_name=resume.config_nommee.label,
     )
@@ -480,6 +489,8 @@ def _logger_config(
     tracker.log_metrics(metrics)
     tracker.log_table(resume.table, artifact_file="passages.json")
     tracker.log_artifact(rapport_path)
+    if jeu_path is not None:
+        tracker.log_artifact(jeu_path)
     tracker.end()
 
 
@@ -494,27 +505,34 @@ class ResultatBanc:
 
 
 def lancer_banc(
-    conn: sqlite3.Connection,
-    offer_ids: list[int],
+    jeu: dict,
+    offer_ids: list[int] | None,
     config_specs: list[str],
     *,
     repertoire_path: str | Path = REPERTOIRE_LETTRE_PATH,
     cv_reference_path: str | Path = CV_REFERENCE_PATH,
     tournures_path: str | Path = LETTRE_TOURNURES_PATH,
     banc_dir: str | Path = LETTRE_BANC_REPORTS_DIR,
+    jeu_path: str | Path | None = None,
     tracker_factory=RunTracker,
 ) -> ResultatBanc:
-    """Point d'entrée du banc : résout les offres une seule fois (partagée par
-    toutes les configurations, critères 4-7, 19), fait tourner chaque passage,
-    écrit le rapport unique (critère 10) puis un run MLflow par configuration
-    (critères 16-20). Une panne MLflow ne doit jamais empêcher le rapport
-    d'être écrit (critère 21) : le rapport est déjà sur disque avant que la
-    boucle MLflow ne démarre."""
+    """Point d'entrée du banc : résout les offres du jeu une seule fois
+    (partagée par toutes les configurations, critère 19), fait tourner chaque
+    passage, écrit le rapport unique (critère 10) puis un run MLflow par
+    configuration. `offer_ids` limite et ordonne le sous-ensemble du jeu à
+    jouer (critère 19) ; `None` joue le jeu entier, dans son ordre
+    (critère 13). Une panne MLflow ne doit jamais empêcher le rapport d'être
+    écrit : le rapport est déjà sur disque avant que la boucle MLflow ne
+    démarre."""
     configs = [parser_config(spec) for spec in config_specs]
-    offres = [_resoudre_offre(conn, offer_id) for offer_id in offer_ids]
+    ids_resolus = (
+        offer_ids
+        if offer_ids is not None
+        else [entree["offer_id"] for entree in jeu.get("offres", [])]
+    )
+    offres = _resoudre_offres_depuis_jeu(jeu, ids_resolus)
 
     passages = executer_passages(
-        conn,
         offres,
         configs,
         repertoire_path=repertoire_path,
@@ -525,12 +543,19 @@ def lancer_banc(
 
     horodatage = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     texte_rapport = construire_rapport(
-        offer_ids, configs, offres, passages, resumes, horodatage
+        jeu.get("nom", ""), ids_resolus, configs, offres, passages, resumes, horodatage
     )
     rapport_path = _ecrire_rapport(texte_rapport, Path(banc_dir), horodatage)
 
     for resume in resumes:
-        _logger_config(resume, offer_ids, rapport_path, tracker_factory)
+        _logger_config(
+            resume,
+            ids_resolus,
+            jeu.get("nom", ""),
+            rapport_path,
+            Path(jeu_path) if jeu_path is not None else None,
+            tracker_factory,
+        )
 
     return ResultatBanc(passages=passages, resumes=resumes, rapport_path=rapport_path)
 
@@ -545,16 +570,20 @@ def main(
     cv_reference_path: str | Path = CV_REFERENCE_PATH,
     tournures_path: str | Path = LETTRE_TOURNURES_PATH,
     banc_dir: str | Path = LETTRE_BANC_REPORTS_DIR,
-    db_path: str | Path = DB_PATH,
+    jeux_dir: str | Path = LETTRE_BANC_JEUX_DIR,
     tracker_factory=RunTracker,
 ) -> int:
-    """python -m orchestrator.job_search.lettre.banc --offres 179,1677 --config
-    sonnet --config opus --config sonnet,juge=opus (H2 du ticket)."""
+    """python -m orchestrator.job_search.lettre.banc --jeu essai1 --config
+    sonnet --config opus --config sonnet,juge=opus [--offres 179,1677] (H2 du ticket)."""
     parser = argparse.ArgumentParser(
         description="Banc de la lettre (comparaison de modèles)"
     )
+    parser.add_argument("--jeu", required=True, help="nom du jeu d'évaluation figé")
     parser.add_argument(
-        "--offres", required=True, help="numéros d'offres séparés par des virgules"
+        "--offres",
+        required=False,
+        default=None,
+        help="sous-ensemble d'offres du jeu, séparées par des virgules (optionnel)",
     )
     parser.add_argument(
         "--config",
@@ -565,15 +594,17 @@ def main(
     )
     args = parser.parse_args(argv)
 
-    try:
-        offer_ids = [
-            int(morceau.strip())
-            for morceau in args.offres.split(",")
-            if morceau.strip()
-        ]
-    except ValueError:
-        print(f"liste d'offres invalide : « {args.offres} »")
-        return 1
+    offer_ids: list[int] | None = None
+    if args.offres:
+        try:
+            offer_ids = [
+                int(morceau.strip())
+                for morceau in args.offres.split(",")
+                if morceau.strip()
+            ]
+        except ValueError:
+            print(f"liste d'offres invalide : « {args.offres} »")
+            return 1
 
     try:
         for spec in args.configs:
@@ -588,22 +619,24 @@ def main(
         print(str(exc))
         return 1
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
     try:
-        init_db(conn)
-        resultat = lancer_banc(
-            conn,
-            offer_ids,
-            args.configs,
-            repertoire_path=repertoire_path,
-            cv_reference_path=cv_reference_path,
-            tournures_path=tournures_path,
-            banc_dir=banc_dir,
-            tracker_factory=tracker_factory,
-        )
-    finally:
-        conn.close()
+        jeu = charger_jeu(args.jeu, jeux_dir)
+    except JeuIntrouvableError as exc:
+        print(str(exc))
+        return 1
+
+    jeu_path = Path(jeux_dir) / f"{args.jeu}.json"
+    resultat = lancer_banc(
+        jeu,
+        offer_ids,
+        args.configs,
+        repertoire_path=repertoire_path,
+        cv_reference_path=cv_reference_path,
+        tournures_path=tournures_path,
+        banc_dir=banc_dir,
+        jeu_path=jeu_path,
+        tracker_factory=tracker_factory,
+    )
 
     print(f"Rapport écrit : {resultat.rapport_path}")
     return 0

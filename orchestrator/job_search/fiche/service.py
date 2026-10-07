@@ -7,6 +7,7 @@ Frontière (architecture.md §4) : un appel SDK ne part que d'une action explici
 import asyncio
 import json
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from claude_agent_sdk import (
@@ -18,7 +19,7 @@ from claude_agent_sdk import (
     query,
 )
 
-from orchestrator.job_search.fiche.cascade import identify_employer
+from orchestrator.job_search.fiche.cascade import CascadeResult, identify_employer
 from orchestrator.job_search.fiche.prompt import FAMILLES, build_prompt
 from orchestrator.job_search.paths import FICHE_CWD
 from orchestrator.job_search.storage.db import get_connection, init_db
@@ -129,6 +130,110 @@ def _cascade_in_thread(offer_id: int):
         conn.close()
 
 
+@dataclass
+class ResultatRecherche:
+    """Résultat de l'appel modèle de la recherche d'entreprise, sans aucune écriture
+    en base (EXE-151) — `run_fiche` le persiste, la préparation du jeu du banc
+    (lettre/jeu.py) le lit pour construire un fait, sans jamais écrire."""
+
+    mode: str | None
+    presentation: str | None
+    employeur_nom: str | None
+    employeur_entite: str | None
+    employeur_type_source: str | None
+    employeur_confiance: str | None
+    employeur_methode: str | None
+    employeur_urls: list[str]
+    points: list[dict]
+    session_id: str | None
+    cost_usd: float | None
+    tools_called: list[str]
+    api_key_source: str | None
+    prompt_text: str
+
+
+async def rechercher_entreprise(
+    offer: sqlite3.Row, cascade: CascadeResult
+) -> ResultatRecherche:
+    """Appel modèle unique de la recherche d'entreprise (source unique de la
+    demande : `build_prompt`) — ni lecture ni écriture en base. `run_fiche`
+    l'appelle puis persiste son résultat ; rien d'autre ne doit reconstruire
+    cette demande (architecture.md, « Exception encadrée : banc de la lettre »)."""
+    prompt = build_prompt(offer, cascade)
+
+    api_key_source: str | None = None
+    tools_called: list[str] = []
+    result: ResultMessage | None = None
+    # cwd stable et vide + aucune source de settings : la session de recherche ne charge ni
+    # le CLAUDE.md du repo ni ses hooks, et la reprise de session (route explain) retrouve la session.
+    FICHE_CWD.mkdir(parents=True, exist_ok=True)
+    options = ClaudeAgentOptions(
+        tools=_SEARCH_TOOLS,
+        allowed_tools=_SEARCH_TOOLS,
+        disallowed_tools=_FORBIDDEN_TOOLS,
+        output_format={"type": "json_schema", "schema": _FICHE_SCHEMA},
+        setting_sources=[],
+        cwd=str(FICHE_CWD),
+        max_turns=40,
+    )
+    async for msg in query(prompt=prompt, options=options):
+        if isinstance(msg, SystemMessage) and msg.subtype == "init":
+            api_key_source = msg.data.get("apiKeySource")
+        elif isinstance(msg, AssistantMessage):
+            tools_called += [b.name for b in msg.content if isinstance(b, ToolUseBlock)]
+        elif isinstance(msg, ResultMessage):
+            result = msg
+    if result is None:
+        raise RuntimeError("aucun ResultMessage reçu du SDK")
+    if result.is_error:
+        raise RuntimeError(
+            f"SDK en erreur ({result.subtype}): {(result.result or '')[:500]}"
+        )
+
+    out = _parse_output(result)
+    employeur = out.get("employeur") or {}
+    raw_points = (out.get("points") or [])[:MAX_POINTS]
+    # Désignation pour la lettre (EXE-132) : index invalides ignorés (critère 5),
+    # seuls les quatre premiers valides, dans l'ordre désigné, sont gardés (critère 4).
+    valid_designated = [
+        i
+        for i in (out.get("points_pour_lettre") or [])
+        if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(raw_points)
+    ]
+    kept_designated = set(valid_designated[:MAX_LETTRE_POINTS])
+    points = [
+        {
+            "position": p.get("position"),
+            "citation": p.get("citation"),
+            "url": p.get("url"),
+            "tas": None,
+            "explication": None,
+            "pour_lettre": i in kept_designated,
+            # Famille hors des trois connues (critère 8) ou date absente
+            # (critère 7) : le point est gardé, seul le champ manque.
+            "famille": p.get("famille") if p.get("famille") in FAMILLES else None,
+            "date": p.get("date") or None,
+        }
+        for i, p in enumerate(raw_points)
+    ]
+    return ResultatRecherche(
+        mode=out.get("mode"),
+        presentation=out.get("presentation"),
+        employeur_nom=employeur.get("nom"),
+        employeur_entite=employeur.get("entite_precise"),
+        employeur_type_source=employeur.get("type_source"),
+        employeur_confiance=employeur.get("confiance"),
+        employeur_methode=employeur.get("methode"),
+        employeur_urls=employeur.get("urls") or [],
+        points=points,
+        session_id=result.session_id,
+        cost_usd=result.total_cost_usd,
+        tools_called=tools_called,
+        api_key_source=api_key_source,
+        prompt_text=prompt,
+    )
+
+
 async def run_fiche(offer_id: int) -> None:
     """Produit la fiche de l'offre. Toute exception finit en `statut='error'`."""
     conn = get_connection()
@@ -146,69 +251,8 @@ async def run_fiche(offer_id: int) -> None:
 
             # Cascade synchrone (Ollama bloquant + scan des offres) : hors event loop, connexion propre.
             cascade = await asyncio.to_thread(_cascade_in_thread, offer_id)
-            prompt = build_prompt(offer, cascade)
+            resultat = await rechercher_entreprise(offer, cascade)
 
-            api_key_source: str | None = None
-            tools_called: list[str] = []
-            result: ResultMessage | None = None
-            # cwd stable et vide + aucune source de settings : la session de recherche ne charge ni
-            # le CLAUDE.md du repo ni ses hooks, et la reprise de session (route explain) retrouve la session.
-            FICHE_CWD.mkdir(parents=True, exist_ok=True)
-            options = ClaudeAgentOptions(
-                tools=_SEARCH_TOOLS,
-                allowed_tools=_SEARCH_TOOLS,
-                disallowed_tools=_FORBIDDEN_TOOLS,
-                output_format={"type": "json_schema", "schema": _FICHE_SCHEMA},
-                setting_sources=[],
-                cwd=str(FICHE_CWD),
-                max_turns=40,
-            )
-            async for msg in query(prompt=prompt, options=options):
-                if isinstance(msg, SystemMessage) and msg.subtype == "init":
-                    api_key_source = msg.data.get("apiKeySource")
-                elif isinstance(msg, AssistantMessage):
-                    tools_called += [
-                        b.name for b in msg.content if isinstance(b, ToolUseBlock)
-                    ]
-                elif isinstance(msg, ResultMessage):
-                    result = msg
-            if result is None:
-                raise RuntimeError("aucun ResultMessage reçu du SDK")
-            if result.is_error:
-                raise RuntimeError(
-                    f"SDK en erreur ({result.subtype}): {(result.result or '')[:500]}"
-                )
-
-            out = _parse_output(result)
-            employeur = out.get("employeur") or {}
-            raw_points = (out.get("points") or [])[:MAX_POINTS]
-            # Désignation pour la lettre (EXE-132) : index invalides ignorés (critère 5),
-            # seuls les quatre premiers valides, dans l'ordre désigné, sont gardés (critère 4).
-            valid_designated = [
-                i
-                for i in (out.get("points_pour_lettre") or [])
-                if isinstance(i, int)
-                and not isinstance(i, bool)
-                and 0 <= i < len(raw_points)
-            ]
-            kept_designated = set(valid_designated[:MAX_LETTRE_POINTS])
-            points = [
-                {
-                    "position": p.get("position"),
-                    "citation": p.get("citation"),
-                    "url": p.get("url"),
-                    "tas": None,
-                    "explication": None,
-                    "pour_lettre": i in kept_designated,
-                    # Famille hors des trois connues (critère 8) ou date absente
-                    # (critère 7) : le point est gardé, seul le champ manque.
-                    "famille": p.get("famille")
-                    if p.get("famille") in FAMILLES
-                    else None,
-                    "date": p.get("date") or None,
-                }
-                for i, p in enumerate(raw_points)
-            ]
             conn.execute(
                 """
                 UPDATE fiches_entreprise SET
@@ -219,20 +263,20 @@ async def run_fiche(offer_id: int) -> None:
                 WHERE offer_id=?
                 """,
                 (
-                    out.get("mode"),
-                    out.get("presentation"),
-                    employeur.get("nom"),
-                    employeur.get("entite_precise"),
-                    employeur.get("type_source"),
-                    employeur.get("confiance"),
-                    employeur.get("methode"),
-                    json.dumps(employeur.get("urls") or [], ensure_ascii=False),
-                    json.dumps(points, ensure_ascii=False),
-                    result.session_id,
-                    result.total_cost_usd,
-                    json.dumps(tools_called),
-                    api_key_source,
-                    prompt,
+                    resultat.mode,
+                    resultat.presentation,
+                    resultat.employeur_nom,
+                    resultat.employeur_entite,
+                    resultat.employeur_type_source,
+                    resultat.employeur_confiance,
+                    resultat.employeur_methode,
+                    json.dumps(resultat.employeur_urls, ensure_ascii=False),
+                    json.dumps(resultat.points, ensure_ascii=False),
+                    resultat.session_id,
+                    resultat.cost_usd,
+                    json.dumps(resultat.tools_called),
+                    resultat.api_key_source,
+                    resultat.prompt_text,
                     offer_id,
                 ),
             )
