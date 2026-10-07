@@ -19,7 +19,7 @@ from claude_agent_sdk import (
 )
 
 from orchestrator.job_search.fiche.cascade import identify_employer
-from orchestrator.job_search.fiche.prompt import build_prompt
+from orchestrator.job_search.fiche.prompt import FAMILLES, build_prompt
 from orchestrator.job_search.paths import FICHE_CWD
 from orchestrator.job_search.storage.db import get_connection, init_db
 
@@ -67,6 +67,11 @@ _FICHE_SCHEMA = {
                     "position": {"type": "string"},
                     "citation": {"type": ["string", "null"]},
                     "url": {"type": ["string", "null"]},
+                    # Type string libre, pas d'enum (EXE-149, critère 8) : une
+                    # famille hors vocabulaire doit pouvoir être reçue puis
+                    # écartée en code, jamais rejetée par le schéma du SDK.
+                    "famille": {"type": ["string", "null"]},
+                    "date": {"type": ["string", "null"]},
                 },
                 "required": ["position"],
             },
@@ -195,6 +200,12 @@ async def run_fiche(offer_id: int) -> None:
                     "tas": None,
                     "explication": None,
                     "pour_lettre": i in kept_designated,
+                    # Famille hors des trois connues (critère 8) ou date absente
+                    # (critère 7) : le point est gardé, seul le champ manque.
+                    "famille": p.get("famille")
+                    if p.get("famille") in FAMILLES
+                    else None,
+                    "date": p.get("date") or None,
                 }
                 for i, p in enumerate(raw_points)
             ]

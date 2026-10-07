@@ -78,7 +78,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             employeur_confiance   TEXT,   -- sur|probable|non_trouve
             employeur_methode     TEXT,
             employeur_urls_json   TEXT,   -- JSON array de strings
-            points_json           TEXT,   -- JSON array [{position,citation,url,tas,explication}]
+            points_json           TEXT,   -- JSON array [{position,citation,url,tas,explication,pour_lettre,famille,date}]
             session_id            TEXT,
             cost_usd              REAL,
             tools_called_json     TEXT,   -- JSON array des outils effectivement appelés
