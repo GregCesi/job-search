@@ -235,9 +235,31 @@ def appeler_modele(
 
 
 def _texte_point(point: dict) -> str:
+    # EXE-150, critères 3, 4, 9, 10 : famille et date, omises entièrement si
+    # absentes — jamais de mention vide, de « None » ou de « aucune ».
+    extras = []
+    if point.get("famille"):
+        extras.append(f"famille : {point['famille']}")
+    if point.get("date"):
+        extras.append(f"date : {point['date']}")
+    extras_txt = f" ({', '.join(extras)})" if extras else ""
     return (
         f"{point.get('position') or ''} — « {point.get('citation') or ''} » "
-        f"(lien : {point.get('url') or 'aucun'})"
+        f"(lien : {point.get('url') or 'aucun'}){extras_txt}"
+    )
+
+
+def _sujets_interdits_txt(repertoire: Repertoire) -> str:
+    # EXE-150, critères 5, 6 : motif omis s'il est absent, jamais rendu « None »
+    # ni en parenthèses vides — même convention que fiche/prompt.py.
+    return (
+        "\n".join(
+            f"- {s.sujet}"
+            + (f" ({s.motif})" if s.motif else "")
+            + (f" sauf : {s.exception}" if s.exception else "")
+            for s in repertoire.sujets_interdits
+        )
+        or "(aucun)"
     )
 
 
@@ -258,14 +280,7 @@ def _prompt_tamis(
         )
         for tt in repertoire.textes_types
     )
-    sujets_interdits_txt = (
-        "\n".join(
-            f"- {s.sujet} ({s.motif})"
-            + (f" sauf : {s.exception}" if s.exception else "")
-            for s in repertoire.sujets_interdits
-        )
-        or "(aucun)"
-    )
+    sujets_interdits_txt = _sujets_interdits_txt(repertoire)
     bonne_accroche_txt = (
         "\n".join(f"- {b}" for b in repertoire.ce_qui_fait_une_bonne_accroche)
         or "(non précisé)"
@@ -393,6 +408,7 @@ def _prompt_redaction(state: EtatBoucle) -> str:
         f"Longueur cible : {forme.longueur_cible_mots or '?'} mots\n"
         f"Lettre de référence : {forme.lettre_de_reference or '(aucune)'}"
     )
+    sujets_interdits_txt = _sujets_interdits_txt(repertoire)
 
     if fait is not None:
         fait_txt = f"**Fait retenu de l'entreprise** :\n{_texte_point(fait)}\n\n"
@@ -406,7 +422,16 @@ def _prompt_redaction(state: EtatBoucle) -> str:
         )
         or "(aucun exemple avec texte)"
     )
+    # EXE-150, critères 1, 2 : le texte générique écrit à la main est envoyé en
+    # entier à la rédaction, seulement quand le tamis a choisi « generique » —
+    # un autre texte type ne reçoit jamais ce texte.
+    texte_generique_txt = (
+        f"Texte générique :\n{texte_type.texte or ''}\n\n"
+        if texte_type.id == GENERIQUE_ID
+        else ""
+    )
     texte_type_txt = (
+        f"{texte_generique_txt}"
         f"Conviction : {texte_type.conviction or ''}\n"
         f"Ce que j'ai fait : {texte_type.ce_que_j_ai_fait or ''}\n"
         f"Exemples :\n{exemples_txt}"
@@ -430,6 +455,7 @@ def _prompt_redaction(state: EtatBoucle) -> str:
         f"**Entreprise** : {state['entreprise']}\n\n"
         f"**Posture** :\n{posture_txt}\n\n"
         f"**Forme** :\n{forme_txt}\n\n"
+        f"**Sujets interdits** :\n{sujets_interdits_txt}\n\n"
         f"{fait_txt}"
         f"**Texte type** :\n{texte_type_txt}\n\n"
         f"**CV de référence** :\n{state['cv_reference_text']}"
@@ -473,7 +499,8 @@ def noeud_redaction(state: EtatBoucle) -> dict:
 
 
 def _prompt_juge(state: EtatBoucle) -> str:
-    posture = state["repertoire"].posture
+    repertoire = state["repertoire"]
+    posture = repertoire.posture
     derniere = state["lettres"][-1]
     regles_txt = "\n".join(f"- {r}" for r in posture.regles) or "(aucune)"
     formulations_txt = (
@@ -482,6 +509,7 @@ def _prompt_juge(state: EtatBoucle) -> str:
         )
         or "(aucune)"
     )
+    sujets_interdits_txt = _sujets_interdits_txt(repertoire)
     return (
         "Tu lis cette lettre de motivation comme un recruteur qui ne connaît pas le "
         "candidat. Dis ce que tu ressens à la lecture, relève les passages qui gênent "
@@ -492,6 +520,7 @@ def _prompt_juge(state: EtatBoucle) -> str:
         f"**Lettre à juger** :\n{derniere['texte']}\n\n"
         f"**Règles de posture** :\n{regles_txt}\n\n"
         f"**Formulations rejetées** :\n{formulations_txt}\n\n"
+        f"**Sujets interdits** :\n{sujets_interdits_txt}\n\n"
         'Rends un JSON {"rien_a_redire": <bool>, "remarques": <texte ou null>}.'
     )
 
