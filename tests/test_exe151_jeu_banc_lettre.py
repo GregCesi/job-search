@@ -112,7 +112,15 @@ def modeles(monkeypatch):
 
 _TAMIS_POINT_0 = json.dumps({"point_index": 0, "texte_type_id": "prototyper"})
 _TAMIS_GENERIQUE = json.dumps({"point_index": None, "texte_type_id": "generique"})
-_JUGE_RIEN_A_REDIRE = json.dumps({"rien_a_redire": True, "remarques": None})
+_JUGE_RIEN_A_REDIRE = json.dumps(
+    {
+        "rien_a_redire": True,
+        "ressenti": "Rien à redire.",
+        "details": "Rien à redire.",
+        "reussites": "Rien à redire.",
+        "verdict": "Rien à redire.",
+    }
+)
 
 
 def _programmer_passage_simple(modeles, lettre="Lettre finale.", tamis=_TAMIS_POINT_0):
@@ -147,6 +155,11 @@ def _repertoire_donnees() -> dict:
                 "exemples": [],
             },
         ],
+        "juge": {
+            "consigne": "Consigne du juge.",
+            "contexte": "Contexte du juge.",
+        },
+        "redaction": {"consigne_reprise": "Consigne de reprise."},
     }
 
 

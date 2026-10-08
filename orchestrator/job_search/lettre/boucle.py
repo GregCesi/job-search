@@ -41,6 +41,7 @@ from orchestrator.job_search.lettre.repertoire import (
     Repertoire,
     TexteType,
     charger_repertoire,
+    valider_juge_et_redaction,
 )
 from orchestrator.job_search.paths import (
     BOUCLE_JUGE_CWD,
@@ -85,9 +86,12 @@ _SCHEMA_JUGE = {
     "type": "object",
     "properties": {
         "rien_a_redire": {"type": "boolean"},
-        "remarques": {"type": ["string", "null"]},
+        "ressenti": {"type": "string"},
+        "details": {"type": "string"},
+        "reussites": {"type": "string"},
+        "verdict": {"type": "string"},
     },
-    "required": ["rien_a_redire"],
+    "required": ["rien_a_redire", "ressenti", "details", "reussites", "verdict"],
 }
 
 
@@ -111,6 +115,18 @@ class ReponseModele:
     nb_jetons: int | None = (
         None  # critère 19 : lu par un modèle local, jamais par Claude
     )
+
+
+@dataclass
+class Jugement:
+    """Les quatre rubriques rendues par le juge (critère 5 du ticket EXE-158),
+    pour la lettre qu'il vient de juger."""
+
+    rien_a_redire: bool
+    ressenti: str
+    details: str
+    reussites: str
+    verdict: str
 
 
 @dataclass
@@ -284,19 +300,6 @@ def _bloc_ce_qui_est_vrai_sur_moi(repertoire: Repertoire) -> str:
     return (
         "**Ce qui est vrai sur moi, qu'une lettre ne doit jamais contredire** :\n"
         f"{lignes}\n\n"
-    )
-
-
-def _bloc_lettre_de_reference(repertoire: Repertoire) -> str:
-    """EXE-152, critères 4-5 : réservé au juge — omis entièrement si le
-    répertoire ne porte pas de lettre de référence."""
-    lettre = (repertoire.forme.lettre_de_reference or "").strip()
-    if not lettre:
-        return ""
-    return (
-        "**Lettre de référence, que j'ai validée — ses phrases ne sont pas à "
-        "contester** :\n"
-        f"{lettre}\n\n"
     )
 
 
@@ -491,14 +494,27 @@ def _prompt_redaction(state: EtatBoucle) -> str:
         f"Exemples :\n{exemples_txt}"
     )
 
+    # EXE-158, critères 9-11 : à partir du deuxième tour, la rédaction reçoit la
+    # lettre précédente, les quatre rubriques du dernier jugement telles que le
+    # juge les a rendues (jamais celles des tours d'avant), et la consigne de
+    # reprise de mon répertoire — absent au premier tour (critère 11).
     reprise_txt = ""
     if state["lettres"]:
         derniere = state["lettres"][-1]
+        jugement = derniere["jugement"]
         reprise_txt = (
             "\n\n**Lettre précédente** :\n"
             f"{derniere['texte']}\n\n"
-            "**Remarques du juge à corriger** :\n"
-            f"{derniere['remarques_juge']}\n"
+            "**Ce que le juge a ressenti à la lecture** :\n"
+            f"{jugement.ressenti}\n\n"
+            "**Détails relevés par le juge** :\n"
+            f"{jugement.details}\n\n"
+            "**Ce que la lettre réussit, selon le juge** :\n"
+            f"{jugement.reussites}\n\n"
+            "**Verdict du juge** :\n"
+            f"{jugement.verdict}\n\n"
+            "**Consigne de reprise** :\n"
+            f"{repertoire.redaction.consigne_reprise}\n"
         )
 
     return (
@@ -541,7 +557,7 @@ def noeud_redaction(state: EtatBoucle) -> dict:
         "texte": texte,
         "nb_mots": count_words(texte),
         "tournures_signalees": tournures,
-        "remarques_juge": None,
+        "jugement": None,
     }
     appel = Appel(
         noeud="redaction",
@@ -559,46 +575,67 @@ def noeud_redaction(state: EtatBoucle) -> dict:
     }
 
 
-def _prompt_juge(state: EtatBoucle) -> str:
-    repertoire = state["repertoire"]
-    posture = repertoire.posture
-    derniere = state["lettres"][-1]
-    regles_txt = "\n".join(f"- {r}" for r in posture.regles) or "(aucune)"
-    formulations_txt = (
-        "\n".join(
-            f"- {f.texte} ({f.motif})" for f in posture.formulations_rejetees if f.texte
-        )
-        or "(aucune)"
+def _exemples_relecture_txt(repertoire: Repertoire) -> str:
+    """EXE-158, critères 3, 8 : chaque exemple de relecture de mon répertoire, le
+    titre ne portant que son passage lu et sa relecture — bloc entièrement omis
+    (jamais de rubrique vide ni de « None ») quand le répertoire n'en porte
+    aucun."""
+    exemples = repertoire.juge.exemples
+    if not exemples:
+        return ""
+    blocs = "\n\n".join(
+        f"**{ex.titre}**\nPassage lu :\n{ex.passage_lu}\n\nRelecture :\n{ex.relecture}"
+        for ex in exemples
     )
-    sujets_interdits_txt = _sujets_interdits_txt(repertoire)
+    return f"**Exemples de relecture** :\n{blocs}\n\n"
+
+
+def _prompt_juge(state: EtatBoucle) -> str:
+    """EXE-158, critères 1-4 : le juge reçoit la lettre, l'intitulé du poste, le
+    nom de l'entreprise, le texte de l'annonce, et la consigne/le contexte/les
+    exemples de relecture de mon répertoire — rien d'autre. Aucune règle de
+    posture, formulation rejetée, sujet interdit, phrase de ce qui est vrai sur
+    moi, lettre de référence, fait retenu ni CV ne lui parvient : ces blocs sont
+    réservés à la rédaction."""
+    repertoire = state["repertoire"]
+    juge = repertoire.juge
+    derniere = state["lettres"][-1]
     return (
-        "Tu lis cette lettre de motivation comme un recruteur qui ne connaît pas le "
-        "candidat. Dis ce que tu ressens à la lecture, relève les passages qui gênent "
-        "au regard des règles de posture et des formulations rejetées ci-dessous. Ne "
-        "dis « rien à redire » que si tu n'as rien relevé.\n\n"
+        f"{juge.consigne}\n\n"
+        f"{juge.contexte}\n\n"
+        f"{_exemples_relecture_txt(repertoire)}"
         f"**Offre** : {state['titre']}\n"
         f"**Entreprise** : {state['entreprise']}\n\n"
+        f"**Texte de l'offre** :\n{strip_html(state['texte_offre'])}\n\n"
         f"**Lettre à juger** :\n{derniere['texte']}\n\n"
-        f"**Règles de posture** :\n{regles_txt}\n\n"
-        f"**Formulations rejetées** :\n{formulations_txt}\n\n"
-        f"**Sujets interdits** :\n{sujets_interdits_txt}\n\n"
-        f"{_bloc_ce_qui_est_vrai_sur_moi(repertoire)}"
-        f"{_bloc_lettre_de_reference(repertoire)}"
-        'Rends un JSON {"rien_a_redire": <bool>, "remarques": <texte ou null>}.'
+        'Rends un JSON {"ressenti": <texte>, "details": <texte>, '
+        '"reussites": <texte>, "verdict": <texte>, "rien_a_redire": <bool>}.'
     )
 
 
-def _parser_juge(texte: str) -> tuple[bool, str | None]:
+def _parser_juge(texte: str) -> Jugement:
+    """EXE-158, critère 6 : la réponse à qui manque l'une des quatre rubriques
+    (ou son indicateur rien_a_redire) est une réponse illisible — même raison
+    que pour les autres nœuds."""
     data = json.loads(texte)
-    if not isinstance(data, dict) or "rien_a_redire" not in data:
-        raise ValueError("réponse du juge : rien_a_redire manquant")
+    if not isinstance(data, dict):
+        raise ValueError("réponse du juge : pas un objet JSON")
+    for champ in ("rien_a_redire", "ressenti", "details", "reussites", "verdict"):
+        if champ not in data:
+            raise ValueError(f"réponse du juge : {champ} manquant")
     rien_a_redire = data["rien_a_redire"]
     if not isinstance(rien_a_redire, bool):
         raise ValueError("réponse du juge : rien_a_redire n'est pas un booléen")
-    remarques = data.get("remarques")
-    if remarques is not None and not isinstance(remarques, str):
-        raise ValueError("réponse du juge : remarques invalides")
-    return rien_a_redire, remarques
+    for champ in ("ressenti", "details", "reussites", "verdict"):
+        if not isinstance(data[champ], str):
+            raise ValueError(f"réponse du juge : {champ} n'est pas un texte")
+    return Jugement(
+        rien_a_redire=rien_a_redire,
+        ressenti=data["ressenti"],
+        details=data["details"],
+        reussites=data["reussites"],
+        verdict=data["verdict"],
+    )
 
 
 def noeud_juge(state: EtatBoucle) -> dict:
@@ -617,7 +654,7 @@ def noeud_juge(state: EtatBoucle) -> dict:
         }
 
     try:
-        rien_a_redire, remarques = _parser_juge(reponse.texte)
+        jugement = _parser_juge(reponse.texte)
     except (ValueError, json.JSONDecodeError):
         return {
             "erreur": {
@@ -637,12 +674,9 @@ def noeud_juge(state: EtatBoucle) -> dict:
         nb_jetons=reponse.nb_jetons,
     )
     lettres = list(state["lettres"])
-    lettres[-1] = {
-        **lettres[-1],
-        "remarques_juge": None if rien_a_redire else remarques,
-    }
+    lettres[-1] = {**lettres[-1], "jugement": jugement}
 
-    if rien_a_redire:
+    if jugement.rien_a_redire:
         return {
             "appels": state["appels"] + [appel],
             "lettres": lettres,
@@ -738,6 +772,9 @@ def generer_lettre_depuis_donnees(
     Sert la préparation du jeu du banc (`lettre/jeu.py`), qui résout ses offres
     depuis le jeu plutôt que depuis la base."""
     charge = charger_repertoire(repertoire_path)
+    # EXE-158, critères 13-14 : refus avant tout appel de modèle si la
+    # consigne/le contexte du juge ou la consigne de reprise manquent.
+    valider_juge_et_redaction(charge.repertoire)
     cv_reference_text = strip_html(Path(cv_reference_path).read_text(encoding="utf-8"))
     tournures = load_tournures_interdites(Path(tournures_path))
 

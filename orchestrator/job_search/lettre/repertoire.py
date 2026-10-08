@@ -95,6 +95,28 @@ class TexteType(BaseModel):
     exemples: list[Exemple] = Field(default_factory=list)
 
 
+class ExempleRelecture(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    titre: str | None = None
+    passage_lu: str | None = None
+    relecture: str | None = None
+
+
+class Juge(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    consigne: str | None = None
+    contexte: str | None = None
+    exemples: list[ExempleRelecture] = Field(default_factory=list)
+
+
+class Redaction(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    consigne_reprise: str | None = None
+
+
 class Repertoire(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -109,6 +131,8 @@ class Repertoire(BaseModel):
     )
     forme: Forme = Field(default_factory=Forme)
     textes_types: list[TexteType] = Field(default_factory=list)
+    juge: Juge = Field(default_factory=Juge)
+    redaction: Redaction = Field(default_factory=Redaction)
 
 
 @dataclass(frozen=True)
@@ -233,9 +257,28 @@ def _valider_textes_types(textes_types_bruts: list[Any]) -> None:
         raise RepertoireError("aucun texte type ne porte l'identifiant « generique »")
 
 
+def valider_juge_et_redaction(repertoire: Repertoire) -> None:
+    """EXE-158, critères 13-14 : sans ces trois champs, aucun appel de modèle ne
+    doit partir — la raison nomme ce qui manque, avant tout appel.
+
+    Volontairement hors de `charger_repertoire` : ce chargeur est aussi celui de
+    la fiche entreprise (`fiche/prompt.py`), qui ne lit que `textes_types` et
+    `sujets_interdits` et n'a aucune raison de connaître le juge ou la reprise
+    de la rédaction. Le banc et la boucle appellent cette fonction eux-mêmes."""
+    if not (repertoire.juge.consigne or "").strip():
+        raise RepertoireError("le répertoire de la lettre n'a pas de consigne du juge")
+    if not (repertoire.juge.contexte or "").strip():
+        raise RepertoireError("le répertoire de la lettre n'a pas de contexte du juge")
+    if not (repertoire.redaction.consigne_reprise or "").strip():
+        raise RepertoireError(
+            "le répertoire de la lettre n'a pas de consigne de reprise pour la "
+            "rédaction"
+        )
+
+
 def charger_repertoire(chemin: str | Path) -> RepertoireCharge:
     """Charge et valide le répertoire de la lettre. Refuse avec une phrase lisible
-    (jamais une trace Python) les cas listés aux critères 9 à 14 du ticket."""
+    (jamais une trace Python) les cas listés aux critères 9 à 14 du ticket EXE-146."""
     chemin = Path(chemin)
     if not chemin.exists():
         raise RepertoireError(f"répertoire de la lettre introuvable : {chemin}")

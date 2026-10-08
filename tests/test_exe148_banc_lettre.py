@@ -83,6 +83,11 @@ def _repertoire_donnees() -> dict:
                 "exemples": [],
             },
         ],
+        "juge": {
+            "consigne": "Consigne du juge.",
+            "contexte": "Contexte du juge.",
+        },
+        "redaction": {"consigne_reprise": "Consigne de reprise."},
     }
 
 
@@ -151,7 +156,15 @@ def _jeu(*offer_ids, **kwargs) -> dict:
 
 
 _TAMIS_POINT_0 = json.dumps({"point_index": 0, "texte_type_id": "prototyper"})
-_JUGE_RIEN_A_REDIRE = json.dumps({"rien_a_redire": True, "remarques": None})
+_JUGE_RIEN_A_REDIRE = json.dumps(
+    {
+        "rien_a_redire": True,
+        "ressenti": "Rien à redire.",
+        "details": "Rien à redire.",
+        "reussites": "Rien à redire.",
+        "verdict": "Rien à redire.",
+    }
+)
 
 
 def _programmer_passage_simple(modeles, lettre="Lettre finale."):
@@ -382,7 +395,15 @@ def test_critere14_annexe_lettres_intermediaires_et_duree_des_noeuds(
     modeles.programmer("redaction", "Lettre 1.", "Lettre 2.")
     modeles.programmer(
         "juge",
-        json.dumps({"rien_a_redire": False, "remarques": "trop long"}),
+        json.dumps(
+            {
+                "rien_a_redire": False,
+                "ressenti": "Ressenti mitigé.",
+                "details": "trop long",
+                "reussites": "Une accroche correcte.",
+                "verdict": "À revoir.",
+            }
+        ),
         _JUGE_RIEN_A_REDIRE,
     )
 
@@ -502,6 +523,8 @@ def test_critere18_table_une_ligne_par_offre_avec_les_colonnes_attendues(
         # la lettre finale, ajoutés à la table du run MLflow.
         "tournures_lettre_finale",
         "ecart_mots",
+        # EXE-158, critère 18 : le verdict du juge sur la lettre finale.
+        "verdict_juge_lettre_finale",
     }
     ligne = dict(zip(table["columns"], table["data"][0]))
     assert ligne["offre"] == 1

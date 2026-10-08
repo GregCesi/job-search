@@ -124,6 +124,11 @@ def _repertoire_donnees(generique_texte: str | None = "texte générique rédig�
             _texte_type("prototyper"),
             _texte_type("generique", texte=generique_texte, exemples=[]),
         ],
+        "juge": {
+            "consigne": "Consigne du juge.",
+            "contexte": "Contexte du juge.",
+        },
+        "redaction": {"consigne_reprise": "Consigne de reprise."},
     }
 
 
@@ -226,11 +231,29 @@ _TAMIS_POINT_0_PROTOTYPER = json.dumps(
     {"point_index": 0, "texte_type_id": "prototyper"}
 )
 _TAMIS_GENERIQUE = json.dumps({"point_index": None, "texte_type_id": "generique"})
-_JUGE_RIEN_A_REDIRE = json.dumps({"rien_a_redire": True, "remarques": None})
+_JUGE_RIEN_A_REDIRE = json.dumps(
+    {
+        "rien_a_redire": True,
+        "ressenti": "Rien à redire.",
+        "details": "Rien à redire.",
+        "reussites": "Rien à redire.",
+        "verdict": "Rien à redire.",
+    }
+)
 
 
 def _juge_remarques(texte="trop long") -> str:
-    return json.dumps({"rien_a_redire": False, "remarques": texte})
+    # EXE-158 : `texte` vit dans la rubrique « détails », celle qui porte
+    # historiquement les remarques du juge dans ces tests.
+    return json.dumps(
+        {
+            "rien_a_redire": False,
+            "ressenti": "Ressenti mitigé.",
+            "details": texte,
+            "reussites": "Une accroche correcte.",
+            "verdict": "À revoir.",
+        }
+    )
 
 
 # --- critères 1-3 : ce que reçoit le tamis --------------------------------------
@@ -453,9 +476,12 @@ def test_critere12_redaction_ne_recoit_aucun_autre_texte_type(
     assert "ce que j'ai fait pour prototyper" not in demande_redaction
 
 
-def test_critere13_juge_recoit_lettre_intitule_entreprise_regles_formulations(
+def test_critere13_juge_recoit_lettre_intitule_entreprise_consigne_et_contexte(
     db_path, repertoire_path, cv_path, tournures_path, modeles
 ):
+    # Modifié pour EXE-158 (critères 1-4) : le juge ne reçoit plus mes règles de
+    # posture ni mes formulations rejetées — seulement la lettre, l'offre, et le
+    # répertoire du juge.
     _poser_offre_et_fiche(db_path)
     modeles.programmer("tamis", _TAMIS_POINT_0_PROTOTYPER)
     modeles.programmer("redaction", "Voici le texte complet de ma lettre.")
@@ -467,8 +493,10 @@ def test_critere13_juge_recoit_lettre_intitule_entreprise_regles_formulations(
     assert "Voici le texte complet de ma lettre." in demande_juge
     assert "Titre de l'offre" in demande_juge
     assert "Entreprise X" in demande_juge
-    assert "jamais de superlatif" in demande_juge
-    assert "passionné par l'IA" in demande_juge
+    assert "Consigne du juge." in demande_juge
+    assert "Contexte du juge." in demande_juge
+    assert "jamais de superlatif" not in demande_juge
+    assert "passionné par l'IA" not in demande_juge
 
 
 # --- critères 14-16 : la boucle du juge -----------------------------------------
@@ -505,7 +533,7 @@ def test_critere15_remarques_relancent_la_redaction_avec_lettre_et_remarques(
         "Lettre 1.",
         "Lettre 2.",
     ]
-    assert resultat.lettres[0]["remarques_juge"] == "trop long"
+    assert resultat.lettres[0]["jugement"].details == "trop long"
     demande_redaction_2 = modeles.appels[3][2]
     assert "Lettre 1." in demande_redaction_2
     assert "trop long" in demande_redaction_2
@@ -529,7 +557,7 @@ def test_critere16_plafond_de_trois_tours(
     assert resultat.nb_tours == 3
     assert len(resultat.lettres) == 3
     assert resultat.lettres[-1]["texte"] == "Lettre 3."
-    assert resultat.lettres[-1]["remarques_juge"] == "remarque 3"
+    assert resultat.lettres[-1]["jugement"].details == "remarque 3"
     assert resultat.raison_fin == "Le plafond de tours est atteint"
     # Pas de quatrième rédaction après le plafond.
     assert len(modeles.files["redaction"]) == 0
@@ -571,8 +599,8 @@ def test_critere18_lettres_dans_l_ordre_avec_remarques_tours_et_raison(
         "Lettre 1.",
         "Lettre 2.",
     ]
-    assert resultat.lettres[0]["remarques_juge"] == "à revoir"
-    assert resultat.lettres[1]["remarques_juge"] is None
+    assert resultat.lettres[0]["jugement"].details == "à revoir"
+    assert resultat.lettres[1]["jugement"].rien_a_redire is True
     assert resultat.nb_tours == 2
     assert resultat.raison_fin == "Le juge n'a rien à redire"
 

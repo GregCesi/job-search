@@ -43,6 +43,7 @@ from orchestrator.job_search.lettre.redaction import ecart_longueur_mots
 from orchestrator.job_search.lettre.repertoire import (
     RepertoireError,
     charger_repertoire,
+    valider_juge_et_redaction,
 )
 from orchestrator.job_search.paths import (
     CV_REFERENCE_PATH,
@@ -310,6 +311,8 @@ def resumer_config(
         "raison_fin": [],
         "tournures_lettre_finale": [],
         "ecart_mots": [],
+        # EXE-158, critère 18 : le verdict du juge sur la lettre finale.
+        "verdict_juge_lettre_finale": [],
     }
     par_offre = {p.offer_id: p for p in de_cette_config}
     ecarts_abs: list[int] = []
@@ -343,6 +346,10 @@ def resumer_config(
             derniere["tournures_signalees"] if derniere else None
         )
         table["ecart_mots"].append(ecart)
+        jugement_final = derniere["jugement"] if derniere else None
+        table["verdict_juge_lettre_finale"].append(
+            jugement_final.verdict if jugement_final is not None else None
+        )
 
     return ResumeConfig(
         config_nommee=config_nommee,
@@ -497,8 +504,15 @@ def _annexe_passage(passage: Passage) -> str:
     for i, lettre in enumerate(resultat.lettres, start=1):
         lignes.append(f"**Tour {i}** ({lettre['nb_mots']} mots) :\n")
         lignes.append(lettre["texte"])
-        if lettre["remarques_juge"]:
-            lignes.append(f"\nRemarques du juge : {lettre['remarques_juge']}")
+        # EXE-158, critère 17 : la lettre, puis les quatre rubriques du juge,
+        # chacune sous son nom.
+        jugement = lettre["jugement"]
+        if jugement is not None:
+            lignes.append("")
+            lignes.append(f"Ressenti : {jugement.ressenti}")
+            lignes.append(f"Détails : {jugement.details}")
+            lignes.append(f"Réussites : {jugement.reussites}")
+            lignes.append(f"Verdict : {jugement.verdict}")
         lignes.append("")
     lignes.append("Durée des nœuds :")
     for appel in resultat.appels:
@@ -515,6 +529,12 @@ def _annexe_passage(passage: Passage) -> str:
     return "\n".join(lignes)
 
 
+def _version_repertoire_txt(version: int | None) -> str:
+    """EXE-158, H5 : un répertoire sans version porte « sans version », jamais
+    un zéro."""
+    return str(version) if version is not None else "sans version"
+
+
 def construire_rapport(
     jeu_nom: str,
     offer_ids: list[int],
@@ -524,10 +544,13 @@ def construire_rapport(
     resumes: list[ResumeConfig],
     horodatage: str,
     longueur_cible_mots: int | None = None,
+    version_repertoire: int | None = None,
 ) -> str:
     entete = (
         f"# Banc de la lettre — {horodatage}\n\n"
         f"Jeu : {jeu_nom}\n"
+        # EXE-158, critère 16 : le numéro de version de mon répertoire.
+        f"Répertoire version : {_version_repertoire_txt(version_repertoire)}\n"
         f"Offres : {', '.join(str(o) for o in offer_ids)}\n"
         f"Configurations : {', '.join(c.label for c in configs)}\n"
     )
@@ -558,6 +581,8 @@ def _logger_config(
     jeu_nom: str,
     rapport_path: Path,
     jeu_path: Path | None,
+    repertoire_path: Path,
+    version_repertoire: int | None,
     tracker_factory,
 ) -> None:
     tracker = tracker_factory(experiment_name=EXPERIMENT_NAME)
@@ -569,6 +594,8 @@ def _logger_config(
             "plafond_tours": MAX_TOURS,
             "offres": ",".join(str(o) for o in offer_ids),
             "jeu": jeu_nom,
+            # EXE-158, critère 15 : le numéro de version de mon répertoire.
+            "repertoire_version": _version_repertoire_txt(version_repertoire),
         },
         run_name=resume.config_nommee.label,
     )
@@ -597,6 +624,8 @@ def _logger_config(
     tracker.log_artifact(rapport_path)
     if jeu_path is not None:
         tracker.log_artifact(jeu_path)
+    # EXE-158, critère 15 : le fichier du répertoire en pièce.
+    tracker.log_artifact(repertoire_path)
     tracker.end()
 
 
@@ -640,9 +669,12 @@ def lancer_banc(
 
     # EXE-152, critères 8, 9, 12, 17 : la longueur cible vient du répertoire,
     # lu une seule fois ici — calcul Python pur, aucun modèle appelé.
-    longueur_cible_mots = charger_repertoire(
-        repertoire_path
-    ).repertoire.forme.longueur_cible_mots
+    charge_repertoire = charger_repertoire(repertoire_path)
+    # EXE-158, critères 13-14 : refus avant tout appel de modèle si la
+    # consigne/le contexte du juge ou la consigne de reprise manquent.
+    valider_juge_et_redaction(charge_repertoire.repertoire)
+    longueur_cible_mots = charge_repertoire.repertoire.forme.longueur_cible_mots
+    version_repertoire = charge_repertoire.repertoire.version
 
     passages = executer_passages(
         offres,
@@ -666,6 +698,7 @@ def lancer_banc(
         resumes,
         horodatage,
         longueur_cible_mots,
+        version_repertoire,
     )
     rapport_path = _ecrire_rapport(texte_rapport, Path(banc_dir), horodatage)
 
@@ -676,6 +709,8 @@ def lancer_banc(
             jeu.get("nom", ""),
             rapport_path,
             Path(jeu_path) if jeu_path is not None else None,
+            Path(repertoire_path),
+            version_repertoire,
             tracker_factory,
         )
 
@@ -736,7 +771,8 @@ def main(
         return 1
 
     try:
-        charger_repertoire(repertoire_path)
+        charge_repertoire = charger_repertoire(repertoire_path)
+        valider_juge_et_redaction(charge_repertoire.repertoire)
     except RepertoireError as exc:
         print(str(exc))
         return 1

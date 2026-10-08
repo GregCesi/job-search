@@ -91,6 +91,11 @@ def _repertoire_donnees(generique_texte: str | None = "texte générique rédig�
             _texte_type("prototyper"),
             _texte_type("generique", texte=generique_texte),
         ],
+        "juge": {
+            "consigne": "Consigne du juge.",
+            "contexte": "Contexte du juge.",
+        },
+        "redaction": {"consigne_reprise": "Consigne de reprise."},
     }
 
 
@@ -184,11 +189,27 @@ def _lancer(db_path, repertoire_path, cv_path, tournures_path, config=None, offe
 
 _TAMIS_POINT_0 = json.dumps({"point_index": 0, "texte_type_id": "prototyper"})
 _TAMIS_GENERIQUE = json.dumps({"point_index": None, "texte_type_id": "generique"})
-_JUGE_RIEN_A_REDIRE = json.dumps({"rien_a_redire": True, "remarques": None})
+_JUGE_RIEN_A_REDIRE = json.dumps(
+    {
+        "rien_a_redire": True,
+        "ressenti": "Rien à redire.",
+        "details": "Rien à redire.",
+        "reussites": "Rien à redire.",
+        "verdict": "Rien à redire.",
+    }
+)
 
 
 def _juge_remarques(texte="trop long") -> str:
-    return json.dumps({"rien_a_redire": False, "remarques": texte})
+    return json.dumps(
+        {
+            "rien_a_redire": False,
+            "ressenti": "Ressenti mitigé.",
+            "details": texte,
+            "reussites": "Une accroche correcte.",
+            "verdict": "À revoir.",
+        }
+    )
 
 
 # =================================================================================

@@ -104,6 +104,11 @@ def _repertoire_donnees(
             _texte_type("prototyper"),
             _texte_type("generique", texte=generique_texte, exemples=[]),
         ],
+        "juge": {
+            "consigne": "Consigne du juge.",
+            "contexte": "Contexte du juge.",
+        },
+        "redaction": {"consigne_reprise": "Consigne de reprise."},
     }
 
 
@@ -191,7 +196,15 @@ def _lancer(
         conn.close()
 
 
-_JUGE_RIEN_A_REDIRE = json.dumps({"rien_a_redire": True, "remarques": None})
+_JUGE_RIEN_A_REDIRE = json.dumps(
+    {
+        "rien_a_redire": True,
+        "ressenti": "Rien à redire.",
+        "details": "Rien à redire.",
+        "reussites": "Rien à redire.",
+        "verdict": "Rien à redire.",
+    }
+)
 
 
 # --- critères 1-2 : le texte générique arrive (ou non) à la rédaction ----------
@@ -406,9 +419,11 @@ def test_critere7_redaction_recoit_sujets_interdits_motif_et_exception(
     assert "sauf si l'offre nomme Claude elle-même" in demande_redaction
 
 
-def test_critere8_juge_recoit_sujets_interdits_motif_et_exception(
+def test_critere8_juge_ne_recoit_plus_les_sujets_interdits(
     db_path, repertoire_path, cv_path, tournures_path, modeles
 ):
+    # Modifié pour EXE-158 (critère 4) : le juge ne reçoit plus mes sujets
+    # interdits — ce bloc est désormais réservé au tamis et à la rédaction.
     _poser_offre_et_fiche(
         db_path,
         points=[
@@ -440,9 +455,9 @@ def test_critere8_juge_recoit_sujets_interdits_motif_et_exception(
     )
 
     demande_juge = modeles.appels[2][2]
-    assert "Claude / Anthropic" in demande_juge
-    assert "l'entreprise visée n'en parle pas" in demande_juge
-    assert "sauf si l'offre nomme Claude elle-même" in demande_juge
+    assert "Claude / Anthropic" not in demande_juge
+    assert "l'entreprise visée n'en parle pas" not in demande_juge
+    assert "sauf si l'offre nomme Claude elle-même" not in demande_juge
 
 
 # --- critères 9-10 : famille et date du fait retenu ----------------------------

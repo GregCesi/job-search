@@ -79,6 +79,11 @@ def _repertoire_donnees(ce_qui_est_vrai_sur_moi=None, lettre_de_reference=None) 
                 "exemples": [],
             },
         ],
+        "juge": {
+            "consigne": "Consigne du juge.",
+            "contexte": "Contexte du juge.",
+        },
+        "redaction": {"consigne_reprise": "Consigne de reprise."},
     }
     if ce_qui_est_vrai_sur_moi is not None:
         donnees["ce_qui_est_vrai_sur_moi"] = ce_qui_est_vrai_sur_moi
@@ -113,7 +118,15 @@ def tournures_path(tmp_path):
 
 
 _TAMIS_GENERIQUE = json.dumps({"point_index": None, "texte_type_id": "generique"})
-_JUGE_RIEN_A_REDIRE = json.dumps({"rien_a_redire": True, "remarques": None})
+_JUGE_RIEN_A_REDIRE = json.dumps(
+    {
+        "rien_a_redire": True,
+        "ressenti": "Rien à redire.",
+        "details": "Rien à redire.",
+        "reussites": "Rien à redire.",
+        "verdict": "Rien à redire.",
+    }
+)
 
 
 def _lancer(repertoire_path, cv_path, tournures_path, modeles, **repertoire_kwargs):
@@ -157,9 +170,11 @@ def test_critere1_redaction_recoit_ce_qui_est_vrai_sur_moi_en_entier(
     assert "Phrase B" in demande_redaction
 
 
-def test_critere2_juge_recoit_ce_qui_est_vrai_sur_moi_meme_presentation(
+def test_critere2_juge_ne_recoit_plus_ce_qui_est_vrai_sur_moi(
     repertoire_path, cv_path, tournures_path, modeles
 ):
+    # Modifié pour EXE-158 (critère 4) : ce bloc est désormais réservé à la
+    # rédaction — le juge ne reçoit plus rien de ce qui est vrai sur moi.
     _lancer(
         repertoire_path,
         cv_path,
@@ -169,9 +184,9 @@ def test_critere2_juge_recoit_ce_qui_est_vrai_sur_moi_meme_presentation(
     )
 
     demande_juge = modeles.appels[2][2]
-    assert _TETE_CE_QUI_EST_VRAI in demande_juge
-    assert "Je code en Python depuis dix ans" in demande_juge
-    assert "Phrase B" in demande_juge
+    assert _TETE_CE_QUI_EST_VRAI not in demande_juge
+    assert "Je code en Python depuis dix ans" not in demande_juge
+    assert "Phrase B" not in demande_juge
 
 
 # --- critère 3 : absente ou vide, jamais de rubrique vide ni de « None » ------
@@ -208,9 +223,11 @@ def test_critere3_liste_vide_ni_rubrique_vide_ni_none(
 # --- critère 4 : lettre de référence, réservée au juge -------------------------
 
 
-def test_critere4_juge_recoit_lettre_de_reference_validee(
+def test_critere4_juge_ne_recoit_plus_la_lettre_de_reference(
     repertoire_path, cv_path, tournures_path, modeles
 ):
+    # Modifié pour EXE-158 (critère 4) : la lettre de référence est désormais
+    # réservée à la rédaction — le juge ne la reçoit plus.
     _lancer(
         repertoire_path,
         cv_path,
@@ -220,9 +237,8 @@ def test_critere4_juge_recoit_lettre_de_reference_validee(
     )
 
     demande_juge = modeles.appels[2][2]
-    assert "Voici ma lettre de référence, phrase unique." in demande_juge
-    assert "validée" in demande_juge
-    assert "pas à contester" in demande_juge
+    assert "Voici ma lettre de référence, phrase unique." not in demande_juge
+    assert "pas à contester" not in demande_juge
 
 
 # --- critère 5 : pas de lettre de référence, ni rubrique vide ni « None » -----

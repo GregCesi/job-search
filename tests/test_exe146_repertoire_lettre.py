@@ -88,6 +88,20 @@ def _repertoire_bien_forme() -> dict:
             "lettre_de_reference": "lettre envoyée à Entreprise X le 2 octobre 2026",
         },
         "textes_types": [_texte_type(i) for i in IDS_TEXTES_TYPES],
+        "juge": {
+            "consigne": "Tu lis cette lettre comme un recruteur.",
+            "contexte": "Contexte du poste et de l'entreprise.",
+            "exemples": [
+                {
+                    "titre": "Relecture de référence",
+                    "passage_lu": "Passage lu.",
+                    "relecture": "Relecture.",
+                }
+            ],
+        },
+        "redaction": {
+            "consigne_reprise": "Corrige la lettre selon le ressenti du juge."
+        },
     }
 
 
