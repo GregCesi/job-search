@@ -340,6 +340,8 @@ def test_critere2_fait_porte_les_quatre_champs_a_cote_de_la_position(
         "position": "Pos",
         "citation": "Cit",
         "url": "https://ex.test",
+        # EXE-161, critère 8 : le jeu garde aussi le sujet du fait.
+        "sujet": None,
         "famille": "facon_de_travailler",
         "date": "2026-01-01",
     }

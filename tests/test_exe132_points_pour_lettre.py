@@ -224,7 +224,9 @@ async def _drain() -> None:
 
 
 class TestCritere1PromptDemandeLaDesignation:
-    def test_le_prompt_demande_de_designer_quatre_points_au_plus(self, db_path):
+    def test_le_prompt_ne_demande_plus_de_designer_de_points(self, db_path):
+        # EXE-161, critère 2 : la consigne « points_pour_lettre » a été retirée —
+        # la fiche ne désigne plus elle-même de points pour la lettre.
         _insert_offer(db_path, 1)
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
@@ -243,8 +245,7 @@ class TestCritere1PromptDemandeLaDesignation:
             etape=1,
         )
         prompt = fiche_prompt.build_prompt(offer, cascade)
-        assert "points_pour_lettre" in prompt
-        assert "quatre" in prompt.lower()
+        assert "points_pour_lettre" not in prompt
 
 
 class TestCritere2Et3LettreEcriteSurLesPointsDesignes:
@@ -275,7 +276,11 @@ async def _scenario_launch(offer_id):
 
 
 class TestCritere4PlafondQuatrePremiersDesignes:
-    def test_six_designes_les_quatre_premiers_gardes(self, db_path, monkeypatch):
+    def test_points_pour_lettre_rendu_par_le_modele_est_ignore(
+        self, db_path, monkeypatch
+    ):
+        # EXE-161, critère 2 : même si un modèle non conforme rend encore
+        # `points_pour_lettre`, le code ne le lit plus — aucune désignation vraie.
         offer_id = 4
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(
@@ -293,11 +298,13 @@ class TestCritere4PlafondQuatrePremiersDesignes:
 
         asyncio.run(fiche_service.run_fiche(offer_id))
 
-        assert _points_pour_lettre(db_path, offer_id) == [0, 1, 2, 3]
+        assert _points_pour_lettre(db_path, offer_id) == []
 
 
 class TestCritere5DesignationInexistanteIgnoree:
-    def test_index_hors_liste_ignore_les_autres_gardes(self, db_path, monkeypatch):
+    def test_points_pour_lettre_toujours_ignore_meme_avec_index_hors_liste(
+        self, db_path, monkeypatch
+    ):
         offer_id = 5
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(
@@ -315,7 +322,7 @@ class TestCritere5DesignationInexistanteIgnoree:
 
         asyncio.run(fiche_service.run_fiche(offer_id))
 
-        assert _points_pour_lettre(db_path, offer_id) == [0, 2]
+        assert _points_pour_lettre(db_path, offer_id) == []
 
 
 class TestCritere6Et7FicheSansDesignationPasDeLettre:

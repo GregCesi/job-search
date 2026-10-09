@@ -85,12 +85,13 @@ def _resoudre_offre_pour_jeu(
 
 def _fait_depuis_point(point: dict) -> dict:
     """Un fait du jeu ne porte que ce que la recherche a rendu (position,
-    citation, lien, famille, date) — jamais les champs de classement humain
+    citation, lien, sujet, famille, date) — jamais les champs de classement humain
     de la fiche (`tas`, `explication`, `pour_lettre`), hors de propos ici."""
     return {
         "position": point.get("position"),
         "citation": point.get("citation"),
         "url": point.get("url"),
+        "sujet": point.get("sujet"),
         "famille": point.get("famille"),
         "date": point.get("date"),
     }

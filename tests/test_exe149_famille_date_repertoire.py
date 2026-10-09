@@ -505,9 +505,11 @@ class TestCritere12FicheAncienneSansFamilleNiDate:
 
 
 class TestCritere13PlafondQuatrePointsPourLettreTenu:
-    def test_plafond_de_quatre_points_pour_lettre_toujours_tenu(
+    def test_points_pour_lettre_rendu_par_le_modele_est_ignore(
         self, db_path, monkeypatch
     ):
+        # EXE-161, critère 2 : la fiche ne désigne plus elle-même de points pour
+        # la lettre — `points_pour_lettre`, même rendu par le modèle, est ignoré.
         offer_id = 13
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(
@@ -536,4 +538,4 @@ class TestCritere13PlafondQuatrePointsPourLettreTenu:
 
         points = _points_json(db_path, offer_id)
         designes = [i for i, p in enumerate(points) if p.get("pour_lettre")]
-        assert designes == [0, 1, 2, 3]
+        assert designes == []

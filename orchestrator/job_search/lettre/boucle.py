@@ -304,9 +304,12 @@ def appeler_modele(
 
 
 def _texte_point(point: dict) -> str:
-    # EXE-150, critères 3, 4, 9, 10 : famille et date, omises entièrement si
-    # absentes — jamais de mention vide, de « None » ou de « aucune ».
+    # EXE-150, critères 3, 4, 9, 10 ; EXE-161, critère 9 : sujet, famille et date,
+    # omis entièrement si absents — jamais de mention vide, de « None » ou de
+    # « aucune ».
     extras = []
+    if point.get("sujet"):
+        extras.append(f"sujet : {point['sujet']}")
     if point.get("famille"):
         extras.append(f"famille : {point['famille']}")
     if point.get("date"):

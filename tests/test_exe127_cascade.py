@@ -346,11 +346,11 @@ class TestCritere2LettreEnCoursQuandFicheTermine:
     def test_lettre_se_lance_automatiquement_apres_la_fiche(
         self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
-        """Les doublures de test résolvent leurs tâches de fond sans jamais
-        suspendre réellement l'event loop : il n'existe pas de fenêtre fiable
-        pour observer l'état `pending` intermédiaire de la lettre. La preuve
-        observable du critère est que sa génération tourne — jusqu'au bout —
-        sans qu'aucun appel distinct (POST /lettre) n'ait été fait ici."""
+        """EXE-161, critère 2 : la fiche ne désigne plus aucun point pour la
+        lettre (`pour_lettre` vaut toujours False) — l'enchaînement automatique
+        de TCK-281 ne trouve donc plus aucun point choisi par le système, et la
+        lettre reste en attente d'une désignation (la sienne, EXE-162, n'est pas
+        dans ce ticket)."""
         offer_id = 2
         _insert_offer(db_path, offer_id)
         appels = {"n": 0}
@@ -365,14 +365,17 @@ class TestCritere2LettreEnCoursQuandFicheTermine:
 
         _retenir(offer_id)
 
-        assert appels["n"] == 1
-        assert _lettre_row(db_path, offer_id)["statut"] == "done"
+        assert appels["n"] == 0
+        row = _lettre_row(db_path, offer_id)
+        assert row["statut"] == "aucune"
 
 
 class TestCritere3PointsChoisisParSysteme:
-    def test_au_moins_un_point_choisi_par_le_systeme(
+    def test_aucun_point_designe_par_le_systeme_depuis_exe161(
         self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
+        # EXE-161, critère 2 : la fiche ne porte plus aucune désignation vraie —
+        # le système ne peut plus choisir de point tant qu'elle n'en désigne pas.
         offer_id = 3
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
@@ -383,8 +386,7 @@ class TestCritere3PointsChoisisParSysteme:
 
         row = _lettre_row(db_path, offer_id)
         chosen = json.loads(row["points_choisis_json"])
-        assert chosen == [0, 1]
-        assert len(chosen) >= 1
+        assert chosen == []
 
 
 class TestCritere4OrigineSysteme:
@@ -478,9 +480,11 @@ class TestCritere8FicheEchoueCvTermine:
 
 
 class TestCritere9CvEchoueFicheEtLettreTerminent:
-    def test_fiche_et_lettre_terminent_malgre_cv_en_erreur(
+    def test_fiche_termine_malgre_cv_en_erreur(
         self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
+        # EXE-161, critère 2 : la fiche ne désigne plus de point, donc la lettre
+        # ne peut plus terminer toute seule — seule la fiche est encore vérifiée ici.
         offer_id = 9
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
@@ -491,7 +495,8 @@ class TestCritere9CvEchoueFicheEtLettreTerminent:
 
         assert _cv_row(db_path, offer_id)["statut"] == "error"
         assert _fiche_row(db_path, offer_id)["statut"] == "done"
-        assert _lettre_row(db_path, offer_id)["statut"] == "done"
+        row = _lettre_row(db_path, offer_id)
+        assert row["statut"] == "aucune"
 
 
 class TestCritere10TexteOffreManquantPasDeLettre:

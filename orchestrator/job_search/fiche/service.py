@@ -20,14 +20,11 @@ from claude_agent_sdk import (
 )
 
 from orchestrator.job_search.fiche.cascade import CascadeResult, identify_employer
-from orchestrator.job_search.fiche.prompt import FAMILLES, build_prompt
+from orchestrator.job_search.fiche.prompt import FAMILLES, build_prompt, sujets_valides
 from orchestrator.job_search.paths import FICHE_CWD
 from orchestrator.job_search.storage.db import get_connection, init_db
 
 MAX_POINTS = 8
-# Plafond des points que la fiche désigne elle-même pour la lettre (EXE-132, H3) —
-# constaté comme maximum choisi à la main sur les fiches du 5 octobre 2026.
-MAX_LETTRE_POINTS = 4
 
 _FICHE_SCHEMA = {
     "type": "object",
@@ -68,19 +65,16 @@ _FICHE_SCHEMA = {
                     "position": {"type": "string"},
                     "citation": {"type": ["string", "null"]},
                     "url": {"type": ["string", "null"]},
-                    # Type string libre, pas d'enum (EXE-149, critère 8) : une
-                    # famille hors vocabulaire doit pouvoir être reçue puis
-                    # écartée en code, jamais rejetée par le schéma du SDK.
+                    # Type string libre, pas d'enum (EXE-149, critère 8 ; EXE-161,
+                    # critère 5) : une famille ou un sujet hors vocabulaire doit
+                    # pouvoir être reçu puis écarté en code, jamais rejeté par le
+                    # schéma du SDK.
                     "famille": {"type": ["string", "null"]},
                     "date": {"type": ["string", "null"]},
+                    "sujet": {"type": ["string", "null"]},
                 },
                 "required": ["position"],
             },
-        },
-        "points_pour_lettre": {
-            "type": "array",
-            "maxItems": MAX_LETTRE_POINTS,
-            "items": {"type": "integer"},
         },
     },
     "required": ["mode", "presentation", "employeur", "points"],
@@ -193,14 +187,7 @@ async def rechercher_entreprise(
     out = _parse_output(result)
     employeur = out.get("employeur") or {}
     raw_points = (out.get("points") or [])[:MAX_POINTS]
-    # Désignation pour la lettre (EXE-132) : index invalides ignorés (critère 5),
-    # seuls les quatre premiers valides, dans l'ordre désigné, sont gardés (critère 4).
-    valid_designated = [
-        i
-        for i in (out.get("points_pour_lettre") or [])
-        if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(raw_points)
-    ]
-    kept_designated = set(valid_designated[:MAX_LETTRE_POINTS])
+    valid_sujets = sujets_valides()
     points = [
         {
             "position": p.get("position"),
@@ -208,13 +195,18 @@ async def rechercher_entreprise(
             "url": p.get("url"),
             "tas": None,
             "explication": None,
-            "pour_lettre": i in kept_designated,
+            # EXE-161, critère 2 : la fiche ne désigne plus elle-même de points
+            # pour la lettre ; le champ reste pour les écrans qui le lisent encore.
+            "pour_lettre": False,
             # Famille hors des trois connues (critère 8) ou date absente
             # (critère 7) : le point est gardé, seul le champ manque.
             "famille": p.get("famille") if p.get("famille") in FAMILLES else None,
             "date": p.get("date") or None,
+            # Sujet hors de ma liste de sujets de lettre (EXE-161, critère 5) :
+            # le point est gardé, seul le champ manque.
+            "sujet": p.get("sujet") if p.get("sujet") in valid_sujets else None,
         }
-        for i, p in enumerate(raw_points)
+        for p in raw_points
     ]
     return ResultatRecherche(
         mode=out.get("mode"),

@@ -25,17 +25,6 @@ FAMILLES = (
     FAMILLE_PREUVE_IA,
 )
 
-# Consigne ajoutée en code (EXE-132) : le format de réponse de la fiche gagne un champ
-# `points_pour_lettre`, le texte de .claude/commands/fiche-entreprise.md reste inchangé
-# (H5 du ticket — aucune écriture sous .claude/).
-_CONSIGNE_POINTS_POUR_LETTRE = (
-    "En plus de l'objet JSON demandé ci-dessus, ajoute un champ `points_pour_lettre` : "
-    "un tableau des index (0-based, dans l'ordre où tu les rends dans `points`) des "
-    "points qui donnent une raison précise de vouloir ce poste dans cette entreprise, "
-    "en lien avec le profil du candidat — quatre au plus, un tableau vide si aucun "
-    "point ne s'y prête."
-)
-
 # Consigne ajoutée en code (EXE-149) : chaque point gagne sa famille (parmi les trois
 # décrites plus haut) et la date de la page d'où il vient, inconditionnelle — elle ne
 # dépend pas du répertoire de la lettre (critères 4, 5).
@@ -64,24 +53,39 @@ def _charger_repertoire_pour_prompt() -> Repertoire | None:
         return None
 
 
+def _sujets_non_generiques(repertoire: Repertoire) -> list:
+    return [tt for tt in repertoire.textes_types if tt.id != "generique" and tt.sujet]
+
+
+def sujets_valides() -> frozenset[str]:
+    """Identifiants que le champ `sujet` d'un point peut porter (critère 5 du
+    ticket EXE-161) : ceux listés dans la demande, le générique exclu — répertoire
+    absent ou mal formé donne un ensemble vide, et tout `sujet` rendu par le modèle
+    devient alors null (critère 3)."""
+    repertoire = _charger_repertoire_pour_prompt()
+    if repertoire is None:
+        return frozenset()
+    return frozenset(tt.id for tt in _sujets_non_generiques(repertoire))
+
+
 def _section_repertoire(repertoire: Repertoire | None) -> str:
-    """Sujets des textes types autres que le générique, leurs conditions d'usage et
-    les sujets interdits (critères 1 à 3) — jamais un exemple, un avis ou la posture
-    (« ce qui ne doit pas arriver » du ticket) : seuls `sujet`, `s_applique_si` et
+    """Sujets des textes types autres que le générique (avec leur identifiant,
+    critère 1 EXE-161), leurs conditions d'usage et les sujets interdits (critères
+    1 à 3 EXE-149) — jamais un exemple, un avis ou la posture (« ce qui ne doit pas
+    arriver » du ticket) : seuls `id`, `sujet`, `s_applique_si` et
     `ne_s_applique_pas_si` sont lus. Un champ à trou est déjà absent de `repertoire`
     (nettoyé par `charger_repertoire` — critère 11)."""
     if repertoire is None:
         return ""
     sujets_txt = "\n".join(
-        f"- {tt.sujet}"
+        f"- {tt.id} : {tt.sujet}"
         + (f" — s'applique si : {tt.s_applique_si}" if tt.s_applique_si else "")
         + (
             f" — ne s'applique pas si : {tt.ne_s_applique_pas_si}"
             if tt.ne_s_applique_pas_si
             else ""
         )
-        for tt in repertoire.textes_types
-        if tt.id != "generique" and tt.sujet
+        for tt in _sujets_non_generiques(repertoire)
     )
     interdits_txt = "\n".join(
         f"- {s.sujet}"
@@ -107,7 +111,7 @@ def build_prompt(offer: sqlite3.Row, cascade: CascadeResult) -> str:
     desc = (offer["description_raw"] or offer["description"] or "").strip()
     url_line = f"URL de l'annonce : {offer['url']}\n" if offer["url"] else ""
     section_repertoire = _section_repertoire(_charger_repertoire_pour_prompt())
-    consignes = f"{_CONSIGNE_POINTS_POUR_LETTRE}\n\n{_CONSIGNE_FAMILLE_DATE}"
+    consignes = _CONSIGNE_FAMILLE_DATE
     if section_repertoire:
         consignes = f"{consignes}\n\n---\n{section_repertoire}"
     return (
