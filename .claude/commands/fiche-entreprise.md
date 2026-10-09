@@ -1,5 +1,5 @@
 ---
-description: Fiche entreprise d'une offre retenue. Identifie l'employeur réel et rend les faits précis sur lesquels une lettre peut s'appuyer, avec citation et lien (JSON, 8 points au plus)
+description: Fiche entreprise d'une offre retenue. Identifie l'employeur réel et rend, par une recherche ciblée sur mes sujets de lettre, les faits précis sur lesquels la lettre peut s'appuyer, avec citation, lien et sujet (JSON, 8 points au plus)
 argument-hint: <offer_id>
 ---
 
@@ -12,19 +12,21 @@ pour la recherche), puis réponds par le seul objet JSON demandé. Le back n'a p
 <!-- /MANUEL -->
 Tu prépares la fiche d'une entreprise qui recrute, pour un candidat qui va lui écrire une lettre de motivation courte. La fiche sert à une chose : trouver les faits précis sur lesquels cette lettre pourra s'appuyer. Tu ne rédiges rien pour lui et tu ne donnes pas ton avis.
 
+La lettre s'écrit à partir d'un seul fait, choisi ensuite parmi tes points, et d'un texte prêt qui répond à ce fait. La liste de ces textes, « mes sujets », t'est donnée après l'annonce, avec pour chacun un identifiant et sa condition d'usage. Un point sert à la lettre quand il répond à l'un de ces sujets, ou quand il dit précisément ce que le poste fait faire. Tout le reste ne sert à rien, même vrai et sourcé.
+
 Étapes, dans l'ordre :
 1. Pars de l'annonce ci-dessous. Cherche qui recrute vraiment, pas qui diffuse l'annonce. Le résultat de la cascade est un indice à vérifier, pas une vérité.
 2. Classe la source : employeur direct, agence de recrutement (l'employeur final est masqué) ou agrégateur (un canal, pas un employeur). Si l'employeur est masqué, relève les indices de l'annonce (secteur, ville, taille, produit) et cherche avec.
 3. Identifie l'entité précise qui recrute, pas seulement le groupe.
-4. Lis l'annonce en entier. Relève les passages qui disent comment l'équipe travaille et ce que le poste fait faire.
-5. Ouvre le site de l'entreprise, puis ce qu'elle publie sur son propre travail : blog technique, articles signés par ses ingénieurs, pages qui décrivent sa méthode ou ses offres en IA, ses autres offres d'emploi techniques, prises de parole de ses responsables techniques.
-6. Si ces sources sont pauvres, cherche ailleurs : entité sœur, presse spécialisée, conférences, étude de cas publiée par un partenaire.
+4. Lis l'annonce en entier. Relève les passages qui disent ce que le poste fait faire et comment l'équipe travaille, en gardant les mots de l'annonce. Pour chacun, dis s'il répond à l'un de mes sujets.
+5. Recherche ciblée, un sujet à la fois : pour chacun de mes sujets, une recherche avec le nom de l'entité et les mots du sujet, sur ce que l'entreprise publie elle-même (site, blog technique, articles signés par ses ingénieurs, pages qui décrivent sa méthode ou ses offres en IA, autres offres techniques, prises de parole de ses responsables techniques). Tu ouvres la page avant de retenir quoi que ce soit. Un sujet sans fait précis reste sans point : tu ne forces pas un rapprochement.
+6. Si l'entreprise ne publie rien, une seule recherche de plus sur ce qu'elle fait avec l'IA (entité sœur, presse spécialisée, conférence, étude de cas d'un partenaire), toujours rapportée à un sujet.
 7. Restitue les faits point par point, sans les commenter.
 
-Ce qu'est un bon point : un fait précis, que seul quelqu'un qui s'est renseigné peut écrire. Il entre dans l'une de ces trois familles.
-- La façon de travailler de l'équipe : une méthode, un process, une exigence qu'elle décrit elle-même (ce qu'elle mesure, teste, évalue, trace, fait valider par une personne, prototype).
-- Ce que le poste fait faire : un passage précis de l'annonce, pas son résumé.
-- Les preuves que l'entreprise sait travailler avec l'IA : ce que ses ingénieurs publient, les outils qu'elle nomme, un partenariat qu'elle affiche avec un éditeur de modèles, un cas d'usage qu'elle décrit.
+Ce qu'est un bon point : un fait précis, que seul quelqu'un qui s'est renseigné peut écrire, et qui sert la lettre. Il entre dans l'une de ces trois familles.
+- La façon de travailler de l'équipe : une méthode, un process, une exigence qu'elle décrit elle-même (ce qu'elle mesure, teste, évalue, trace, fait valider par une personne, prototype), et qui répond à l'un de mes sujets.
+- Ce que le poste fait faire : un passage précis de l'annonce, pas son résumé. Il reste un bon point même s'il ne répond à aucun de mes sujets.
+- Les preuves que l'entreprise sait travailler avec l'IA : ce que ses ingénieurs publient, les outils qu'elle nomme, un partenariat qu'elle affiche avec un éditeur de modèles, un cas d'usage qu'elle décrit, quand l'un de mes sujets y répond.
 
 Ce qui n'est pas un point, même vrai et sourcé :
 - un slogan, une mission, des valeurs ;
@@ -32,7 +34,8 @@ Ce qui n'est pas un point, même vrai et sourcé :
 - une implantation, une ville, une région ;
 - la vie de l'entreprise : événements, avantages, formation interne, mentorat, ambiance ;
 - un prix ou un label sans rapport avec le travail technique ;
-- ce que fait toute entreprise du secteur.
+- ce que fait toute entreprise du secteur ;
+- un fait sur l'entreprise, même précis, qui ne répond à aucun de mes sujets et n'est pas un passage de l'annonce.
 
 Règles :
 - Tu lances toujours au moins une recherche web avant de conclure, même si l'employeur te paraît évident.
@@ -44,5 +47,6 @@ Règles :
 - Mode `offre_seule` : les points ne viennent que de l'annonce (citation copiée de l'annonce, `url` à null). Aucun point ne nomme un employeur que ni la cascade ni ta recherche n'ont identifié.
 - « non trouvé » est une réponse valide. Préfère-la à une supposition. Si tu hésites entre deux employeurs, mets la confiance à « probable » et dis pourquoi dans `methode`.
 - Aucun point tiré de ta connaissance générale : seulement des pages ouvertes pendant cette recherche.
-- 8 points au maximum, passages de l'annonce compris, les plus précis d'abord. Trois points solides valent mieux que huit faibles : si peu de faits entrent dans les trois familles, rends-en peu, ou aucun.
-- Réponse : un unique objet JSON `{mode, presentation, employeur{nom, entite_precise, type_source, methode, confiance, urls}, points[{position, citation, url}]}`.
+- 8 points au maximum, passages de l'annonce compris, les plus précis d'abord ; deux points au plus par sujet. Trois points solides valent mieux que huit faibles : si peu de faits entrent dans les trois familles, rends-en peu, ou aucun.
+- `sujet` : l'identifiant du sujet auquel le point répond, parmi ceux de ma liste ; null pour un passage de l'annonce qui n'en sert aucun. Un point qui n'est ni l'un ni l'autre n'est pas rendu.
+- Réponse : un unique objet JSON `{mode, presentation, employeur{nom, entite_precise, type_source, methode, confiance, urls}, points[{position, citation, url, sujet}]}`.
