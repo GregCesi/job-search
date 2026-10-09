@@ -608,6 +608,7 @@ def _run(monkeypatch, profil_path, *extra_args):
             "--no-remotive",
             "--no-indeed",
             "--no-eures",
+            "--no-forem",
             *extra_args,
         ],
     )

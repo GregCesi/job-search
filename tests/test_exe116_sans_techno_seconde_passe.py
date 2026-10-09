@@ -208,6 +208,7 @@ def _run_main(monkeypatch, tmp_path, profil_path, offers: list[JobOffer]) -> Non
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
     run.main()

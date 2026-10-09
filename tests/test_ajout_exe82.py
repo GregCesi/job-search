@@ -361,6 +361,7 @@ def _run_main(monkeypatch, tmp_path, profil_path, offre: JobOffer) -> None:
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
     run.main()

@@ -211,6 +211,7 @@ def _run_main(monkeypatch, tmp_path, profil_path, offers: list[JobOffer]) -> Non
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
     run.main()
@@ -540,6 +541,7 @@ def test_critere8_decharge_les_deux_modeles_sur_erreur_ou_interruption(
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
 

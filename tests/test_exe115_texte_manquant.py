@@ -175,6 +175,7 @@ def _run_main(monkeypatch, tmp_path, profil_path, source_cls) -> None:
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
     run.main()

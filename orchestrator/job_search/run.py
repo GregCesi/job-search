@@ -240,6 +240,7 @@ def main() -> None:
     parser.add_argument(
         "--no-actiris", action="store_true", help="Disable Actiris source"
     )
+    parser.add_argument("--no-forem", action="store_true", help="Disable Forem source")
     args = parser.parse_args()
 
     from dotenv import load_dotenv
@@ -266,6 +267,7 @@ def main() -> None:
     from orchestrator.job_search.sources.actiris import ActirisSource
     from orchestrator.job_search.sources.base import JobOffer, Source
     from orchestrator.job_search.sources.eures import EuresSource
+    from orchestrator.job_search.sources.forem import ForemSource
     from orchestrator.job_search.sources.france_travail import FranceTravailSource
     from orchestrator.job_search.sources.indeed_file import IndeedFileSource
     from orchestrator.job_search.sources.remotive import RemotiveSource
@@ -289,6 +291,10 @@ def main() -> None:
     # EXE-163, critère 4 — réglables par configuration, sans toucher au code.
     actiris_since_days = int(os.getenv("ACTIRIS_SINCE_DAYS", "3"))
     actiris_detail_cap = int(os.getenv("ACTIRIS_DETAIL_CAP", "200"))
+
+    # EXE-164, critère 5 — réglables par configuration, sans toucher au code.
+    forem_since_days = int(os.getenv("FOREM_SINCE_DAYS", "3"))
+    forem_detail_cap = int(os.getenv("FOREM_DETAIL_CAP", "200"))
 
     run_at = datetime.now(timezone.utc)
     print(f"[run] démarrage {run_at.strftime('%Y-%m-%d %H:%M')} UTC", flush=True)
@@ -412,6 +418,14 @@ def main() -> None:
             sources.append(
                 ActirisSource(
                     since_days=actiris_since_days, detail_cap=actiris_detail_cap
+                )
+            )
+        if not args.no_forem and "belgique_area" in active_zones:
+            sources.append(
+                ForemSource(
+                    keywords=kw,
+                    since_days=forem_since_days,
+                    detail_cap=forem_detail_cap,
                 )
             )
 

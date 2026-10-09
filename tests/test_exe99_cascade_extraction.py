@@ -268,6 +268,7 @@ def _run_main(monkeypatch, tmp_path, profil_path, source_cls) -> None:
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
     run.main()
@@ -835,6 +836,7 @@ def test_critere14_modele_de_tri_defaut_llama3_sans_configuration(
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
 
@@ -880,6 +882,7 @@ def test_critere14_modele_de_tri_configure_explicitement(
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
 
@@ -931,6 +934,7 @@ def test_critere15_modele_de_precision_reste_ollama_model_defaut_gemma(
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
 
@@ -981,6 +985,7 @@ def test_critere16_ollama_injoignable_refuse_de_demarrer(
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
 
@@ -1030,6 +1035,7 @@ def test_critere16_modele_manquant_refuse_de_demarrer(
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
 

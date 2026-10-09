@@ -182,6 +182,7 @@ def _run_main(monkeypatch, tmp_path, profil_path, offers: list[JobOffer]) -> Non
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
     run.main()
@@ -436,6 +437,7 @@ def test_critere8_arret_sur_erreur(
             "--no-indeed",
             "--no-eures",
             "--no-actiris",
+            "--no-forem",
         ],
     )
 
