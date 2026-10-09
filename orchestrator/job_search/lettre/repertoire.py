@@ -328,6 +328,24 @@ def charger_repertoire(chemin: str | Path) -> RepertoireCharge:
     return RepertoireCharge(repertoire=repertoire, trous=trous)
 
 
+def sujet_libelle(
+    sujet_id: str | None, chemin: str | Path = REPERTOIRE_LETTRE_PATH
+) -> str | None:
+    """Libellé humain d'un id de texte type du répertoire (EXE-162, critère 23)
+    — absent si `sujet_id` est vide, ou si le répertoire est absent/mal formé.
+    Partagé par `api/fiche.py` (sujet d'un point) et `api/lettre.py` (sujet du
+    texte type retenu par le tamis) pour ne jamais lire le répertoire deux
+    façons différentes."""
+    if not sujet_id:
+        return None
+    try:
+        repertoire = charger_repertoire(chemin).repertoire
+    except RepertoireError:
+        return None
+    texte_type = next((tt for tt in repertoire.textes_types if tt.id == sujet_id), None)
+    return texte_type.sujet if texte_type else None
+
+
 def _formater_trou(trou: Trou) -> str:
     if trou.texte_type and trou.exemple:
         return (

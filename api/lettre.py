@@ -35,6 +35,7 @@ from orchestrator.job_search.lettre.redaction import (
     resolve_chosen_indices,
     resolve_offer_text,
 )
+from orchestrator.job_search.lettre.repertoire import sujet_libelle
 from orchestrator.job_search.lettre.service import reset_pending, run_lettre
 from orchestrator.job_search.pdf.coordonnees import (
     Coordonnees,
@@ -147,6 +148,13 @@ def set_lettre_points(offer_id: int, body: PointsChoisisIn) -> list[dict]:
     return _points_with_choice(points, chosen)
 
 
+def _fait_retenu(row) -> dict | None:
+    if not row["fait_retenu_json"]:
+        return None
+    fait = json.loads(row["fait_retenu_json"])
+    return {**fait, "sujet_libelle": sujet_libelle(fait.get("sujet"))}
+
+
 def _row_to_lettre(row) -> dict:
     return {
         "statut": row["statut"],
@@ -161,9 +169,7 @@ def _row_to_lettre(row) -> dict:
         "regeneration_en_cours": bool(row["regeneration_en_cours"]),
         "regeneration_error": row["regeneration_error"],
         "points_choisis_origine": row["points_choisis_origine"],
-        "fait_retenu": json.loads(row["fait_retenu_json"])
-        if row["fait_retenu_json"]
-        else None,
+        "fait_retenu": _fait_retenu(row),
         "texte_type_id": row["texte_type_id"],
         "nb_tours": row["nb_tours"],
         "raison_fin": row["raison_fin"],

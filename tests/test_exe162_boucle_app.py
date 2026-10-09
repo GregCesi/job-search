@@ -302,7 +302,7 @@ class TestCritere5FaitsEtVerdictEnregistres:
         asyncio.run(lettre_service.run_lettre(offer_id))
         lettre = api_lettre.get_lettre(offer_id)
 
-        assert lettre["fait_retenu"] == FAIT_0
+        assert lettre["fait_retenu"] == {**FAIT_0, "sujet_libelle": None}
         assert lettre["nb_tours"] == 2
         assert lettre["raison_fin"] == RAISON_RIEN_A_REDIRE
         assert lettre["jugement"]["rien_a_redire"] is True
