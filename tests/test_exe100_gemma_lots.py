@@ -210,6 +210,7 @@ def _run_main(monkeypatch, tmp_path, profil_path, offers: list[JobOffer]) -> Non
             "--no-remotive",
             "--no-indeed",
             "--no-eures",
+            "--no-actiris",
         ],
     )
     run.main()
@@ -531,7 +532,15 @@ def test_critere8_decharge_les_deux_modeles_sur_erreur_ou_interruption(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run", "--profile", str(profil), "--no-remotive", "--no-indeed", "--no-eures"],
+        [
+            "run",
+            "--profile",
+            str(profil),
+            "--no-remotive",
+            "--no-indeed",
+            "--no-eures",
+            "--no-actiris",
+        ],
     )
 
     with pytest.raises(exc_cls):

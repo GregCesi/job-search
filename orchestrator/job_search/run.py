@@ -237,6 +237,9 @@ def main() -> None:
         "--no-indeed", action="store_true", help="Disable Indeed file source"
     )
     parser.add_argument("--no-eures", action="store_true", help="Disable EURES source")
+    parser.add_argument(
+        "--no-actiris", action="store_true", help="Disable Actiris source"
+    )
     args = parser.parse_args()
 
     from dotenv import load_dotenv
@@ -260,6 +263,7 @@ def main() -> None:
         extraction_version,
         unload_model,
     )
+    from orchestrator.job_search.sources.actiris import ActirisSource
     from orchestrator.job_search.sources.base import JobOffer, Source
     from orchestrator.job_search.sources.eures import EuresSource
     from orchestrator.job_search.sources.france_travail import FranceTravailSource
@@ -281,6 +285,10 @@ def main() -> None:
     batch_size = int(os.getenv("SECOND_PASS_BATCH_SIZE", "10"))
     pause_seconds = float(os.getenv("SECOND_PASS_PAUSE_SECONDS", "300"))
     max_batches = int(os.getenv("SECOND_PASS_MAX_BATCHES", "5"))
+
+    # EXE-163, critère 4 — réglables par configuration, sans toucher au code.
+    actiris_since_days = int(os.getenv("ACTIRIS_SINCE_DAYS", "3"))
+    actiris_detail_cap = int(os.getenv("ACTIRIS_DETAIL_CAP", "200"))
 
     run_at = datetime.now(timezone.utc)
     print(f"[run] démarrage {run_at.strftime('%Y-%m-%d %H:%M')} UTC", flush=True)
@@ -400,6 +408,12 @@ def main() -> None:
             sources.append(IndeedFileSource())
         if not args.no_eures and "belgique_area" in active_zones:
             sources.append(EuresSource(keywords=kw))
+        if not args.no_actiris and "belgique_area" in active_zones:
+            sources.append(
+                ActirisSource(
+                    since_days=actiris_since_days, detail_cap=actiris_detail_cap
+                )
+            )
 
         all_offers: list[JobOffer] = []
         for src in sources:

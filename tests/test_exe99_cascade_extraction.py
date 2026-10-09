@@ -267,6 +267,7 @@ def _run_main(monkeypatch, tmp_path, profil_path, source_cls) -> None:
             "--no-remotive",
             "--no-indeed",
             "--no-eures",
+            "--no-actiris",
         ],
     )
     run.main()
@@ -826,7 +827,15 @@ def test_critere14_modele_de_tri_defaut_llama3_sans_configuration(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run", "--profile", str(profil), "--no-remotive", "--no-indeed", "--no-eures"],
+        [
+            "run",
+            "--profile",
+            str(profil),
+            "--no-remotive",
+            "--no-indeed",
+            "--no-eures",
+            "--no-actiris",
+        ],
     )
 
     run.main()
@@ -863,7 +872,15 @@ def test_critere14_modele_de_tri_configure_explicitement(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run", "--profile", str(profil), "--no-remotive", "--no-indeed", "--no-eures"],
+        [
+            "run",
+            "--profile",
+            str(profil),
+            "--no-remotive",
+            "--no-indeed",
+            "--no-eures",
+            "--no-actiris",
+        ],
     )
 
     run.main()
@@ -906,7 +923,15 @@ def test_critere15_modele_de_precision_reste_ollama_model_defaut_gemma(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run", "--profile", str(profil), "--no-remotive", "--no-indeed", "--no-eures"],
+        [
+            "run",
+            "--profile",
+            str(profil),
+            "--no-remotive",
+            "--no-indeed",
+            "--no-eures",
+            "--no-actiris",
+        ],
     )
 
     run.main()
@@ -948,7 +973,15 @@ def test_critere16_ollama_injoignable_refuse_de_demarrer(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run", "--profile", str(profil), "--no-remotive", "--no-indeed", "--no-eures"],
+        [
+            "run",
+            "--profile",
+            str(profil),
+            "--no-remotive",
+            "--no-indeed",
+            "--no-eures",
+            "--no-actiris",
+        ],
     )
 
     run.main()
@@ -989,7 +1022,15 @@ def test_critere16_modele_manquant_refuse_de_demarrer(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run", "--profile", str(profil), "--no-remotive", "--no-indeed", "--no-eures"],
+        [
+            "run",
+            "--profile",
+            str(profil),
+            "--no-remotive",
+            "--no-indeed",
+            "--no-eures",
+            "--no-actiris",
+        ],
     )
 
     run.main()

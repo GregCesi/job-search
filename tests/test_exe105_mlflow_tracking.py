@@ -181,6 +181,7 @@ def _run_main(monkeypatch, tmp_path, profil_path, offers: list[JobOffer]) -> Non
             "--no-remotive",
             "--no-indeed",
             "--no-eures",
+            "--no-actiris",
         ],
     )
     run.main()
@@ -427,7 +428,15 @@ def test_critere8_arret_sur_erreur(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run", "--profile", str(profil), "--no-remotive", "--no-indeed", "--no-eures"],
+        [
+            "run",
+            "--profile",
+            str(profil),
+            "--no-remotive",
+            "--no-indeed",
+            "--no-eures",
+            "--no-actiris",
+        ],
     )
 
     with pytest.raises(RuntimeError):
