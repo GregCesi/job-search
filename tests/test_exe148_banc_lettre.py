@@ -35,13 +35,24 @@ TOURNURES_INTERDITES = "je veux\n"
 
 class FakeModeles:
     def __init__(self):
-        self.files = {"tamis": [], "redaction": [], "juge": []}
+        self.files = {"tamis": [], "redaction": [], "juge": [], "verificateur": []}
         self.appels = []
 
     def programmer(self, noeud, *valeurs):
         self.files[noeud].extend(valeurs)
 
     def __call__(self, noeud, modele, prompt_text, schema=None):
+        if noeud == "verificateur" and not self.files["verificateur"]:
+            # EXE-160 : sans programmation explicite, le vérificateur rend un
+            # relevé vide et n'entre pas dans `self.appels` — les tests d'avant
+            # la fiche gardent leurs index positionnels sur tamis/rédaction/juge.
+            return ReponseModele(
+                texte=json.dumps(
+                    {"rien_a_signaler": True, "lieux": [], "affirmations": []}
+                ),
+                duree_s=0.01,
+                cout_usd=0.01,
+            )
         self.appels.append((noeud, modele, prompt_text))
         valeur = self.files[noeud].pop(0)
         if isinstance(valeur, BaseException):
@@ -87,7 +98,11 @@ def _repertoire_donnees() -> dict:
             "consigne": "Consigne du juge.",
             "contexte": "Contexte du juge.",
         },
-        "redaction": {"consigne_reprise": "Consigne de reprise."},
+        "redaction": {
+            "consigne_reprise": "Consigne de reprise.",
+            "consigne_verification": "Consigne de correction.",
+        },
+        "verificateur": {"consigne": "Consigne du vérificateur."},
     }
 
 
@@ -260,9 +275,11 @@ def test_critere3_juge_different_garde_tamis_et_redaction(
 
     passage = resultat.passages[0]
     modeles_par_noeud = {a.noeud: a.modele for a in passage.resultat.appels}
+    # EXE-160 : sans `verif=`, le vérificateur tourne sur le modèle de la rédaction.
     assert modeles_par_noeud == {
         "tamis": "sonnet",
         "redaction": "sonnet",
+        "verificateur": "sonnet",
         "juge": "opus",
     }
 

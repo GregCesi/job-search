@@ -47,6 +47,11 @@ REPERTOIRE_LETTRE_PATH = REPO_ROOT / "data" / "lettre" / "repertoire.yaml"
 BOUCLE_TAMIS_CWD = Path.home() / ".cache" / "job-search" / "boucle_tamis_cwd"
 BOUCLE_REDACTION_CWD = Path.home() / ".cache" / "job-search" / "boucle_redaction_cwd"
 BOUCLE_JUGE_CWD = Path.home() / ".cache" / "job-search" / "boucle_juge_cwd"
+# Nœud du vérificateur (EXE-160) : même raison qu'au-dessus — jamais la session de la
+# rédaction ou du juge.
+BOUCLE_VERIFICATEUR_CWD = (
+    Path.home() / ".cache" / "job-search" / "boucle_verificateur_cwd"
+)
 # Rapports du banc de la lettre (EXE-148) : hors git, posés à part comme les autres
 # fichiers de data/lettre/.
 LETTRE_BANC_REPORTS_DIR = REPO_ROOT / "data" / "lettre" / "banc"

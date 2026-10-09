@@ -37,9 +37,13 @@ from orchestrator.job_search.lettre.boucle import (
     Appel,
     ConfigBoucle,
     ResultatBoucle,
+    dernier_releve,
     generer_lettre_depuis_donnees,
+    releve_txt,
+    releve_vide,
+    releves_de_lettre,
 )
-from orchestrator.job_search.lettre.redaction import ecart_longueur_mots
+from orchestrator.job_search.lettre.redaction import count_words, ecart_longueur_mots
 from orchestrator.job_search.lettre.repertoire import (
     RepertoireError,
     charger_repertoire,
@@ -78,14 +82,21 @@ class ConfigNommee:
 
 def parser_config(spec: str) -> ConfigNommee:
     """Une configuration est un modèle, suivi au besoin de `tamis=`,
-    `redaction=` ou `juge=` séparés par des virgules (H2 du ticket) ; les
-    rôles non nommés gardent le modèle de base (critères 2, 3)."""
+    `redaction=`, `juge=` ou `verif=` séparés par des virgules (H2 du ticket,
+    critère 15) ; les rôles non nommés gardent le modèle de base (critères 2, 3),
+    sauf `verif` qui, non nommé, tourne sur le modèle de la rédaction résolue
+    (`ConfigBoucle.modele_verificateur_effectif`)."""
     morceaux = [m.strip() for m in spec.split(",")]
     base = morceaux[0]
     if not base or "=" in base:
         raise ConfigurationInvalideError(f"configuration invalide : « {spec} »")
 
-    roles = {"tamis": base, "redaction": base, "juge": base}
+    roles: dict[str, str | None] = {
+        "tamis": base,
+        "redaction": base,
+        "juge": base,
+        "verif": None,
+    }
     for morceau in morceaux[1:]:
         if "=" not in morceau:
             raise ConfigurationInvalideError(f"configuration invalide : « {spec} »")
@@ -96,8 +107,8 @@ def parser_config(spec: str) -> ConfigNommee:
         roles[cle] = valeur
 
     # EXE-155, H2 : « generique » n'est le nom d'aucun modèle — il ne vaut que
-    # pour le rôle tamis (critères 5-10). Pour redaction/juge, explicite ou via le
-    # modèle de base, c'est une configuration invalide.
+    # pour le rôle tamis (critères 5-10). Pour redaction/juge/verif, explicite ou
+    # via le modèle de base, c'est une configuration invalide.
     for role, valeur in roles.items():
         if role != "tamis" and valeur == GENERIQUE_ID:
             raise ConfigurationInvalideError(f"configuration invalide : « {spec} »")
@@ -108,6 +119,7 @@ def parser_config(spec: str) -> ConfigNommee:
             modele_tamis=roles["tamis"],
             modele_redaction=roles["redaction"],
             modele_juge=roles["juge"],
+            modele_verificateur=roles["verif"],
         ),
     )
 
@@ -268,6 +280,11 @@ class ResumeConfig:
     juge_rien_a_redire: int
     erreurs_reponse_illisible: int
     erreurs_appel_echoue: int
+    # EXE-160, critère 13 : quatre mesures du vérificateur, sans aucun modèle.
+    verif_tournures: int
+    verif_lieux: int
+    verif_affirmations: int
+    lettres_finales_signalees: int
     table: dict[str, list] = field(default_factory=dict)
 
 
@@ -351,6 +368,16 @@ def resumer_config(
             jugement_final.verdict if jugement_final is not None else None
         )
 
+    # EXE-160, critère 13 : « total sur tous les relevés » — chaque relevé du
+    # vérificateur, pré- et post-correction, de chaque tour de chaque lettre de
+    # cette configuration.
+    tous_les_releves = [
+        releve
+        for p in avec_lettres
+        for lettre in p.resultat.lettres
+        for releve in releves_de_lettre(lettre)
+    ]
+
     return ResumeConfig(
         config_nommee=config_nommee,
         lettres_produites=len(avec_lettres),
@@ -384,6 +411,14 @@ def resumer_config(
         erreurs_appel_echoue=sum(
             1 for p in ran if p.resultat.erreur_type == "appel_echoue"
         ),
+        verif_tournures=sum(len(r["tournures"]) for r in tous_les_releves),
+        verif_lieux=sum(len(r["lieux"]) for r in tous_les_releves),
+        verif_affirmations=sum(len(r["affirmations"]) for r in tous_les_releves),
+        lettres_finales_signalees=sum(
+            1
+            for p in avec_lettres
+            if not releve_vide(dernier_releve(p.resultat.lettres[-1]))
+        ),
         table=table,
     )
 
@@ -405,8 +440,10 @@ def _tableau_comparaison(resumes: list[ResumeConfig]) -> str:
         "| Coût total | Tours en moyenne | Plafonds atteints | Lettres génériques "
         "| Lettres sans tournure interdite | Tournures interdites trouvées "
         "| Écart moyen (abs) à la longueur cible | Lettres sans rien à redire "
-        "| Réponses illisibles | Appels échoués |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Réponses illisibles | Appels échoués | Tournures relevées (vérificateur) "
+        "| Lieux relevés | Affirmations non soutenues relevées "
+        "| Lettres finales encore signalées |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for resume in resumes:
         lignes.append(
@@ -419,7 +456,9 @@ def _tableau_comparaison(resumes: list[ResumeConfig]) -> str:
             f"| {resume.lettres_sans_tournures} | {resume.total_tournures} "
             f"| {_fmt(resume.ecart_moyen_abs_mots, ' mot(s)', 1)} "
             f"| {resume.juge_rien_a_redire} "
-            f"| {resume.erreurs_reponse_illisible} | {resume.erreurs_appel_echoue} |"
+            f"| {resume.erreurs_reponse_illisible} | {resume.erreurs_appel_echoue} "
+            f"| {resume.verif_tournures} | {resume.verif_lieux} "
+            f"| {resume.verif_affirmations} | {resume.lettres_finales_signalees} |"
         )
     return "\n".join(lignes)
 
@@ -494,6 +533,14 @@ def _section_offre(
     return titre_section + "\n\n" + "\n".join(lignes_fait) + "\n".join(lignes_lettres)
 
 
+def _releve_annexe_txt(releve: dict) -> str:
+    """EXE-160, critère 6 : jamais une rubrique vide, jamais « None » — un
+    relevé entièrement vide dit « rien à signaler »."""
+    if releve_vide(releve):
+        return "Relevé du vérificateur : rien à signaler."
+    return f"Relevé du vérificateur :\n{releve_txt(releve)}"
+
+
 def _annexe_passage(passage: Passage) -> str:
     titre = f"### {passage.config_label} — offre {passage.offer_id}"
     if passage.skip_reason is not None:
@@ -502,13 +549,27 @@ def _annexe_passage(passage: Passage) -> str:
     resultat = passage.resultat
     lignes = [titre, ""]
     for i, lettre in enumerate(resultat.lettres, start=1):
-        lignes.append(f"**Tour {i}** ({lettre['nb_mots']} mots) :\n")
-        lignes.append(lettre["texte"])
-        # EXE-158, critère 17 : la lettre, puis les quatre rubriques du juge,
-        # chacune sous son nom.
+        # EXE-160, critères 1, 14 : la lettre rédigée, puis son relevé, puis la
+        # lettre corrigée et son second relevé s'il y a eu correction — avant les
+        # rubriques du juge.
+        lignes.append(f"**Tour {i}** ({count_words(lettre['texte_redige'])} mots) :\n")
+        lignes.append(lettre["texte_redige"])
+        lignes.append("")
+        if lettre.get("releve_redaction") is not None:
+            lignes.append(_releve_annexe_txt(lettre["releve_redaction"]))
+            lignes.append("")
+        if lettre.get("texte_corrige") is not None:
+            lignes.append(
+                f"**Lettre corrigée** ({count_words(lettre['texte_corrige'])} mots) :\n"
+            )
+            lignes.append(lettre["texte_corrige"])
+            lignes.append("")
+            if lettre.get("releve_correction") is not None:
+                lignes.append(_releve_annexe_txt(lettre["releve_correction"]))
+                lignes.append("")
+        # EXE-158, critère 17 : les quatre rubriques du juge, chacune sous son nom.
         jugement = lettre["jugement"]
         if jugement is not None:
-            lignes.append("")
             lignes.append(f"Ressenti : {jugement.ressenti}")
             lignes.append(f"Détails : {jugement.details}")
             lignes.append(f"Réussites : {jugement.reussites}")
@@ -591,6 +652,9 @@ def _logger_config(
             "modele_tamis": resume.config_nommee.config.modele_tamis,
             "modele_redaction": resume.config_nommee.config.modele_redaction,
             "modele_juge": resume.config_nommee.config.modele_juge,
+            "modele_verificateur": (
+                resume.config_nommee.config.modele_verificateur_effectif()
+            ),
             "plafond_tours": MAX_TOURS,
             "offres": ",".join(str(o) for o in offer_ids),
             "jeu": jeu_nom,
@@ -610,6 +674,11 @@ def _logger_config(
         "juge_rien_a_redire": float(resume.juge_rien_a_redire),
         "erreurs_reponse_illisible": float(resume.erreurs_reponse_illisible),
         "erreurs_appel_echoue": float(resume.erreurs_appel_echoue),
+        # EXE-160, critère 13 : les quatre mesures du vérificateur.
+        "verif_tournures": float(resume.verif_tournures),
+        "verif_lieux": float(resume.verif_lieux),
+        "verif_affirmations": float(resume.verif_affirmations),
+        "lettres_finales_signalees": float(resume.lettres_finales_signalees),
     }
     if resume.duree_moyenne_par_lettre_s is not None:
         metrics["duree_moyenne_par_lettre_s"] = resume.duree_moyenne_par_lettre_s

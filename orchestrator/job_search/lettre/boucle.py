@@ -1,7 +1,10 @@
 """Boucle de la lettre (EXE-147) : un tamis choisit le fait de l'entreprise et le
-texte type, une rédaction écrit, un juge recruteur renvoie à la rédaction — trois
-lettres au plus (LangGraph, architecture.md « Exception encadrée : banc de la lettre »,
-stack.md « Boucle de la lettre — LangGraph »).
+texte type, une rédaction écrit, un vérificateur relit (tournures interdites, lieux
+absents de l'annonce, affirmations non soutenues — EXE-160) avant qu'un juge
+recruteur renvoie à la rédaction — trois lettres jugées au plus (LangGraph,
+architecture.md « Exception encadrée : banc de la lettre », stack.md « Boucle de la
+lettre — LangGraph »). Une correction demandée par le vérificateur ne compte jamais
+comme un tour.
 
 Hors de l'application : aucune route, aucun run, aucun geste de retenir ne lance cette
 boucle (elle sert au banc, EXE-148, et à l'usage manuel), et elle n'écrit dans aucune
@@ -9,8 +12,8 @@ table — lecture seule de `offers` et `fiches_entreprise`.
 
 Un seul texte type est envoyé à la rédaction (le texte type choisi par le tamis),
 jamais le répertoire entier, et un exemple sans texte n'est jamais envoyé (critères 11,
-12). Le rédacteur et le juge n'ont jamais la même session de modèle : chacun a son
-répertoire de travail (cf. `paths.BOUCLE_*_CWD`).
+12). Le rédacteur, le vérificateur et le juge n'ont jamais la même session de modèle :
+chacun a son répertoire de travail (cf. `paths.BOUCLE_*_CWD`).
 """
 
 from __future__ import annotations
@@ -47,6 +50,7 @@ from orchestrator.job_search.paths import (
     BOUCLE_JUGE_CWD,
     BOUCLE_REDACTION_CWD,
     BOUCLE_TAMIS_CWD,
+    BOUCLE_VERIFICATEUR_CWD,
     CV_REFERENCE_PATH,
     LETTRE_TOURNURES_PATH,
     REPERTOIRE_LETTRE_PATH,
@@ -66,6 +70,7 @@ _CWD_PAR_NOEUD = {
     "tamis": BOUCLE_TAMIS_CWD,
     "redaction": BOUCLE_REDACTION_CWD,
     "juge": BOUCLE_JUGE_CWD,
+    "verificateur": BOUCLE_VERIFICATEUR_CWD,
 }
 _FORBIDDEN_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebSearch", "WebFetch"]
 
@@ -92,6 +97,38 @@ _SCHEMA_JUGE = {
         "verdict": {"type": "string"},
     },
     "required": ["rien_a_redire", "ressenti", "details", "reussites", "verdict"],
+}
+
+# EXE-160, critère 5 : le vérificateur relève les lieux et les affirmations par un
+# appel de modèle — les tournures interdites sont relevées en Python (H4 du ticket).
+_SCHEMA_VERIFICATEUR = {
+    "type": "object",
+    "properties": {
+        "rien_a_signaler": {"type": "boolean"},
+        "lieux": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "lieu": {"type": "string"},
+                    "phrase": {"type": "string"},
+                },
+                "required": ["lieu", "phrase"],
+            },
+        },
+        "affirmations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "passage": {"type": "string"},
+                    "manque": {"type": "string"},
+                },
+                "required": ["passage", "manque"],
+            },
+        },
+    },
+    "required": ["rien_a_signaler", "lieux", "affirmations"],
 }
 
 
@@ -133,7 +170,7 @@ class Jugement:
 class Appel:
     """Trace d'un appel de modèle (critère 20) : jamais persisté, seulement rendu."""
 
-    noeud: Literal["tamis", "redaction", "juge"]
+    noeud: Literal["tamis", "redaction", "juge", "verificateur"]
     modele: str
     duree_s: float
     cout_usd: float | None
@@ -147,6 +184,12 @@ class ConfigBoucle:
     modele_tamis: str
     modele_redaction: str
     modele_juge: str
+    # EXE-160, critère 15 : absent (None), le vérificateur tourne sur le modèle de
+    # la rédaction — jamais un troisième modèle en dur.
+    modele_verificateur: str | None = None
+
+    def modele_verificateur_effectif(self) -> str:
+        return self.modele_verificateur or self.modele_redaction
 
 
 @dataclass
@@ -249,7 +292,7 @@ def _appeler_ollama(
 
 
 def appeler_modele(
-    noeud: Literal["tamis", "redaction", "juge"],
+    noeud: Literal["tamis", "redaction", "juge", "verificateur"],
     modele: str,
     prompt_text: str,
     schema: dict | None = None,
@@ -444,7 +487,11 @@ def _exemples_avec_texte(texte_type: TexteType) -> list:
     return [ex for ex in texte_type.exemples if (ex.texte or "").strip()]
 
 
-def _prompt_redaction(state: EtatBoucle) -> str:
+def _blocs_communs_redaction(state: EtatBoucle) -> str:
+    """Contenu partagé par la rédaction normale et la correction du vérificateur
+    (EXE-160) : offre, posture, forme, sujets interdits, ce qui est vrai sur moi,
+    fait retenu, texte type, CV — jamais la reprise du juge ni le relevé du
+    vérificateur, construits par leurs blocs de queue respectifs."""
     repertoire = state["repertoire"]
     posture = repertoire.posture
     forme = repertoire.forme
@@ -494,6 +541,27 @@ def _prompt_redaction(state: EtatBoucle) -> str:
         f"Exemples :\n{exemples_txt}"
     )
 
+    return (
+        f"**Offre** : {state['titre']}\n"
+        f"**Entreprise** : {state['entreprise']}\n\n"
+        # EXE-155, critères 1-4 : le texte intégral de l'annonce, sans bloc de
+        # style/script ni balise (`strip_html`), jamais raccourci — à chaque tour,
+        # y compris les reprises après remarques du juge et les corrections du
+        # vérificateur.
+        f"**Texte de l'offre** :\n{strip_html(state['texte_offre'])}\n\n"
+        f"**Posture** :\n{posture_txt}\n\n"
+        f"**Forme** :\n{forme_txt}\n\n"
+        f"**Sujets interdits** :\n{sujets_interdits_txt}\n\n"
+        f"{_bloc_ce_qui_est_vrai_sur_moi(repertoire)}"
+        f"{fait_txt}"
+        f"**Texte type** :\n{texte_type_txt}\n\n"
+        f"**CV de référence** :\n{state['cv_reference_text']}"
+    )
+
+
+def _prompt_redaction(state: EtatBoucle) -> str:
+    repertoire = state["repertoire"]
+
     # EXE-158, critères 9-11 : à partir du deuxième tour, la rédaction reçoit la
     # lettre précédente, les quatre rubriques du dernier jugement telles que le
     # juge les a rendues (jamais celles des tours d'avant), et la consigne de
@@ -521,25 +589,114 @@ def _prompt_redaction(state: EtatBoucle) -> str:
         "Tu écris une lettre de motivation, en français, en suivant la forme et la "
         "posture ci-dessous, bâtie sur le fait et le texte type reçus. Rends "
         "uniquement le texte de la lettre.\n\n"
-        f"**Offre** : {state['titre']}\n"
-        f"**Entreprise** : {state['entreprise']}\n\n"
-        # EXE-155, critères 1-4 : le texte intégral de l'annonce, sans bloc de
-        # style/script ni balise (`strip_html`), jamais raccourci — à chaque tour,
-        # y compris les reprises après remarques du juge.
-        f"**Texte de l'offre** :\n{strip_html(state['texte_offre'])}\n\n"
-        f"**Posture** :\n{posture_txt}\n\n"
-        f"**Forme** :\n{forme_txt}\n\n"
-        f"**Sujets interdits** :\n{sujets_interdits_txt}\n\n"
-        f"{_bloc_ce_qui_est_vrai_sur_moi(repertoire)}"
-        f"{fait_txt}"
-        f"**Texte type** :\n{texte_type_txt}\n\n"
-        f"**CV de référence** :\n{state['cv_reference_text']}"
+        f"{_blocs_communs_redaction(state)}"
         f"{reprise_txt}"
     )
 
 
+def _tournures_releve_txt(tournures: list[str]) -> str:
+    if not tournures:
+        return ""
+    lignes = "\n".join(f"- {t}" for t in tournures)
+    return f"Tournures interdites relevées :\n{lignes}"
+
+
+def _lieux_releve_txt(lieux: list[dict]) -> str:
+    if not lieux:
+        return ""
+    lignes = "\n".join(f"- {lieu['lieu']} — « {lieu['phrase']} »" for lieu in lieux)
+    return f"Lieux absents de l'annonce :\n{lignes}"
+
+
+def _affirmations_releve_txt(affirmations: list[dict]) -> str:
+    if not affirmations:
+        return ""
+    lignes = "\n".join(f"- « {a['passage']} » — {a['manque']}" for a in affirmations)
+    return f"Affirmations non soutenues :\n{lignes}"
+
+
+def releve_vide(releve: dict | None) -> bool:
+    if releve is None:
+        return True
+    return (
+        not releve["tournures"] and not releve["lieux"] and not releve["affirmations"]
+    )
+
+
+def releve_txt(releve: dict) -> str:
+    """EXE-160, critère 6 : chaque liste vide est omise entièrement — jamais une
+    rubrique vide ni le mot « None » — et un relevé entièrement vide dit « rien à
+    signaler »."""
+    blocs = [
+        bloc
+        for bloc in (
+            _tournures_releve_txt(releve["tournures"]),
+            _lieux_releve_txt(releve["lieux"]),
+            _affirmations_releve_txt(releve["affirmations"]),
+        )
+        if bloc
+    ]
+    if not blocs:
+        return "Rien à signaler."
+    return "\n\n".join(blocs)
+
+
+def releves_de_lettre(lettre: dict) -> list[dict]:
+    """Les un ou deux relevés qu'une lettre a traversés (critère 13 du banc :
+    « total sur tous les relevés »)."""
+    releves = []
+    if lettre.get("releve_redaction") is not None:
+        releves.append(lettre["releve_redaction"])
+    if lettre.get("releve_correction") is not None:
+        releves.append(lettre["releve_correction"])
+    return releves
+
+
+def dernier_releve(lettre: dict) -> dict | None:
+    """Le relevé qui précède le juge — après correction s'il y en a eu une
+    (critère 13 du banc : « lettres finales encore signalées »)."""
+    return lettre.get("releve_correction") or lettre.get("releve_redaction")
+
+
+def _prompt_correction(state: EtatBoucle, derniere: dict) -> str:
+    """EXE-160, critères 7, 10 : la rédaction corrige la lettre que le vérificateur
+    vient de relire, sans jamais recevoir les rubriques du juge."""
+    repertoire = state["repertoire"]
+    releve = derniere["releve_redaction"]
+    correction_txt = (
+        "\n\n**Lettre à corriger** :\n"
+        f"{derniere['texte_redige']}\n\n"
+        "**Relevé du vérificateur** :\n"
+        f"{releve_txt(releve)}\n\n"
+        "**Consigne de correction** :\n"
+        f"{repertoire.redaction.consigne_verification}\n"
+    )
+    return (
+        "Tu corriges la lettre de motivation ci-dessous, en suivant la forme et la "
+        "posture ci-dessous, à partir du relevé du vérificateur. Rends uniquement "
+        "le texte corrigé de la lettre.\n\n"
+        f"{_blocs_communs_redaction(state)}"
+        f"{correction_txt}"
+    )
+
+
 def noeud_redaction(state: EtatBoucle) -> dict:
-    prompt = _prompt_redaction(state)
+    lettres = state["lettres"]
+    derniere = lettres[-1] if lettres else None
+    # EXE-160, critère 9 : une correction porte sur la dernière lettre déjà écrite
+    # ce tour (pas encore jugée, déjà relue une fois, pas encore corrigée) — elle
+    # ne crée jamais une nouvelle entrée et ne compte jamais comme un tour.
+    en_correction = (
+        derniere is not None
+        and derniere["jugement"] is None
+        and derniere.get("releve_redaction") is not None
+        and derniere.get("texte_corrige") is None
+    )
+    prompt = (
+        _prompt_correction(state, derniere)
+        if en_correction
+        else _prompt_redaction(state)
+    )
     try:
         reponse = appeler_modele("redaction", state["config"].modele_redaction, prompt)
     except AppelModeleError as exc:
@@ -552,13 +709,6 @@ def noeud_redaction(state: EtatBoucle) -> dict:
         }
 
     texte = reponse.texte
-    tournures = detect_tournures(texte, state["tournures_interdites"])
-    lettre = {
-        "texte": texte,
-        "nb_mots": count_words(texte),
-        "tournures_signalees": tournures,
-        "jugement": None,
-    }
     appel = Appel(
         noeud="redaction",
         modele=state["config"].modele_redaction,
@@ -568,10 +718,152 @@ def noeud_redaction(state: EtatBoucle) -> dict:
         reponse=texte,
         nb_jetons=reponse.nb_jetons,
     )
+
+    if en_correction:
+        nouvelle = {
+            **derniere,
+            "texte": texte,
+            "nb_mots": count_words(texte),
+            "texte_corrige": texte,
+        }
+        return {
+            "appels": state["appels"] + [appel],
+            "lettres": lettres[:-1] + [nouvelle],
+        }
+
+    lettre = {
+        "texte": texte,
+        "texte_redige": texte,
+        "nb_mots": count_words(texte),
+        "tournures_signalees": None,  # rempli par le vérificateur
+        "releve_redaction": None,
+        "texte_corrige": None,
+        "releve_correction": None,
+        "jugement": None,
+    }
     return {
         "appels": state["appels"] + [appel],
-        "lettres": state["lettres"] + [lettre],
+        "lettres": lettres + [lettre],
         "tour": state["tour"] + 1,
+    }
+
+
+def _prompt_verificateur(state: EtatBoucle, texte_lettre: str) -> str:
+    """EXE-160, critère 5 : consigne du vérificateur, lettre, offre, ce qui est
+    vrai sur moi, CV de référence, fait retenu avec sa citation — jamais la
+    posture, les sujets interdits ni les rubriques du juge."""
+    repertoire = state["repertoire"]
+    fait = state["fait_retenu"]
+    if fait is not None:
+        fait_txt = f"**Fait retenu de l'entreprise** :\n{_texte_point(fait)}\n\n"
+    else:
+        fait_txt = "**Aucun fait d'entreprise retenu** : lettre générique.\n\n"
+    return (
+        f"{repertoire.verificateur.consigne}\n\n"
+        f"**Offre** : {state['titre']}\n"
+        f"**Entreprise** : {state['entreprise']}\n\n"
+        f"**Texte de l'offre** :\n{strip_html(state['texte_offre'])}\n\n"
+        f"{_bloc_ce_qui_est_vrai_sur_moi(repertoire)}"
+        f"{fait_txt}"
+        f"**CV de référence** :\n{state['cv_reference_text']}\n\n"
+        f"**Lettre à relire** :\n{texte_lettre}\n\n"
+        'Rends un JSON {"rien_a_signaler": <bool>, "lieux": [{"lieu": <texte>, '
+        '"phrase": <texte>}], "affirmations": [{"passage": <texte>, "manque": '
+        "<texte>}]}."
+    )
+
+
+def _parser_verificateur(texte: str) -> tuple[list[dict], list[dict]]:
+    """EXE-160, H4 : la réponse à qui manque rien_a_signaler, lieux ou
+    affirmations est une réponse illisible — même raison que pour les autres
+    nœuds."""
+    data = json.loads(texte)
+    if not isinstance(data, dict):
+        raise ValueError("réponse du vérificateur : pas un objet JSON")
+    for champ in ("rien_a_signaler", "lieux", "affirmations"):
+        if champ not in data:
+            raise ValueError(f"réponse du vérificateur : {champ} manquant")
+    if not isinstance(data["rien_a_signaler"], bool):
+        raise ValueError(
+            "réponse du vérificateur : rien_a_signaler n'est pas un booléen"
+        )
+    lieux = data["lieux"]
+    affirmations = data["affirmations"]
+    if not isinstance(lieux, list) or not isinstance(affirmations, list):
+        raise ValueError(
+            "réponse du vérificateur : lieux ou affirmations n'est pas une liste"
+        )
+    for lieu in lieux:
+        if (
+            not isinstance(lieu, dict)
+            or not isinstance(lieu.get("lieu"), str)
+            or not isinstance(lieu.get("phrase"), str)
+        ):
+            raise ValueError("réponse du vérificateur : lieu invalide")
+    for affirmation in affirmations:
+        if (
+            not isinstance(affirmation, dict)
+            or not isinstance(affirmation.get("passage"), str)
+            or not isinstance(affirmation.get("manque"), str)
+        ):
+            raise ValueError("réponse du vérificateur : affirmation invalide")
+    return lieux, affirmations
+
+
+def noeud_verificateur(state: EtatBoucle) -> dict:
+    lettres = state["lettres"]
+    derniere = lettres[-1]
+    apres_correction = derniere["texte_corrige"] is not None
+    texte_a_verifier = (
+        derniere["texte_corrige"] if apres_correction else derniere["texte_redige"]
+    )
+
+    # Critère 2 : les tournures interdites sont relevées en Python, sans aucun
+    # appel de modèle.
+    tournures = detect_tournures(texte_a_verifier, state["tournures_interdites"])
+
+    modele = state["config"].modele_verificateur_effectif()
+    prompt = _prompt_verificateur(state, texte_a_verifier)
+    try:
+        reponse = appeler_modele(
+            "verificateur", modele, prompt, schema=_SCHEMA_VERIFICATEUR
+        )
+    except AppelModeleError as exc:
+        return {
+            "erreur": {
+                "noeud": "verificateur",
+                "raison": raison_appel_echoue("verificateur", str(exc)),
+                "type": "appel_echoue",
+            }
+        }
+
+    try:
+        lieux, affirmations = _parser_verificateur(reponse.texte)
+    except (ValueError, json.JSONDecodeError):
+        return {
+            "erreur": {
+                "noeud": "verificateur",
+                "raison": raison_reponse_illisible("verificateur"),
+                "type": "reponse_illisible",
+            }
+        }
+
+    releve = {"tournures": tournures, "lieux": lieux, "affirmations": affirmations}
+    appel = Appel(
+        noeud="verificateur",
+        modele=modele,
+        duree_s=reponse.duree_s,
+        cout_usd=reponse.cout_usd,
+        demande=prompt,
+        reponse=reponse.texte,
+        nb_jetons=reponse.nb_jetons,
+    )
+
+    champ = "releve_correction" if apres_correction else "releve_redaction"
+    nouvelle = {**derniere, champ: releve, "tournures_signalees": tournures}
+    return {
+        "appels": state["appels"] + [appel],
+        "lettres": lettres[:-1] + [nouvelle],
     }
 
 
@@ -698,7 +990,21 @@ def _route_apres_tamis(state: EtatBoucle) -> str:
 
 
 def _route_apres_redaction(state: EtatBoucle) -> str:
-    return END if state.get("erreur") else "juge"
+    return END if state.get("erreur") else "verificateur"
+
+
+def _route_apres_verificateur(state: EtatBoucle) -> str:
+    """EXE-160, critères 7, 8 : un relevé non vide sur la lettre juste rédigée (pas
+    encore corrigée) renvoie à la rédaction pour une correction ; sinon — relevé
+    vide, ou relevé déjà corrigé une fois — la lettre part au juge."""
+    if state.get("erreur"):
+        return END
+    derniere = state["lettres"][-1]
+    if derniere["texte_corrige"] is None and not releve_vide(
+        derniere["releve_redaction"]
+    ):
+        return "redaction"
+    return "juge"
 
 
 def _route_apres_juge(state: EtatBoucle) -> str:
@@ -711,13 +1017,21 @@ def _construire_graphe():
     graphe = StateGraph(EtatBoucle)
     graphe.add_node("tamis", noeud_tamis)
     graphe.add_node("redaction", noeud_redaction)
+    graphe.add_node("verificateur", noeud_verificateur)
     graphe.add_node("juge", noeud_juge)
     graphe.set_entry_point("tamis")
     graphe.add_conditional_edges(
         "tamis", _route_apres_tamis, {"redaction": "redaction", END: END}
     )
     graphe.add_conditional_edges(
-        "redaction", _route_apres_redaction, {"juge": "juge", END: END}
+        "redaction",
+        _route_apres_redaction,
+        {"verificateur": "verificateur", END: END},
+    )
+    graphe.add_conditional_edges(
+        "verificateur",
+        _route_apres_verificateur,
+        {"redaction": "redaction", "juge": "juge", END: END},
     )
     graphe.add_conditional_edges(
         "juge", _route_apres_juge, {"redaction": "redaction", END: END}
@@ -729,8 +1043,9 @@ _GRAPHE = _construire_graphe()
 
 
 def dessiner_graphe() -> str:
-    """Mermaid texte du graphe (critère 27) : tamis, rédaction, juge, et le retour du
-    juge vers la rédaction."""
+    """Mermaid texte du graphe (critère 27) : tamis, rédaction, vérificateur, juge,
+    le retour du vérificateur vers la rédaction (correction) et celui du juge vers
+    la rédaction (reprise)."""
     return _GRAPHE.get_graph().draw_mermaid()
 
 

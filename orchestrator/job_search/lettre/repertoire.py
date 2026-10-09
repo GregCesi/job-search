@@ -115,6 +115,15 @@ class Redaction(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     consigne_reprise: str | None = None
+    # EXE-160, critère 7 : consigne distincte de `consigne_reprise` — la correction
+    # porte sur le relevé du vérificateur, jamais sur le ressenti du juge.
+    consigne_verification: str | None = None
+
+
+class Verificateur(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    consigne: str | None = None
 
 
 class Repertoire(BaseModel):
@@ -133,6 +142,7 @@ class Repertoire(BaseModel):
     textes_types: list[TexteType] = Field(default_factory=list)
     juge: Juge = Field(default_factory=Juge)
     redaction: Redaction = Field(default_factory=Redaction)
+    verificateur: Verificateur = Field(default_factory=Verificateur)
 
 
 @dataclass(frozen=True)
@@ -258,13 +268,15 @@ def _valider_textes_types(textes_types_bruts: list[Any]) -> None:
 
 
 def valider_juge_et_redaction(repertoire: Repertoire) -> None:
-    """EXE-158, critères 13-14 : sans ces trois champs, aucun appel de modèle ne
-    doit partir — la raison nomme ce qui manque, avant tout appel.
+    """EXE-158, critères 13-14, complété EXE-160 critère 12 : sans ces champs,
+    aucun appel de modèle ne doit partir — la raison nomme ce qui manque, avant
+    tout appel.
 
     Volontairement hors de `charger_repertoire` : ce chargeur est aussi celui de
     la fiche entreprise (`fiche/prompt.py`), qui ne lit que `textes_types` et
-    `sujets_interdits` et n'a aucune raison de connaître le juge ou la reprise
-    de la rédaction. Le banc et la boucle appellent cette fonction eux-mêmes."""
+    `sujets_interdits` et n'a aucune raison de connaître le juge, le vérificateur
+    ou la reprise de la rédaction. Le banc et la boucle appellent cette fonction
+    eux-mêmes."""
     if not (repertoire.juge.consigne or "").strip():
         raise RepertoireError("le répertoire de la lettre n'a pas de consigne du juge")
     if not (repertoire.juge.contexte or "").strip():
@@ -272,6 +284,15 @@ def valider_juge_et_redaction(repertoire: Repertoire) -> None:
     if not (repertoire.redaction.consigne_reprise or "").strip():
         raise RepertoireError(
             "le répertoire de la lettre n'a pas de consigne de reprise pour la "
+            "rédaction"
+        )
+    if not (repertoire.verificateur.consigne or "").strip():
+        raise RepertoireError(
+            "le répertoire de la lettre n'a pas de consigne du vérificateur"
+        )
+    if not (repertoire.redaction.consigne_verification or "").strip():
+        raise RepertoireError(
+            "le répertoire de la lettre n'a pas de consigne de correction pour la "
             "rédaction"
         )
 

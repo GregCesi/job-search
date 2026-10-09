@@ -34,13 +34,24 @@ TOURNURES_INTERDITES = "je veux\n"
 
 class FakeModeles:
     def __init__(self):
-        self.files = {"tamis": [], "redaction": [], "juge": []}
+        self.files = {"tamis": [], "redaction": [], "juge": [], "verificateur": []}
         self.appels = []
 
     def programmer(self, noeud, *valeurs):
         self.files[noeud].extend(valeurs)
 
     def __call__(self, noeud, modele, prompt_text, schema=None):
+        if noeud == "verificateur" and not self.files["verificateur"]:
+            # EXE-160 : sans programmation explicite, le vérificateur rend un
+            # relevé vide et n'entre pas dans `self.appels` — les tests d'avant
+            # la fiche gardent leurs index positionnels sur tamis/rédaction/juge.
+            return ReponseModele(
+                texte=json.dumps(
+                    {"rien_a_signaler": True, "lieux": [], "affirmations": []}
+                ),
+                duree_s=0.01,
+                cout_usd=0.01,
+            )
         self.appels.append((noeud, modele, prompt_text))
         valeur = self.files[noeud].pop(0)
         if isinstance(valeur, BaseException):
@@ -71,6 +82,8 @@ def _repertoire_donnees(
     juge_contexte="Contexte du juge : tu es un recruteur qui ne connaît pas le candidat.",
     juge_exemples=None,
     redaction_consigne_reprise="Corrige la lettre selon le ressenti du juge.",
+    redaction_consigne_verification="Consigne de correction : corrige strictement le relevé.",
+    verificateur_consigne="Consigne du vérificateur : tournures, lieux, affirmations.",
     ce_qui_est_vrai_sur_moi=None,
     lettre_de_reference=None,
 ) -> dict:
@@ -126,8 +139,15 @@ def _repertoire_donnees(
         juge["exemples"] = juge_exemples
     if juge:
         donnees["juge"] = juge
+    redaction: dict = {}
     if redaction_consigne_reprise is not None:
-        donnees["redaction"] = {"consigne_reprise": redaction_consigne_reprise}
+        redaction["consigne_reprise"] = redaction_consigne_reprise
+    if redaction_consigne_verification is not None:
+        redaction["consigne_verification"] = redaction_consigne_verification
+    if redaction:
+        donnees["redaction"] = redaction
+    if verificateur_consigne is not None:
+        donnees["verificateur"] = {"consigne": verificateur_consigne}
     return donnees
 
 

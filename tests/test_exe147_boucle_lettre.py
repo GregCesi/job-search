@@ -37,13 +37,24 @@ class FakeModeles:
     (ou libre pour la rédaction), soit une exception à lever (critères 24-26)."""
 
     def __init__(self):
-        self.files = {"tamis": [], "redaction": [], "juge": []}
+        self.files = {"tamis": [], "redaction": [], "juge": [], "verificateur": []}
         self.appels = []
 
     def programmer(self, noeud, *valeurs):
         self.files[noeud].extend(valeurs)
 
     def __call__(self, noeud, modele, prompt_text, schema=None):
+        if noeud == "verificateur" and not self.files["verificateur"]:
+            # EXE-160 : sans programmation explicite, le vérificateur rend un
+            # relevé vide et n'entre pas dans `self.appels` — les tests d'avant
+            # la fiche gardent leurs index positionnels sur tamis/rédaction/juge.
+            return ReponseModele(
+                texte=json.dumps(
+                    {"rien_a_signaler": True, "lieux": [], "affirmations": []}
+                ),
+                duree_s=0.01,
+                cout_usd=0.01,
+            )
         self.appels.append((noeud, modele, prompt_text))
         valeur = self.files[noeud].pop(0)
         if isinstance(valeur, BaseException):
@@ -128,7 +139,11 @@ def _repertoire_donnees(generique_texte: str | None = "texte générique rédig�
             "consigne": "Consigne du juge.",
             "contexte": "Contexte du juge.",
         },
-        "redaction": {"consigne_reprise": "Consigne de reprise."},
+        "redaction": {
+            "consigne_reprise": "Consigne de reprise.",
+            "consigne_verification": "Consigne de correction.",
+        },
+        "verificateur": {"consigne": "Consigne du vérificateur."},
     }
 
 
@@ -610,7 +625,13 @@ def test_critere19_derniere_lettre_nb_mots_et_tournures(
 ):
     _poser_offre_et_fiche(db_path)
     modeles.programmer("tamis", _TAMIS_POINT_0_PROTOTYPER)
-    modeles.programmer("redaction", "Je veux vous rejoindre avec enthousiasme total.")
+    # EXE-160 : une tournure interdite déclenche une correction du vérificateur —
+    # le second jet (ici identique) est ce qui reste la lettre finale.
+    modeles.programmer(
+        "redaction",
+        "Je veux vous rejoindre avec enthousiasme total.",
+        "Je veux vous rejoindre avec enthousiasme total.",
+    )
     modeles.programmer("juge", _JUGE_RIEN_A_REDIRE)
 
     resultat = _lancer(db_path, repertoire_path, cv_path, tournures_path)
@@ -630,7 +651,13 @@ def test_critere20_journal_des_appels_porte_noeud_modele_duree_cout_demande_repo
 
     resultat = _lancer(db_path, repertoire_path, cv_path, tournures_path)
 
-    assert [a.noeud for a in resultat.appels] == ["tamis", "redaction", "juge"]
+    # EXE-160 : le vérificateur s'intercale entre la rédaction et le juge.
+    assert [a.noeud for a in resultat.appels] == [
+        "tamis",
+        "redaction",
+        "verificateur",
+        "juge",
+    ]
     for appel in resultat.appels:
         assert isinstance(appel, Appel)
         assert appel.modele == "sonnet"
@@ -657,9 +684,11 @@ def test_critere21_un_modele_different_par_noeud(
     resultat = _lancer(db_path, repertoire_path, cv_path, tournures_path, config=config)
 
     modeles_par_noeud = {a.noeud: a.modele for a in resultat.appels}
+    # EXE-160 : sans `verif=`, le vérificateur tourne sur le modèle de la rédaction.
     assert modeles_par_noeud == {
         "tamis": "llama3",
         "redaction": "sonnet",
+        "verificateur": "sonnet",
         "juge": "opus",
     }
 

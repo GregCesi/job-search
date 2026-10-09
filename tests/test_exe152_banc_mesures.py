@@ -31,13 +31,24 @@ TOURNURES_INTERDITES = "je veux\n"
 
 class FakeModeles:
     def __init__(self):
-        self.files = {"tamis": [], "redaction": [], "juge": []}
+        self.files = {"tamis": [], "redaction": [], "juge": [], "verificateur": []}
         self.appels = []
 
     def programmer(self, noeud, *valeurs):
         self.files[noeud].extend(valeurs)
 
     def __call__(self, noeud, modele, prompt_text, schema=None):
+        if noeud == "verificateur" and not self.files["verificateur"]:
+            # EXE-160 : sans programmation explicite, le vérificateur rend un
+            # relevé vide et n'entre pas dans `self.appels` — les tests d'avant
+            # la fiche gardent leurs index positionnels sur tamis/rédaction/juge.
+            return ReponseModele(
+                texte=json.dumps(
+                    {"rien_a_signaler": True, "lieux": [], "affirmations": []}
+                ),
+                duree_s=0.01,
+                cout_usd=0.01,
+            )
         self.appels.append((noeud, modele, prompt_text))
         valeur = self.files[noeud].pop(0)
         if isinstance(valeur, BaseException):
@@ -88,7 +99,11 @@ def _repertoire_donnees(longueur_cible_mots=160) -> dict:
             "consigne": "Consigne du juge.",
             "contexte": "Contexte du juge.",
         },
-        "redaction": {"consigne_reprise": "Consigne de reprise."},
+        "redaction": {
+            "consigne_reprise": "Consigne de reprise.",
+            "consigne_verification": "Consigne de correction.",
+        },
+        "verificateur": {"consigne": "Consigne du vérificateur."},
     }
     if longueur_cible_mots is not None:
         donnees["forme"]["longueur_cible_mots"] = longueur_cible_mots
@@ -196,6 +211,9 @@ def test_critere6_tournures_interdites_citees_sous_la_lettre_finale(
 ):
     jeu = _jeu(1)
     _programmer_passage_simple(modeles, lettre="Je veux rejoindre votre équipe.")
+    # EXE-160 : une tournure interdite déclenche une correction du vérificateur —
+    # le second jet (ici identique) reste la lettre finale.
+    modeles.programmer("redaction", "Je veux rejoindre votre équipe.")
 
     resultat = _lancer(
         jeu, repertoire_path(), cv_path, tournures_path, banc_dir, [1], ["sonnet"]
@@ -278,6 +296,10 @@ def test_criteres10a16_six_mesures_du_tableau_et_de_mlflow(
         "redaction",
         lettre_propre,
         lettre_avec_tournure,
+        # EXE-160 : offre 2 contient une tournure interdite, qui déclenche une
+        # correction du vérificateur — le second jet (identique) reste la
+        # lettre finale.
+        lettre_avec_tournure,
         AppelModeleError("boom"),  # offre 4 : appel échoué
     )
     modeles.programmer("juge", _JUGE_RIEN_A_REDIRE, _JUGE_RIEN_A_REDIRE)
@@ -332,7 +354,13 @@ def test_critere17_table_mlflow_porte_tournures_et_ecart_par_offre(
     jeu = _jeu(1, 2)
     modeles.programmer("tamis", _TAMIS_POINT_0, _TAMIS_POINT_0)
     modeles.programmer(
-        "redaction", "Un deux trois quatre cinq.", "Je veux vraiment ce poste."
+        "redaction",
+        "Un deux trois quatre cinq.",
+        "Je veux vraiment ce poste.",
+        # EXE-160 : offre 2 contient une tournure interdite, qui déclenche une
+        # correction du vérificateur — le second jet (identique) reste la
+        # lettre finale.
+        "Je veux vraiment ce poste.",
     )
     modeles.programmer("juge", _JUGE_RIEN_A_REDIRE, _JUGE_RIEN_A_REDIRE)
 
@@ -399,6 +427,9 @@ def test_le_texte_de_la_lettre_finale_n_est_jamais_modifie(
     jeu = _jeu(1)
     lettre = "Je veux absolument ce poste, n'hésitez pas à me contacter."
     _programmer_passage_simple(modeles, lettre=lettre)
+    # EXE-160 : une tournure interdite déclenche une correction du vérificateur —
+    # le second jet (ici identique) reste la lettre finale.
+    modeles.programmer("redaction", lettre)
 
     resultat = _lancer(
         jeu, repertoire_path(), cv_path, tournures_path, banc_dir, [1], ["sonnet"]

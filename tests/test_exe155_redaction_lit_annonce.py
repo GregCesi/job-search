@@ -44,13 +44,24 @@ TOURNURES_INTERDITES = "je veux\n"
 
 class FakeModeles:
     def __init__(self):
-        self.files = {"tamis": [], "redaction": [], "juge": []}
+        self.files = {"tamis": [], "redaction": [], "juge": [], "verificateur": []}
         self.appels = []
 
     def programmer(self, noeud, *valeurs):
         self.files[noeud].extend(valeurs)
 
     def __call__(self, noeud, modele, prompt_text, schema=None):
+        if noeud == "verificateur" and not self.files["verificateur"]:
+            # EXE-160 : sans programmation explicite, le vérificateur rend un
+            # relevé vide et n'entre pas dans `self.appels` — les tests d'avant
+            # la fiche gardent leurs index positionnels sur tamis/rédaction/juge.
+            return ReponseModele(
+                texte=json.dumps(
+                    {"rien_a_signaler": True, "lieux": [], "affirmations": []}
+                ),
+                duree_s=0.01,
+                cout_usd=0.01,
+            )
         self.appels.append((noeud, modele, prompt_text))
         valeur = self.files[noeud].pop(0)
         if isinstance(valeur, BaseException):
@@ -95,7 +106,11 @@ def _repertoire_donnees(generique_texte: str | None = "texte générique rédig�
             "consigne": "Consigne du juge.",
             "contexte": "Contexte du juge.",
         },
-        "redaction": {"consigne_reprise": "Consigne de reprise."},
+        "redaction": {
+            "consigne_reprise": "Consigne de reprise.",
+            "consigne_verification": "Consigne de correction.",
+        },
+        "verificateur": {"consigne": "Consigne du vérificateur."},
     }
 
 
