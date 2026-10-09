@@ -27,6 +27,12 @@ import orchestrator.job_search.lettre.service as lettre_service
 import orchestrator.job_search.storage.db as storage_db
 from api.schemas import VerdictIn
 from orchestrator.job_search.fiche.cascade import CascadeResult
+from orchestrator.job_search.lettre.boucle import (
+    GENERIQUE_ID,
+    RAISON_RIEN_A_REDIRE,
+    Jugement,
+    ResultatBoucle,
+)
 from orchestrator.job_search.storage.db import init_db
 
 REF_CV_HTML = """<!doctype html>
@@ -68,7 +74,6 @@ search_criteria:
   contract_types: [cdi]
 """
 
-PREFERENCES_TON = "# Préférences de ton\n- Direct, sans emphase\n"
 TOURNURES_INTERDITES = "je veux\n"
 
 POINTS_2 = [
@@ -138,17 +143,24 @@ def _cv_result(session_id="cv-session", cost=0.02):
     )
 
 
-def _lettre_result(texte="Voici ma lettre de motivation.", session_id="lettre-session"):
-    return ResultMessage(
-        subtype="success",
-        duration_ms=1,
-        duration_api_ms=1,
-        is_error=False,
-        num_turns=1,
-        session_id=session_id,
-        total_cost_usd=0.03,
-        result=texte,
-        structured_output=None,
+def _resultat_lettre(texte="Voici ma lettre de motivation.") -> ResultatBoucle:
+    lettre = {
+        "texte": texte,
+        "nb_mots": len(texte.split()),
+        "tournures_signalees": [],
+        "jugement": Jugement(
+            rien_a_redire=True, ressenti="bien", details="d", reussites="r", verdict="v"
+        ),
+        "releve_redaction": {"tournures": [], "lieux": [], "affirmations": []},
+        "releve_correction": None,
+    }
+    return ResultatBoucle(
+        fait_retenu=GENERIQUE_ID,
+        texte_type_id="tt",
+        lettres=[lettre],
+        nb_tours=1,
+        raison_fin=RAISON_RIEN_A_REDIRE,
+        appels=[],
     )
 
 
@@ -175,7 +187,7 @@ def _cv_ok():
 
 
 def _lettre_ok(texte="Voici ma lettre de motivation."):
-    return lambda prompt, options: [_lettre_result(texte)]
+    return lambda *a, **k: _resultat_lettre(texte)
 
 
 def _en_erreur(msg="panne SDK"):
@@ -189,6 +201,15 @@ def _jamais_appele(nom):
         )
 
     return behavior
+
+
+def _lettre_jamais_appelee():
+    def _fn(*a, **k):
+        raise AssertionError(
+            "le modèle lettre a été rappelé alors qu'il ne devait pas l'être"
+        )
+
+    return _fn
 
 
 @pytest.fixture
@@ -215,16 +236,10 @@ def cv_fixture_paths(tmp_path, monkeypatch):
 
 @pytest.fixture
 def lettre_fixture_paths(tmp_path, monkeypatch):
-    prefs = tmp_path / "preferences_ton.md"
-    prefs.write_text(PREFERENCES_TON, encoding="utf-8")
     tournures = tmp_path / "tournures_interdites.txt"
     tournures.write_text(TOURNURES_INTERDITES, encoding="utf-8")
-    cv_ref = tmp_path / "cv_reference_lettre.html"
-    cv_ref.write_text(REF_CV_HTML, encoding="utf-8")
-    monkeypatch.setattr(lettre_service, "LETTRE_PREFERENCES_PATH", prefs)
     monkeypatch.setattr(lettre_service, "LETTRE_TOURNURES_PATH", tournures)
-    monkeypatch.setattr(lettre_service, "CV_REFERENCE_PATH", cv_ref)
-    return prefs, tournures, cv_ref
+    return tournures
 
 
 @pytest.fixture(autouse=True)
@@ -325,7 +340,9 @@ class TestCritere1FicheEtCvEnCoursSansAutreAppel:
         # La fiche rend des points par défaut : elle enchaîne la lettre toute
         # seule (critère 2) — doublure nécessaire pour qu'aucun test n'appelle
         # le vrai SDK, même si ce n'est pas ce que ce critère-ci observe.
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
+        monkeypatch.setattr(
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
+        )
 
         async def _scenario():
             await api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
@@ -346,28 +363,30 @@ class TestCritere2LettreEnCoursQuandFicheTermine:
     def test_lettre_se_lance_automatiquement_apres_la_fiche(
         self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
-        """EXE-161, critère 2 : la fiche ne désigne plus aucun point pour la
-        lettre (`pour_lettre` vaut toujours False) — l'enchaînement automatique
-        de TCK-281 ne trouve donc plus aucun point choisi par le système, et la
-        lettre reste en attente d'une désignation (la sienne, EXE-162, n'est pas
-        dans ce ticket)."""
+        """EXE-162, critère 3 : la désignation de points ne gate plus le
+        lancement de la lettre — la fiche terminée et le texte de l'offre
+        présent suffisent, même si la fiche ne désigne plus aucun point
+        (`pour_lettre` vaut toujours False depuis EXE-161). Inverse l'ancienne
+        attente d'EXE-161 (la lettre restait en attente)."""
         offer_id = 2
         _insert_offer(db_path, offer_id)
         appels = {"n": 0}
 
-        def _lettre_behavior(prompt, options):
+        def _lettre_behavior(*a, **k):
             appels["n"] += 1
-            return [_lettre_result()]
+            return _resultat_lettre()
 
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_behavior))
+        monkeypatch.setattr(
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_behavior
+        )
 
         _retenir(offer_id)
 
-        assert appels["n"] == 0
+        assert appels["n"] == 1
         row = _lettre_row(db_path, offer_id)
-        assert row["statut"] == "aucune"
+        assert row["statut"] == "done"
 
 
 class TestCritere3PointsChoisisParSysteme:
@@ -380,7 +399,9 @@ class TestCritere3PointsChoisisParSysteme:
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
+        monkeypatch.setattr(
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
+        )
 
         _retenir(offer_id)
 
@@ -397,7 +418,9 @@ class TestCritere4OrigineSysteme:
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
+        monkeypatch.setattr(
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
+        )
 
         _retenir(offer_id)
 
@@ -413,7 +436,9 @@ class TestCritere5OrigineMoi:
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
+        monkeypatch.setattr(
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
+        )
 
         _retenir(offer_id)
         assert lettre_api.get_lettre(offer_id)["points_choisis_origine"] == "systeme"
@@ -424,8 +449,12 @@ class TestCritere5OrigineMoi:
         assert result["points_choisis_origine"] == "moi"
 
 
-class TestCritere6FicheSansPointPasDeLettre:
-    def test_fiche_sans_point_bloque_la_lettre(
+class TestCritere6FicheSansPointLettreQuandMeme:
+    """EXE-162, critère 3 : une fiche terminée sans aucun point ne bloque plus
+    la lettre — la boucle part en générique. Inverse l'ancien comportement
+    d'EXE-127 (6), où l'absence de point bloquait."""
+
+    def test_fiche_sans_point_la_lettre_part_quand_meme(
         self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
         offer_id = 6
@@ -433,15 +462,14 @@ class TestCritere6FicheSansPointPasDeLettre:
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok(points=[])))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
         monkeypatch.setattr(
-            lettre_service, "query", _make_query(_jamais_appele("lettre"))
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
         )
 
         _retenir(offer_id)
 
         assert _fiche_row(db_path, offer_id)["statut"] == "done"
-        assert not lettre_api.is_running(offer_id)
         row = _lettre_row(db_path, offer_id)
-        assert row is None or row["statut"] == "aucune"
+        assert row["statut"] == "done"
 
 
 class TestCritere7FicheEchoueSansLettre:
@@ -453,7 +481,7 @@ class TestCritere7FicheEchoueSansLettre:
         monkeypatch.setattr(fiche_service, "query", _make_query(_en_erreur()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
         monkeypatch.setattr(
-            lettre_service, "query", _make_query(_jamais_appele("lettre"))
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_jamais_appelee()
         )
 
         _retenir(offer_id)
@@ -483,20 +511,22 @@ class TestCritere9CvEchoueFicheEtLettreTerminent:
     def test_fiche_termine_malgre_cv_en_erreur(
         self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
-        # EXE-161, critère 2 : la fiche ne désigne plus de point, donc la lettre
-        # ne peut plus terminer toute seule — seule la fiche est encore vérifiée ici.
+        # EXE-162, critère 3 : la fiche terminée suffit à lancer la lettre, que
+        # la fiche désigne ou non des points — le CV en erreur ne l'affecte pas.
         offer_id = 9
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_en_erreur()))
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
+        monkeypatch.setattr(
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
+        )
 
         _retenir(offer_id)
 
         assert _cv_row(db_path, offer_id)["statut"] == "error"
         assert _fiche_row(db_path, offer_id)["statut"] == "done"
         row = _lettre_row(db_path, offer_id)
-        assert row["statut"] == "aucune"
+        assert row["statut"] == "done"
 
 
 class TestCritere10TexteOffreManquantPasDeLettre:
@@ -508,7 +538,7 @@ class TestCritere10TexteOffreManquantPasDeLettre:
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
         monkeypatch.setattr(
-            lettre_service, "query", _make_query(_jamais_appele("lettre"))
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_jamais_appelee()
         )
 
         _retenir(offer_id)
@@ -527,7 +557,9 @@ class TestCritere11PieceDejaTermineeNonRelancee:
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
+        monkeypatch.setattr(
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
+        )
 
         _retenir(offer_id)
         fiche_before = dict(_fiche_row(db_path, offer_id))
@@ -541,7 +573,7 @@ class TestCritere11PieceDejaTermineeNonRelancee:
         )
         monkeypatch.setattr(cv_service, "query", _make_query(_jamais_appele("cv")))
         monkeypatch.setattr(
-            lettre_service, "query", _make_query(_jamais_appele("lettre"))
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_jamais_appelee()
         )
 
         _retenir(offer_id)
@@ -572,7 +604,9 @@ class TestCritere12DeuxAppelsConsecutifs:
         # La fiche rend des points par défaut : elle enchaîne la lettre toute
         # seule — doublure nécessaire même si ce n'est pas ce que ce critère
         # observe (aucun test n'appelle le vrai SDK).
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
+        monkeypatch.setattr(
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
+        )
 
         async def _scenario():
             await api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
@@ -717,7 +751,9 @@ class TestCritere17ListeOffresActivesOuChangees:
         # La fiche rend des points par défaut : elle enchaîne la lettre toute
         # seule — doublure nécessaire même si ce n'est pas ce que ce critère
         # observe (aucun test n'appelle le vrai SDK).
-        monkeypatch.setattr(lettre_service, "query", _make_query(_lettre_ok()))
+        monkeypatch.setattr(
+            lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
+        )
 
         async def _scenario():
             await api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))

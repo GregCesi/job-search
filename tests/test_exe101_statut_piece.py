@@ -24,6 +24,12 @@ import api.pieces as api_pieces
 import orchestrator.job_search.cv.service as cv_service
 import orchestrator.job_search.lettre.service as lettre_service
 import orchestrator.job_search.storage.db as storage_db
+from orchestrator.job_search.lettre.boucle import (
+    GENERIQUE_ID,
+    RAISON_RIEN_A_REDIRE,
+    Jugement,
+    ResultatBoucle,
+)
 from orchestrator.job_search.storage.db import init_db
 
 
@@ -182,7 +188,6 @@ search_criteria:
   contract_types: [cdi]
 """
 
-PREFERENCES_TON = "# Préférences de ton\n- Direct, sans emphase\n"
 TOURNURES_INTERDITES = "je veux\n"
 
 
@@ -199,16 +204,31 @@ def cv_fixture_paths(tmp_path, monkeypatch):
 
 @pytest.fixture
 def lettre_fixture_paths(tmp_path, monkeypatch):
-    prefs = tmp_path / "preferences_ton.md"
-    prefs.write_text(PREFERENCES_TON, encoding="utf-8")
     tournures = tmp_path / "tournures_interdites.txt"
     tournures.write_text(TOURNURES_INTERDITES, encoding="utf-8")
-    cv_ref = tmp_path / "cv_reference.html"
-    cv_ref.write_text("<p>Contenu CV de test</p>", encoding="utf-8")
-    monkeypatch.setattr(lettre_service, "LETTRE_PREFERENCES_PATH", prefs)
     monkeypatch.setattr(lettre_service, "LETTRE_TOURNURES_PATH", tournures)
-    monkeypatch.setattr(lettre_service, "CV_REFERENCE_PATH", cv_ref)
-    return prefs, tournures, cv_ref
+    return tournures
+
+
+def _resultat_lettre_ok(texte: str) -> ResultatBoucle:
+    lettre = {
+        "texte": texte,
+        "nb_mots": len(texte.split()),
+        "tournures_signalees": [],
+        "jugement": Jugement(
+            rien_a_redire=True, ressenti="bien", details="d", reussites="r", verdict="v"
+        ),
+        "releve_redaction": {"tournures": [], "lieux": [], "affirmations": []},
+        "releve_correction": None,
+    }
+    return ResultatBoucle(
+        fait_retenu=GENERIQUE_ID,
+        texte_type_id="tt",
+        lettres=[lettre],
+        nb_tours=1,
+        raison_fin=RAISON_RIEN_A_REDIRE,
+        appels=[],
+    )
 
 
 def _run_cv(monkeypatch, offer_id):
@@ -223,7 +243,9 @@ def _run_cv(monkeypatch, offer_id):
 def _generer_lettre_prete(db_path, offer_id, monkeypatch, texte="Lettre initiale."):
     _insert_fiche(db_path, offer_id, _points_8())
     monkeypatch.setattr(
-        lettre_service, "query", _make_query(lambda p, o: [_fake_result(result=texte)])
+        lettre_service,
+        "generer_lettre_depuis_donnees",
+        lambda *a, **k: _resultat_lettre_ok(texte),
     )
     asyncio.run(lettre_service.run_lettre(offer_id))
 
@@ -423,8 +445,8 @@ class TestCritere11RegenerationRedevientEnCoursDesLeLancement:
 
         monkeypatch.setattr(
             lettre_service,
-            "query",
-            _make_query(lambda p, o: [_fake_result(result="Nouvelle lettre.")]),
+            "generer_lettre_depuis_donnees",
+            lambda *a, **k: _resultat_lettre_ok("Nouvelle lettre."),
         )
         response = Response()
         asyncio.run(api_lettre.regenerer_lettre(offer_id, response))

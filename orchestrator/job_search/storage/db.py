@@ -130,21 +130,29 @@ def init_db(conn: sqlite3.Connection) -> None:
             id                        INTEGER PRIMARY KEY,
             offer_id                  INTEGER NOT NULL REFERENCES offers(id),
             statut                    TEXT NOT NULL DEFAULT 'aucune', -- aucune|pending|done|error
-            points_choisis_json       TEXT,  -- indices choisis ; NULL = défaut (tas "lettre", EXE-65 §H2)
+            points_choisis_json       TEXT,  -- hérité (EXE-65 §H2) ; non lu par la génération depuis EXE-162
             points_choisis_origine    TEXT,  -- systeme|moi ; NULL = choix jamais posé (EXE-127)
             texte                     TEXT,
             tournures_signalees_json  TEXT,  -- JSON array des tournures interdites trouvées
             nb_mots                   INTEGER,
-            depasse_longueur          INTEGER, -- 1 si nb_mots > 400
+            depasse_longueur          INTEGER, -- 1 si nb_mots > 250 (EXE-162)
             modele                    TEXT,  -- nom du modèle fixé, enregistré (critère 21)
             session_id                TEXT,
             cost_usd                  REAL,
-            prompt_text               TEXT,  -- prompt envoyé (audit invariant)
+            prompt_text               TEXT,  -- hérité ; non écrit depuis EXE-162 (remplacé par appels_json)
             error_message             TEXT,
             created_at                TEXT NOT NULL,
             regeneration_en_cours     INTEGER NOT NULL DEFAULT 0, -- EXE-66
             regeneration_error        TEXT,  -- EXE-66 : dernier échec de régénération, distinct de error_message
             marque_pret_at            TEXT,  -- EXE-101 : date/heure de ma marque « Prête », NULL sinon
+            fait_retenu_json          TEXT,  -- EXE-162 : fait de la fiche retenu par le tamis ; NULL = générique
+            texte_type_id             TEXT,  -- EXE-162 : id du texte type du répertoire choisi par le tamis
+            nb_tours                  INTEGER, -- EXE-162 : nombre de tours de la boucle (critère 5)
+            raison_fin                TEXT,  -- EXE-162 : raison de fin de la boucle (critères 5, 9)
+            jugement_json             TEXT,  -- EXE-162 : les quatre rubriques du juge sur la lettre finale
+            releve_json               TEXT,  -- EXE-162 : dernier relevé du vérificateur (critère 5, 22)
+            appels_json               TEXT,  -- EXE-162 : trace demande/réponse de chaque appel de la boucle
+            faits_ecartes_json        TEXT NOT NULL DEFAULT '[]', -- EXE-162 : faits écartés (citation+lien)
             UNIQUE(offer_id)
         );
 
@@ -156,7 +164,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             nb_mots                   INTEGER,
             depasse_longueur          INTEGER,
             origine                   TEXT NOT NULL, -- modele|moi (EXE-66)
-            created_at                TEXT NOT NULL
+            created_at                TEXT NOT NULL,
+            fait_retenu_json          TEXT  -- EXE-162 : fait retenu derrière cette version (critère 7)
         );
 
         CREATE TABLE IF NOT EXISTS ajouts (
@@ -179,6 +188,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     migrate_fiches_entreprise_schema(conn)
     migrate_cvs_schema(conn)
     migrate_lettres_schema(conn)
+    migrate_lettre_versions_schema(conn)
     migrate_ajouts_schema(conn)
     migrate_verdicts_schema(conn)
 
@@ -251,6 +261,32 @@ def migrate_lettres_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE lettres ADD COLUMN marque_pret_at TEXT")
     if "points_choisis_origine" not in existing:
         conn.execute("ALTER TABLE lettres ADD COLUMN points_choisis_origine TEXT")
+    for col in (
+        "fait_retenu_json",
+        "texte_type_id",
+        "raison_fin",
+        "jugement_json",
+        "releve_json",
+        "appels_json",
+    ):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE lettres ADD COLUMN {col} TEXT")
+    if "nb_tours" not in existing:
+        conn.execute("ALTER TABLE lettres ADD COLUMN nb_tours INTEGER")
+    if "faits_ecartes_json" not in existing:
+        conn.execute(
+            "ALTER TABLE lettres ADD COLUMN faits_ecartes_json TEXT NOT NULL DEFAULT '[]'"
+        )
+    conn.commit()
+
+
+def migrate_lettre_versions_schema(conn: sqlite3.Connection) -> None:
+    """Colonne ajoutée après la première livraison (EXE-162) — idempotente."""
+    existing = {
+        row[1] for row in conn.execute("PRAGMA table_info(lettre_versions)").fetchall()
+    }
+    if "fait_retenu_json" not in existing:
+        conn.execute("ALTER TABLE lettre_versions ADD COLUMN fait_retenu_json TEXT")
     conn.commit()
 
 

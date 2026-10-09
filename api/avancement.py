@@ -11,8 +11,6 @@ ou vient de changer d'état — pour le polling d'affichage, pas pour le détail
 d'une offre précise.
 """
 
-import json
-
 from fastapi import APIRouter, HTTPException
 
 from orchestrator.job_search.avancement import (
@@ -22,7 +20,6 @@ from orchestrator.job_search.avancement import (
 )
 from orchestrator.job_search.lettre.redaction import (
     blocage_lancement_lettre,
-    resolve_chosen_indices,
     resolve_offer_text,
 )
 from orchestrator.job_search.mail.candidature import (
@@ -65,21 +62,18 @@ def _mail_avancement(conn, offer_id: int) -> dict:
 
 def _compute_avancement(conn, offer_id: int) -> dict:
     fiche_row = conn.execute(
-        "SELECT statut, points_json, error_message FROM fiches_entreprise "
-        "WHERE offer_id = ?",
+        "SELECT statut, error_message FROM fiches_entreprise WHERE offer_id = ?",
         (offer_id,),
     ).fetchone()
     cv_row = conn.execute(
         "SELECT statut, error_message FROM cvs WHERE offer_id = ?", (offer_id,)
     ).fetchone()
     lettre_row = conn.execute(
-        "SELECT statut, error_message, points_choisis_json, points_choisis_origine "
-        "FROM lettres WHERE offer_id = ?",
+        "SELECT statut, error_message FROM lettres WHERE offer_id = ?",
         (offer_id,),
     ).fetchone()
 
     fiche_statut = fiche_row["statut"] if fiche_row else None
-    points = json.loads(fiche_row["points_json"] or "[]") if fiche_row else []
     offer = conn.execute(
         "SELECT description_raw, description FROM offers WHERE id = ?", (offer_id,)
     ).fetchone()
@@ -87,11 +81,7 @@ def _compute_avancement(conn, offer_id: int) -> dict:
         offer["description_raw"] if offer else None,
         offer["description"] if offer else None,
     )
-    chosen = resolve_chosen_indices(
-        points, lettre_row["points_choisis_json"] if lettre_row else None
-    )
-    origine = lettre_row["points_choisis_origine"] if lettre_row else None
-    blocage = blocage_lancement_lettre(fiche_statut, offer_text, chosen, origine)
+    blocage = blocage_lancement_lettre(fiche_statut, offer_text)
 
     return {
         "fiche": generation_avancement(fiche_row, fiche_api.is_running(offer_id)),

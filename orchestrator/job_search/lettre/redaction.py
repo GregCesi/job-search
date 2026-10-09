@@ -13,17 +13,19 @@ import json
 import re
 from pathlib import Path
 
-MAX_MOTS = 400
+MAX_MOTS = (
+    250  # EXE-162, H2 : recruteurs lus le 8 octobre 2026, lettres de 120 à 250 mots
+)
 
-# Raisons de blocage du lancement de la lettre (EXE-127, critère 15) — centralisées
-# ici pour que la route, l'avancement et la cascade au geste de retenir disent
-# toujours la même chose.
+# Raisons de blocage du lancement de la lettre (EXE-127, critère 15 ; réduites à
+# deux par EXE-162, critère 3 : la boucle retient elle-même un fait ou part en
+# générique, le choix de points ne gate plus rien) — centralisées ici pour que la
+# route, l'avancement et la cascade au geste de retenir disent toujours la même chose.
 RAISON_FICHE_NON_TERMINEE = "La fiche entreprise de cette offre n'est pas terminée"
 RAISON_TEXTE_MANQUANT = "Le texte de l'offre manque, impossible de générer la lettre"
-RAISON_AUCUN_POINT = "Aucun point n'est choisi pour la lettre"
-# Distincte de RAISON_AUCUN_POINT (EXE-132, critère 7) : ici, c'est la fiche elle-même
-# qui n'a désigné aucun point — pas moi qui aurais démarqué un choix existant.
-RAISON_FICHE_AUCUNE_DESIGNATION = "La fiche n'a désigné aucun point pour la lettre"
+# EXE-162, critère 17 : écarter un fait quand la lettre est générique (aucun fait
+# retenu) n'a rien à retirer.
+RAISON_RIEN_A_ECARTER = "Il n'y a rien à écarter : cette lettre est générique"
 
 
 def resolve_chosen_indices(points: list[dict], stored_json: str | None) -> list[int]:
@@ -118,55 +120,14 @@ def resolve_offer_text(description_raw: str | None, description: str | None) -> 
     return ""
 
 
-def blocage_lancement_lettre(
-    fiche_statut: str | None,
-    offer_text: str,
-    chosen_indices: list[int],
-    points_choisis_origine: str | None = None,
-) -> str | None:
+def blocage_lancement_lettre(fiche_statut: str | None, offer_text: str) -> str | None:
     """Raison qui empêche de lancer la lettre, ou `None` si elle peut partir
-    (EXE-127, critères 6, 7, 10, 15) : fiche pas terminée, texte d'offre manquant,
-    puis aucun point choisi — dans cet ordre, le premier qui bloque gagne.
-
-    Sans point choisi, la phrase distingue (EXE-132, critères 6, 7) la fiche qui
-    n'a elle-même désigné aucun point (`points_choisis_origine == 'systeme'`) d'un
-    choix vide posé à la main ou jamais posé."""
+    (EXE-162, critère 3) : fiche pas terminée, puis texte d'offre manquant — dans
+    cet ordre, le premier qui bloque gagne. Le choix de points ne gate plus rien
+    (la boucle retient elle-même un fait parmi ceux de la fiche, ou part en
+    générique si aucun ne convient)."""
     if fiche_statut != "done":
         return RAISON_FICHE_NON_TERMINEE
     if not offer_text:
         return RAISON_TEXTE_MANQUANT
-    if not chosen_indices:
-        if points_choisis_origine == "systeme":
-            return RAISON_FICHE_AUCUNE_DESIGNATION
-        return RAISON_AUCUN_POINT
     return None
-
-
-def build_prompt(
-    title: str,
-    offer_text: str,
-    presentation: str,
-    chosen_points: list[dict],
-    preferences_ton: str,
-    cv_reference_text: str,
-) -> str:
-    points_txt = "\n".join(f"- {point_text(p)}" for p in chosen_points)
-    return (
-        "Tu écris une lettre de motivation à partir des éléments suivants. Rends "
-        "uniquement le texte de la lettre, en français, sans objet ni note.\n\n"
-        "**Offre** :\n"
-        f"{title}\n\n"
-        f"{offer_text}\n\n"
-        "**Présentation de l'entreprise** :\n"
-        f"{presentation}\n\n"
-        "**Points à mentionner** :\n"
-        f"{points_txt}\n\n"
-        "**Préférences de ton** :\n"
-        f"{preferences_ton}\n\n"
-        "**CV de référence** :\n"
-        f"{cv_reference_text}\n\n"
-        "**Instructions** :\n"
-        "1. Ne mentionne que les points listés ci-dessus, sans en inventer d'autres.\n"
-        "2. Respecte les préférences de ton ci-dessus.\n"
-        "3. Rends uniquement le texte de la lettre.\n"
-    )

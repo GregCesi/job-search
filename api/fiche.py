@@ -19,7 +19,11 @@ from pydantic import BaseModel, ConfigDict
 
 from orchestrator.job_search.fiche import intermediaires
 from orchestrator.job_search.fiche.service import reset_pending, run_fiche
-from orchestrator.job_search.paths import FICHE_CWD
+from orchestrator.job_search.lettre.repertoire import (
+    RepertoireError,
+    charger_repertoire,
+)
+from orchestrator.job_search.paths import FICHE_CWD, REPERTOIRE_LETTRE_PATH
 from orchestrator.job_search.pieces_state import mark_changed
 
 from . import lettre as lettre_api
@@ -54,6 +58,27 @@ class PointPatch(BaseModel):
 _AGENCE_OU_AGREGATEUR = {"agence", "agregateur"}
 
 
+def _sujet_libelle(sujet_id: str | None) -> str | None:
+    """Libellé humain du sujet d'un point (EXE-162, critère 23) : le `sujet`
+    stocké sur le point est l'id du texte type du répertoire — absent si le
+    point n'en porte pas, ou si le répertoire est absent/mal formé."""
+    if not sujet_id:
+        return None
+    try:
+        repertoire = charger_repertoire(REPERTOIRE_LETTRE_PATH).repertoire
+    except RepertoireError:
+        return None
+    texte_type = next((tt for tt in repertoire.textes_types if tt.id == sujet_id), None)
+    return texte_type.sujet if texte_type else None
+
+
+def _points_avec_libelle(points_json: str | None) -> list[dict]:
+    return [
+        {**p, "sujet_libelle": _sujet_libelle(p.get("sujet"))}
+        for p in json.loads(points_json or "[]")
+    ]
+
+
 def _row_to_fiche(row, company: str | None) -> dict:
     return {
         "statut": row["statut"],
@@ -65,7 +90,7 @@ def _row_to_fiche(row, company: str | None) -> dict:
         "employeur_confiance": row["employeur_confiance"],
         "employeur_methode": row["employeur_methode"],
         "employeur_urls": json.loads(row["employeur_urls_json"] or "[]"),
-        "points": json.loads(row["points_json"] or "[]"),
+        "points": _points_avec_libelle(row["points_json"]),
         "session_id": row["session_id"],
         "cost_usd": row["cost_usd"],
         "tools_called": json.loads(row["tools_called_json"] or "[]"),

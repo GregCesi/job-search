@@ -585,7 +585,7 @@ class TestCritere17AucunAppelModele:
         def _boom(*, prompt, options):
             raise AssertionError("le SDK ne doit jamais être appelé pour un PDF")
 
-        monkeypatch.setattr(lettre_service, "query", _boom)
+        monkeypatch.setattr(lettre_service, "generer_lettre_depuis_donnees", _boom)
         _insert_offer(db_path, offer_id, company="SFEIR")
         _insert_lettre_done(db_path, offer_id, _lettre_texte())
         response = api_lettre.get_lettre_pdf(offer_id)

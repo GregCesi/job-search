@@ -433,24 +433,6 @@
           </div>
 
           <template v-else>
-            <!-- Points choisis -->
-            <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
-              <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Points choisis pour la lettre</h3>
-              <p v-if="!lettrePoints || !lettrePoints.length" class="text-sm text-gray-400 italic">Aucun point.</p>
-              <ul v-else class="space-y-2">
-                <li v-for="(point, idx) in lettrePoints" :key="idx" class="flex items-start gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    :checked="point.choisi"
-                    @change="togglePointChoisi(idx)"
-                    class="mt-0.5 flex-shrink-0"
-                  >
-                  <span class="flex-1">{{ point.texte }}</span>
-                  <span v-if="point.tas" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0">{{ point.tas }}</span>
-                </li>
-              </ul>
-            </section>
-
             <!-- Pas de lettre / erreur -->
             <div v-if="!lettre || lettre.statut === 'error'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
               <p v-if="lettre?.error_message" class="text-sm text-red-600">{{ lettre.error_message }}</p>
@@ -519,6 +501,58 @@
               <p v-if="lettre.regeneration_error" class="text-xs text-red-600">{{ lettre.regeneration_error }}</p>
               <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600">{{ lettrePdfError }}</p>
+
+              <!-- Fait retenu / accroche -->
+              <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+                <template v-if="lettre.fait_retenu">
+                  <p class="text-sm text-gray-800">{{ lettre.fait_retenu.position }}</p>
+                  <p v-if="lettre.fait_retenu.citation" class="text-xs text-gray-500 italic border-l-2 border-gray-200 pl-2">« {{ lettre.fait_retenu.citation }} »</p>
+                  <a
+                    v-if="lienSur(lettre.fait_retenu.url)" :href="lienSur(lettre.fait_retenu.url)!" target="_blank" rel="noopener noreferrer"
+                    class="text-xs text-indigo-600 hover:underline break-all"
+                  >{{ lettre.fait_retenu.url }} ↗</a>
+                  <span v-if="lettre.fait_retenu.sujet_libelle" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 inline-block">{{ lettre.fait_retenu.sujet_libelle }}</span>
+                  <button
+                    @click="ecarterFait"
+                    :disabled="lettreBusy || lettre.regeneration_en_cours"
+                    class="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  >Je n'aime pas cette accroche</button>
+                </template>
+                <p v-else class="text-sm text-gray-400 italic">Lettre générique : aucun fait d'entreprise retenu.</p>
+                <p v-if="lettreEcarterError" class="text-xs text-red-600">{{ lettreEcarterError }}</p>
+
+                <div v-if="lettre.faits_ecartes.length" class="space-y-1 pt-1">
+                  <p class="text-xs text-gray-400">Faits écartés</p>
+                  <ul class="space-y-1">
+                    <li v-for="(fait, i) in lettre.faits_ecartes" :key="i" class="flex items-start gap-2 text-xs text-gray-500">
+                      <span class="flex-1 italic">« {{ fait.citation }} »</span>
+                      <button @click="remettreFait(fait)" class="text-indigo-600 hover:underline flex-shrink-0">Remettre</button>
+                    </li>
+                  </ul>
+                </div>
+              </section>
+
+              <!-- Verdict du juge -->
+              <section v-if="lettre.jugement" class="rounded-lg border border-gray-200 bg-white p-4 space-y-2 text-xs">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Verdict du juge</h3>
+                  <span class="text-gray-400">{{ lettre.nb_tours }} tour(s) — {{ lettre.raison_fin }}</span>
+                </div>
+                <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Ressenti</summary><p class="text-gray-700 whitespace-pre-wrap">{{ lettre.jugement.ressenti }}</p></details>
+                <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Détails</summary><p class="text-gray-700 whitespace-pre-wrap">{{ lettre.jugement.details }}</p></details>
+                <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Réussites</summary><p class="text-gray-700 whitespace-pre-wrap">{{ lettre.jugement.reussites }}</p></details>
+                <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Verdict</summary><p class="text-gray-700 whitespace-pre-wrap">{{ lettre.jugement.verdict }}</p></details>
+              </section>
+
+              <!-- Relevé du vérificateur -->
+              <section v-if="lettre.releve && (lettre.releve.tournures.length || lettre.releve.lieux.length || lettre.releve.affirmations.length)" class="rounded-lg border border-gray-200 bg-amber-50 p-4 space-y-1 text-xs">
+                <h3 class="text-xs font-semibold text-amber-800 uppercase tracking-wide">Relevé du vérificateur</h3>
+                <ul v-if="lettre.releve.tournures.length" class="flex flex-wrap gap-1.5">
+                  <li v-for="t in lettre.releve.tournures" :key="t" class="px-2 py-0.5 rounded bg-red-50 text-red-600">{{ t }}</li>
+                </ul>
+                <p v-for="(l, i) in lettre.releve.lieux" :key="`lieu-${i}`" class="text-amber-800">{{ l.lieu }} — « {{ l.phrase }} »</p>
+                <p v-for="(a, i) in lettre.releve.affirmations" :key="`aff-${i}`" class="text-amber-800">« {{ a.passage }} » — {{ a.manque }}</p>
+              </section>
             </template>
 
             <!-- Historique des versions -->
@@ -783,6 +817,7 @@
                   v-if="lienSur(point.url)" :href="lienSur(point.url)!" target="_blank" rel="noopener noreferrer"
                   class="text-xs text-indigo-600 hover:underline break-all"
                 >{{ point.url }} ↗</a>
+                <span v-if="point.sujet_libelle" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 inline-block">{{ point.sujet_libelle }}</span>
               </div>
 
               <div class="flex flex-wrap items-center gap-1.5">
@@ -815,7 +850,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { Avancement, AvancementPiece, Cv, FicheEntreprise, FicheTas, Lettre, LettrePoint, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
+import type { Avancement, AvancementPiece, Cv, FicheEntreprise, FicheTas, Lettre, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -836,7 +871,6 @@ onMounted(async () => {
   await chargerCvTitreDefaut()
   await chargerLettre()
   await syncLettreMiseEnPage()
-  await chargerLettrePoints()
   await chargerLettreVersions()
   if (shouldPollLettre(lettre.value)) startLettrePolling()
   if (isRetenue.value) {
@@ -1468,7 +1502,6 @@ watch(() => cv.value?.html, (html) => {
 
 // ── Lettre de motivation ────────────────────────────────────────────────────
 const lettre = ref<Lettre | null>(null)
-const lettrePoints = ref<LettrePoint[] | null>(null)
 const lettreVersions = ref<LettreVersion[]>([])
 const texteEdit = ref('')
 const texteEditRef = ref<HTMLTextAreaElement | null>(null)
@@ -1501,6 +1534,13 @@ const EMPTY_LETTRE: Lettre = {
   created_at: '',
   regeneration_en_cours: false,
   regeneration_error: null,
+  fait_retenu: null,
+  texte_type_id: null,
+  nb_tours: null,
+  raison_fin: null,
+  jugement: null,
+  releve: null,
+  faits_ecartes: [],
 }
 
 async function chargerLettre() {
@@ -1510,14 +1550,6 @@ async function chargerLettre() {
   } catch (e) {
     // 404 = pas encore de lettre ; toute autre erreur (réseau) garde l'état courant
     if ((e as { statusCode?: number }).statusCode === 404) lettre.value = null
-  }
-}
-
-async function chargerLettrePoints() {
-  try {
-    lettrePoints.value = await $fetch<LettrePoint[]>(`${lettreUrl()}/points`)
-  } catch (e) {
-    if ((e as { statusCode?: number }).statusCode === 404) lettrePoints.value = null
   }
 }
 
@@ -1610,17 +1642,28 @@ async function sauvegarderTexte() {
   }
 }
 
-async function togglePointChoisi(idx: number) {
-  if (!lettrePoints.value) return
-  const point = lettrePoints.value[idx]
-  if (!point) return
-  point.choisi = !point.choisi // optimiste
-  const indices = lettrePoints.value.reduce<number[]>((acc, p, i) => { if (p.choisi) acc.push(i); return acc }, [])
+const lettreEcarterError = ref<string | null>(null)
+
+async function ecarterFait() {
+  lettreEcarterError.value = null
+  lettreBusy.value = true
   try {
-    lettrePoints.value = await $fetch<LettrePoint[]>(`${lettreUrl()}/points`, { method: 'PUT', body: { indices } })
-  } catch {
-    await chargerLettrePoints() // revert en cas d'échec
+    await $fetch(`${lettreUrl()}/ecarter`, { method: 'POST' })
+    if (lettre.value) lettre.value = { ...lettre.value, regeneration_en_cours: true, regeneration_error: null }
+    await chargerPieces()
+    startLettrePolling()
+  } catch (e) {
+    lettreEcarterError.value = messageErreurLettre(e)
+  } finally {
+    lettreBusy.value = false
   }
+}
+
+async function remettreFait(fait: { citation: string | null, url: string | null }) {
+  lettre.value = await $fetch<Lettre>(`${lettreUrl()}/remettre`, {
+    method: 'POST',
+    body: { citation: fait.citation, url: fait.url },
+  })
 }
 
 async function copierTexte() {

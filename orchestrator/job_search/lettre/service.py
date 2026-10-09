@@ -1,64 +1,67 @@
-"""Génération de la lettre de motivation (EXE-65) : fiche entreprise + choix de points +
-préférences de ton + CV de référence → Claude Agent SDK → table `lettres`.
+"""Génération de la lettre de motivation (EXE-162) : fiche entreprise (faits, moins
+ceux que j'ai écartés) → boucle tamis/rédaction/vérificateur/juge (`lettre/boucle.py`)
+→ table `lettres`.
 
-Frontière (architecture.md, exceptions encadrées) : l'appel SDK ne part que d'une
-action explicite (POST /offers/{id}/lettre ou /offers/{id}/lettre/regenerer), jamais
-d'un changement de profil ou de la fiche entreprise. Le choix des points est stocké
-avec la lettre (H2 du ticket EXE-65) et ne modifie jamais `fiches_entreprise.points_json`.
+Frontière (architecture.md, exceptions encadrées) : l'appel de modèle ne part que
+d'une action explicite (POST /offers/{id}/lettre, /offers/{id}/lettre/regenerer ou
+/offers/{id}/lettre/ecarter), jamais d'un changement de profil ou de la fiche
+entreprise.
 
-Historique (EXE-66) : chaque texte qui devient la version courante — sortie du modèle
-(génération ou régénération) ou texte repris par l'utilisateur — est journalisé dans
-`lettre_versions`, jamais réécrit ni effacé (H2 du ticket EXE-66).
+Historique (EXE-66) : chaque texte qui devient la version courante — sortie du
+modèle (génération, régénération ou écartement d'un fait) ou texte repris par
+l'utilisateur — est journalisé dans `lettre_versions`, jamais réécrit ni effacé.
 """
 
 import asyncio
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 
-from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
-
+from orchestrator.job_search.lettre.boucle import (
+    GENERIQUE_ID,
+    RAISON_PLAFOND,
+    RAISON_RIEN_A_REDIRE,
+    ConfigBoucle,
+    dernier_releve,
+    generer_lettre_depuis_donnees,
+)
 from orchestrator.job_search.lettre.redaction import (
-    build_prompt,
+    RAISON_RIEN_A_ECARTER,
     count_words,
     detect_tournures,
     exceeds_length,
     load_tournures_interdites,
-    resolve_chosen_indices,
     resolve_offer_text,
-    strip_html,
 )
-from orchestrator.job_search.paths import (
-    CV_REFERENCE_PATH,
-    LETTRE_CWD,
-    LETTRE_PREFERENCES_PATH,
-    LETTRE_TOURNURES_PATH,
-)
+from orchestrator.job_search.paths import LETTRE_TOURNURES_PATH
 from orchestrator.job_search.storage.db import get_connection, init_db
 
-TIMEOUT_S = 300  # 5 minutes (H6 du ticket, repris du CV)
-MODELE = "sonnet"  # H5 : alias fixé du Claude Agent SDK
-
-# La rédaction n'a besoin d'aucun outil : tout ce qu'il faut (offre, fiche, points,
-# préférences, CV) est déjà dans le prompt (critère 22).
-_TOOLS: list[str] = []
-_FORBIDDEN_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebSearch", "WebFetch"]
+MODELE = "sonnet"  # H2 du ticket EXE-162 : sonnet partout dans la boucle
 
 
 class LettreNonPreteError(RuntimeError):
     """Aucune lettre `done` pour cette offre (EXE-66) : rien à reprendre ni à régénérer."""
 
 
+class RienAEcarterError(RuntimeError):
+    """Aucun fait retenu à écarter (EXE-162, critère 17) : lettre générique ou
+    jamais générée."""
+
+
 @dataclass
-class _Generation:
+class _GenerationBoucle:
     texte: str
     signalees: list[str]
     nb_mots: int
     depasse: bool
-    session_id: str | None
-    cost_usd: float | None
-    prompt_text: str
+    fait_retenu: dict | None  # None = lettre générique
+    texte_type_id: str
+    nb_tours: int
+    raison_fin: str
+    jugement: dict | None
+    releve: dict | None
+    appels: list[dict]
 
 
 def _now() -> str:
@@ -73,15 +76,17 @@ def _append_version(
     nb_mots: int,
     depasse: bool,
     origine: str,
+    fait_retenu: dict | None,
 ) -> None:
     """Ajoute une version à l'historique — jamais de réécriture ni de suppression
-    d'une version existante (invariant du ticket EXE-66)."""
+    d'une version existante (invariant du ticket EXE-66). Porte le fait retenu
+    (EXE-162, critère 7)."""
     conn.execute(
         """
         INSERT INTO lettre_versions
             (offer_id, texte, tournures_signalees_json, nb_mots, depasse_longueur,
-             origine, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+             origine, fait_retenu_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             offer_id,
@@ -90,6 +95,7 @@ def _append_version(
             nb_mots,
             int(depasse),
             origine,
+            json.dumps(fait_retenu, ensure_ascii=False) if fait_retenu else None,
             _now(),
         ),
     )
@@ -98,8 +104,9 @@ def _append_version(
 def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
     """Insère ou remet à zéro la ligne lettre en `pending` (relance après erreur incluse).
 
-    Ne touche jamais `points_choisis_json` : le choix de points survit à une
-    régénération (H2 du ticket), ce reset ne concerne que la sortie de génération.
+    Ne touche jamais `points_choisis_json` ni `faits_ecartes_json` : le choix de
+    points (hérité, non lu par la génération) et les faits écartés survivent à une
+    régénération — ce reset ne concerne que la sortie de génération.
     """
     conn.execute(
         """
@@ -107,19 +114,49 @@ def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
         ON CONFLICT(offer_id) DO UPDATE SET
             statut='pending', texte=NULL, tournures_signalees_json=NULL, nb_mots=NULL,
             depasse_longueur=NULL, modele=NULL, session_id=NULL, cost_usd=NULL,
-            prompt_text=NULL, error_message=NULL
+            prompt_text=NULL, error_message=NULL, fait_retenu_json=NULL,
+            texte_type_id=NULL, nb_tours=NULL, raison_fin=NULL, jugement_json=NULL,
+            releve_json=NULL, appels_json=NULL
         """,
         (offer_id, _now()),
     )
     conn.commit()
 
 
-async def _generate_texte(conn: sqlite3.Connection, offer_id: int) -> _Generation:
-    """Construit le prompt depuis l'état courant (fiche + choix de points persisté)
-    et appelle le modèle. Partagé par la génération initiale et la régénération
-    (EXE-66 critère 9 : le choix courant, jamais un choix figé au premier appel)."""
+def _cle_fait(point: dict) -> tuple:
+    return (point.get("citation"), point.get("url"))
+
+
+def _fetch_faits_ecartes(conn: sqlite3.Connection, offer_id: int) -> list[dict]:
+    row = conn.execute(
+        "SELECT faits_ecartes_json FROM lettres WHERE offer_id = ?", (offer_id,)
+    ).fetchone()
+    if row is None or not row["faits_ecartes_json"]:
+        return []
+    return json.loads(row["faits_ecartes_json"])
+
+
+def _filtrer_points_ecartes(points: list[dict], ecartes: list[dict]) -> list[dict]:
+    cles_ecartees = {_cle_fait(e) for e in ecartes}
+    return [p for p in points if _cle_fait(p) not in cles_ecartees]
+
+
+def _config_boucle() -> ConfigBoucle:
+    return ConfigBoucle(
+        modele_tamis=MODELE, modele_redaction=MODELE, modele_juge=MODELE
+    )
+
+
+async def _generate_via_boucle(
+    conn: sqlite3.Connection, offer_id: int
+) -> _GenerationBoucle:
+    """Lance la boucle tamis → rédaction → vérificateur → juge (critère 1), sur
+    les points de la fiche terminée moins les faits écartés (critères 4, 14) —
+    jamais sur les points cochés ni la désignation de la fiche. Tourne dans un
+    thread (critère 2) : `generer_lettre_depuis_donnees` appelle `asyncio.run` en
+    interne, incompatible avec la boucle d'événements de l'API."""
     offer = conn.execute(
-        "SELECT title, description_raw, description FROM offers WHERE id = ?",
+        "SELECT title, description_raw, description, company FROM offers WHERE id = ?",
         (offer_id,),
     ).fetchone()
     if offer is None:
@@ -130,7 +167,7 @@ async def _generate_texte(conn: sqlite3.Connection, offer_id: int) -> _Generatio
         raise ValueError(f"texte de l'offre manquant pour l'offre {offer_id}")
 
     fiche = conn.execute(
-        "SELECT presentation, points_json FROM fiches_entreprise "
+        "SELECT points_json, employeur_nom FROM fiches_entreprise "
         "WHERE offer_id = ? AND statut = 'done'",
         (offer_id,),
     ).fetchone()
@@ -138,122 +175,100 @@ async def _generate_texte(conn: sqlite3.Connection, offer_id: int) -> _Generatio
         raise ValueError(f"fiche entreprise manquante pour l'offre {offer_id}")
 
     points = json.loads(fiche["points_json"] or "[]")
-    row = conn.execute(
-        "SELECT points_choisis_json FROM lettres WHERE offer_id = ?",
-        (offer_id,),
-    ).fetchone()
-    chosen_indices = resolve_chosen_indices(
-        points, row["points_choisis_json"] if row else None
-    )
-    if not chosen_indices:
-        raise ValueError("aucun point choisi pour la lettre")
-    chosen_points = [points[i] for i in chosen_indices]
+    ecartes = _fetch_faits_ecartes(conn, offer_id)
+    points_restants = _filtrer_points_ecartes(points, ecartes)
+    entreprise = fiche["employeur_nom"] or offer["company"] or ""
 
-    if not LETTRE_PREFERENCES_PATH.exists():
-        raise FileNotFoundError(
-            f"préférences de ton manquantes : {LETTRE_PREFERENCES_PATH}"
-        )
-    preferences_ton = LETTRE_PREFERENCES_PATH.read_text(encoding="utf-8")
-
-    if not CV_REFERENCE_PATH.exists():
-        raise FileNotFoundError(f"CV de référence manquant : {CV_REFERENCE_PATH}")
-    cv_reference_text = strip_html(CV_REFERENCE_PATH.read_text(encoding="utf-8"))
-
-    prompt_text = build_prompt(
+    resultat = await asyncio.to_thread(
+        generer_lettre_depuis_donnees,
         offer["title"] or "",
         offer_text,
-        fiche["presentation"] or "",
-        chosen_points,
-        preferences_ton,
-        cv_reference_text,
+        entreprise,
+        points_restants,
+        _config_boucle(),
     )
 
-    result: ResultMessage | None = None
-    LETTRE_CWD.mkdir(parents=True, exist_ok=True)
-    options = ClaudeAgentOptions(
-        tools=_TOOLS,
-        allowed_tools=_TOOLS,
-        disallowed_tools=_FORBIDDEN_TOOLS,
-        model=MODELE,
-        setting_sources=[],
-        cwd=str(LETTRE_CWD),
-        max_turns=5,
-    )
+    if resultat.raison_fin not in (RAISON_RIEN_A_REDIRE, RAISON_PLAFOND):
+        raise RuntimeError(resultat.raison_fin)
 
-    async def _consume() -> None:
-        nonlocal result
-        async for msg in query(prompt=prompt_text, options=options):
-            if isinstance(msg, ResultMessage):
-                result = msg
+    derniere = resultat.lettres[-1]
+    texte = derniere["texte"]
+    nb_mots = derniere["nb_mots"]
+    signalees = derniere.get("tournures_signalees") or []
+    jugement = derniere["jugement"]
+    releve = dernier_releve(derniere)
+    fait_retenu = None if resultat.fait_retenu == GENERIQUE_ID else resultat.fait_retenu
 
-    await asyncio.wait_for(_consume(), timeout=TIMEOUT_S)
-
-    if result is None:
-        raise RuntimeError("aucun ResultMessage reçu du SDK")
-    if result.is_error:
-        raise RuntimeError(
-            f"SDK en erreur ({result.subtype}): {(result.result or '')[:500]}"
-        )
-    texte = (result.result or "").strip()
-    if not texte:
-        raise RuntimeError("réponse vide du modèle")
-
-    tournures = load_tournures_interdites(LETTRE_TOURNURES_PATH)
-    signalees = detect_tournures(texte, tournures)
-    nb_mots = count_words(texte)
-
-    return _Generation(
+    return _GenerationBoucle(
         texte=texte,
         signalees=signalees,
         nb_mots=nb_mots,
         depasse=exceeds_length(nb_mots),
-        session_id=result.session_id,
-        cost_usd=result.total_cost_usd,
-        prompt_text=prompt_text,
+        fait_retenu=fait_retenu,
+        texte_type_id=resultat.texte_type_id,
+        nb_tours=resultat.nb_tours,
+        raison_fin=resultat.raison_fin,
+        jugement=asdict(jugement) if jugement is not None else None,
+        releve=releve,
+        appels=[asdict(a) for a in resultat.appels],
+    )
+
+
+def _store_generation(
+    conn: sqlite3.Connection, offer_id: int, gen: _GenerationBoucle
+) -> None:
+    conn.execute(
+        """
+        UPDATE lettres SET
+            statut='done', texte=?, tournures_signalees_json=?, nb_mots=?,
+            depasse_longueur=?, modele=?, fait_retenu_json=?, texte_type_id=?,
+            nb_tours=?, raison_fin=?, jugement_json=?, releve_json=?, appels_json=?,
+            error_message=NULL
+        WHERE offer_id=?
+        """,
+        (
+            gen.texte,
+            json.dumps(gen.signalees, ensure_ascii=False),
+            gen.nb_mots,
+            int(gen.depasse),
+            MODELE,
+            json.dumps(gen.fait_retenu, ensure_ascii=False)
+            if gen.fait_retenu
+            else None,
+            gen.texte_type_id,
+            gen.nb_tours,
+            gen.raison_fin,
+            json.dumps(gen.jugement, ensure_ascii=False) if gen.jugement else None,
+            json.dumps(gen.releve, ensure_ascii=False) if gen.releve else None,
+            json.dumps(gen.appels, ensure_ascii=False),
+            offer_id,
+        ),
+    )
+    _append_version(
+        conn,
+        offer_id,
+        gen.texte,
+        gen.signalees,
+        gen.nb_mots,
+        gen.depasse,
+        "modele",
+        gen.fait_retenu,
     )
 
 
 async def run_lettre(offer_id: int) -> None:
-    """Produit la lettre de l'offre. Toute exception (dont le timeout, l'absence des
-    préférences de ton, ou l'absence de point choisi) finit en `statut='error'`, sans
-    qu'aucun texte ne soit stocké (critères 14, 23).
+    """Produit la lettre de l'offre via la boucle. Toute exception (dont le
+    timeout, l'absence de fiche terminée, ou une raison de fin de boucle autre
+    que « rien à redire »/« plafond ») finit en `statut='error'`, sans qu'aucun
+    texte ne soit stocké (critère 9).
     """
     conn = get_connection()
     try:
         init_db(conn)
         reset_pending(conn, offer_id)
         try:
-            gen = await _generate_texte(conn, offer_id)
-
-            conn.execute(
-                """
-                UPDATE lettres SET
-                    statut='done', texte=?, tournures_signalees_json=?, nb_mots=?,
-                    depasse_longueur=?, modele=?, session_id=?, cost_usd=?, prompt_text=?,
-                    error_message=NULL
-                WHERE offer_id=?
-                """,
-                (
-                    gen.texte,
-                    json.dumps(gen.signalees, ensure_ascii=False),
-                    gen.nb_mots,
-                    int(gen.depasse),
-                    MODELE,
-                    gen.session_id,
-                    gen.cost_usd,
-                    gen.prompt_text,
-                    offer_id,
-                ),
-            )
-            _append_version(
-                conn,
-                offer_id,
-                gen.texte,
-                gen.signalees,
-                gen.nb_mots,
-                gen.depasse,
-                "modele",
-            )
+            gen = await _generate_via_boucle(conn, offer_id)
+            _store_generation(conn, offer_id, gen)
             conn.commit()
         except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf cv/service.py)
             conn.execute(
@@ -282,21 +297,21 @@ def mark_regenerating(conn: sqlite3.Connection, offer_id: int) -> None:
 
 
 async def run_lettre_regenerate(offer_id: int) -> None:
-    """Régénère la lettre de l'offre depuis le choix de points courant (EXE-66).
-    En cas d'échec ou de timeout, la version d'avant (texte, signalements) reste en
-    place intacte — seul l'état `regeneration_en_cours`/`regeneration_error` change
-    (critère 11)."""
+    """Régénère la lettre de l'offre via la boucle, sur les faits restants après
+    exclusion (EXE-162). En cas d'échec ou de timeout, la version d'avant (texte,
+    signalements) reste en place intacte — seul l'état
+    `regeneration_en_cours`/`regeneration_error` change (critère 11 EXE-66)."""
     conn = get_connection()
     try:
         init_db(conn)
         try:
-            gen = await _generate_texte(conn, offer_id)
-
+            gen = await _generate_via_boucle(conn, offer_id)
             conn.execute(
                 """
                 UPDATE lettres SET
                     texte=?, tournures_signalees_json=?, nb_mots=?, depasse_longueur=?,
-                    modele=?, session_id=?, cost_usd=?, prompt_text=?,
+                    modele=?, fait_retenu_json=?, texte_type_id=?, nb_tours=?,
+                    raison_fin=?, jugement_json=?, releve_json=?, appels_json=?,
                     regeneration_en_cours=0, regeneration_error=NULL
                 WHERE offer_id=?
                 """,
@@ -306,9 +321,17 @@ async def run_lettre_regenerate(offer_id: int) -> None:
                     gen.nb_mots,
                     int(gen.depasse),
                     MODELE,
-                    gen.session_id,
-                    gen.cost_usd,
-                    gen.prompt_text,
+                    json.dumps(gen.fait_retenu, ensure_ascii=False)
+                    if gen.fait_retenu
+                    else None,
+                    gen.texte_type_id,
+                    gen.nb_tours,
+                    gen.raison_fin,
+                    json.dumps(gen.jugement, ensure_ascii=False)
+                    if gen.jugement
+                    else None,
+                    json.dumps(gen.releve, ensure_ascii=False) if gen.releve else None,
+                    json.dumps(gen.appels, ensure_ascii=False),
                     offer_id,
                 ),
             )
@@ -320,6 +343,7 @@ async def run_lettre_regenerate(offer_id: int) -> None:
                 gen.nb_mots,
                 gen.depasse,
                 "modele",
+                gen.fait_retenu,
             )
             conn.commit()
         except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf run_lettre)
@@ -339,14 +363,14 @@ def save_texte(conn: sqlite3.Connection, offer_id: int, texte: str) -> None:
     """Enregistre le texte repris par l'utilisateur comme version courante de la
     lettre (critère 1) : signale les tournures interdites et le dépassement de
     longueur sans jamais corriger `texte` (invariant du ticket — une tournure
-    signalée reste dans le texte), puis journalise une version (critère 4).
+    signalée reste dans le texte stocké), puis journalise une version (critère 4).
     Calcul 100% Python (critère 7) : aucun appel modèle. Une marque « Prête »
     (EXE-101) est effacée par cet enregistrement : le contenu change, la
     validation humaine est à refaire.
     """
     init_db(conn)
     row = conn.execute(
-        "SELECT statut FROM lettres WHERE offer_id = ?", (offer_id,)
+        "SELECT statut, fait_retenu_json FROM lettres WHERE offer_id = ?", (offer_id,)
     ).fetchone()
     if row is None or row["statut"] != "done":
         raise LettreNonPreteError(f"aucune lettre prête pour l'offre {offer_id}")
@@ -357,6 +381,9 @@ def save_texte(conn: sqlite3.Connection, offer_id: int, texte: str) -> None:
     signalees = detect_tournures(texte, tournures)
     nb_mots = count_words(texte)
     depasse = exceeds_length(nb_mots)
+    fait_retenu = (
+        json.loads(row["fait_retenu_json"]) if row["fait_retenu_json"] else None
+    )
 
     conn.execute(
         """
@@ -373,5 +400,52 @@ def save_texte(conn: sqlite3.Connection, offer_id: int, texte: str) -> None:
             offer_id,
         ),
     )
-    _append_version(conn, offer_id, texte, signalees, nb_mots, depasse, "moi")
+    _append_version(
+        conn, offer_id, texte, signalees, nb_mots, depasse, "moi", fait_retenu
+    )
+    conn.commit()
+
+
+def ajouter_fait_ecarte(conn: sqlite3.Connection, offer_id: int) -> None:
+    """Écarte le fait retenu courant de la lettre (critère 13) : l'ajoute (si
+    absent) à la liste persistée des faits écartés de l'offre, identifiés par leur
+    citation et leur lien (H2 du ticket) — ne touche pas le texte courant, la
+    régénération qui suit s'en charge."""
+    row = conn.execute(
+        "SELECT statut, fait_retenu_json, faits_ecartes_json FROM lettres WHERE offer_id = ?",
+        (offer_id,),
+    ).fetchone()
+    if row is None or row["statut"] != "done" or not row["fait_retenu_json"]:
+        raise RienAEcarterError(RAISON_RIEN_A_ECARTER)
+    fait = json.loads(row["fait_retenu_json"])
+    ecartes = json.loads(row["faits_ecartes_json"] or "[]")
+    if not any(_cle_fait(e) == _cle_fait(fait) for e in ecartes):
+        ecartes.append(fait)
+    conn.execute(
+        "UPDATE lettres SET faits_ecartes_json=? WHERE offer_id=?",
+        (json.dumps(ecartes, ensure_ascii=False), offer_id),
+    )
+    conn.commit()
+
+
+def retirer_fait_ecarte(
+    conn: sqlite3.Connection, offer_id: int, citation: str | None, url: str | None
+) -> None:
+    """Remet un fait écarté (critère 15) : le retire de la liste persistée, sans
+    déclencher de régénération."""
+    row = conn.execute(
+        "SELECT faits_ecartes_json FROM lettres WHERE offer_id = ?", (offer_id,)
+    ).fetchone()
+    ecartes = (
+        json.loads(row["faits_ecartes_json"])
+        if row and row["faits_ecartes_json"]
+        else []
+    )
+    restants = [
+        e for e in ecartes if (e.get("citation"), e.get("url")) != (citation, url)
+    ]
+    conn.execute(
+        "UPDATE lettres SET faits_ecartes_json=? WHERE offer_id=?",
+        (json.dumps(restants, ensure_ascii=False), offer_id),
+    )
     conn.commit()

@@ -71,6 +71,7 @@ export interface FichePoint {
   url: string | null
   tas: FicheTas | null
   explication: string | null
+  sujet_libelle: string | null // EXE-162, critère 23 : absent si le point n'a pas de sujet
 }
 
 export interface FicheEntreprise {
@@ -111,6 +112,29 @@ export interface Cv {
 
 export type LettreStatut = 'aucune' | 'pending' | 'done' | 'error'
 
+export interface FaitRetenu {
+  position: string
+  citation: string | null
+  url: string | null
+  tas: FicheTas | null
+  explication: string | null
+  sujet_libelle?: string | null
+}
+
+export interface Jugement {
+  rien_a_redire: boolean
+  ressenti: string
+  details: string
+  reussites: string
+  verdict: string
+}
+
+export interface Releve {
+  tournures: string[]
+  lieux: { lieu: string, phrase: string }[]
+  affirmations: { passage: string, manque: string }[]
+}
+
 export interface Lettre {
   statut: LettreStatut
   texte: string | null
@@ -123,12 +147,13 @@ export interface Lettre {
   created_at: string
   regeneration_en_cours: boolean
   regeneration_error: string | null
-}
-
-export interface LettrePoint {
-  texte: string
-  tas: FicheTas | null
-  choisi: boolean
+  fait_retenu: FaitRetenu | null // EXE-162 : null = lettre générique
+  texte_type_id: string | null
+  nb_tours: number | null
+  raison_fin: string | null
+  jugement: Jugement | null
+  releve: Releve | null
+  faits_ecartes: FaitRetenu[]
 }
 
 export interface LettreVersion {
@@ -137,6 +162,7 @@ export interface LettreVersion {
   nb_mots: number
   depasse_longueur: boolean
   origine: 'modele' | 'moi'
+  fait_retenu: FaitRetenu | null
   created_at: string
 }
 

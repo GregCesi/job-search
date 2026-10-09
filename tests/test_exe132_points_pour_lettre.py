@@ -1,11 +1,14 @@
 """Tests EXE-132 — la fiche désigne elle-même les points de la lettre, quatre au
-plus ; la lettre lancée au geste de retenir n'est écrite que sur ceux-là, jamais
-sur tous les points de la fiche (TCK-281).
+plus (bookkeeping hérité : TestCritere1 à 5, 8, 9).
 
-Aucun test n'appelle un modèle : `query` du SDK Claude Agent (fiche, lettre) est
-remplacé par une doublure. Aucun test ne lit ni n'écrit sous data/ : DB,
-préférences de ton, tournures interdites et CV de référence sont des fichiers
-tmp_path.
+Depuis EXE-162, la désignation ne gate plus le lancement de la lettre (la boucle
+retient elle-même un fait de la fiche, ou part en générique) : TestCritere6Et7
+couvre ce changement de comportement.
+
+Aucun test n'appelle un modèle : `query` du SDK Claude Agent (fiche) et
+`generer_lettre_depuis_donnees` (lettre, EXE-162) sont remplacés par des
+doublures. Aucun test ne lit ni n'écrit sous data/ : DB, tournures interdites et
+CV de référence sont des fichiers tmp_path.
 """
 
 import asyncio
@@ -23,10 +26,14 @@ import orchestrator.job_search.fiche.service as fiche_service
 import orchestrator.job_search.lettre.service as lettre_service
 import orchestrator.job_search.storage.db as storage_db
 from orchestrator.job_search.fiche.cascade import CascadeResult
-from orchestrator.job_search.lettre.redaction import RAISON_FICHE_AUCUNE_DESIGNATION
+from orchestrator.job_search.lettre.boucle import (
+    GENERIQUE_ID,
+    RAISON_RIEN_A_REDIRE,
+    Jugement,
+    ResultatBoucle,
+)
 from orchestrator.job_search.storage.db import init_db
 
-PREFERENCES_TON = "# Préférences de ton\n- Direct, sans emphase\n"
 TOURNURES_INTERDITES = "je veux\n"
 
 
@@ -67,27 +74,25 @@ def _fiche_result(points, points_pour_lettre, session_id="fiche-session"):
     )
 
 
-def _lettre_result(texte="Voici ma lettre de motivation.", session_id="lettre-session"):
-    return ResultMessage(
-        subtype="success",
-        duration_ms=1,
-        duration_api_ms=1,
-        is_error=False,
-        num_turns=1,
-        session_id=session_id,
-        total_cost_usd=0.03,
-        result=texte,
-        structured_output=None,
+def _resultat_lettre_ok(texte="Voici ma lettre de motivation.") -> ResultatBoucle:
+    lettre = {
+        "texte": texte,
+        "nb_mots": len(texte.split()),
+        "tournures_signalees": [],
+        "jugement": Jugement(
+            rien_a_redire=True, ressenti="bien", details="d", reussites="r", verdict="v"
+        ),
+        "releve_redaction": {"tournures": [], "lieux": [], "affirmations": []},
+        "releve_correction": None,
+    }
+    return ResultatBoucle(
+        fait_retenu=GENERIQUE_ID,
+        texte_type_id="tt",
+        lettres=[lettre],
+        nb_tours=1,
+        raison_fin=RAISON_RIEN_A_REDIRE,
+        appels=[],
     )
-
-
-def _jamais_appele(nom):
-    def behavior(prompt, options):
-        raise AssertionError(
-            f"le modèle {nom} a été rappelé alors qu'il ne devait pas l'être"
-        )
-
-    return behavior
 
 
 @pytest.fixture
@@ -103,16 +108,10 @@ def db_path(tmp_path, monkeypatch):
 
 @pytest.fixture
 def lettre_fixture_paths(tmp_path, monkeypatch):
-    prefs = tmp_path / "preferences_ton.md"
-    prefs.write_text(PREFERENCES_TON, encoding="utf-8")
     tournures = tmp_path / "tournures_interdites.txt"
     tournures.write_text(TOURNURES_INTERDITES, encoding="utf-8")
-    cv_ref = tmp_path / "cv_reference.html"
-    cv_ref.write_text("<p>Contenu CV de test</p>", encoding="utf-8")
-    monkeypatch.setattr(lettre_service, "LETTRE_PREFERENCES_PATH", prefs)
     monkeypatch.setattr(lettre_service, "LETTRE_TOURNURES_PATH", tournures)
-    monkeypatch.setattr(lettre_service, "CV_REFERENCE_PATH", cv_ref)
-    return prefs, tournures, cv_ref
+    return tournures
 
 
 @pytest.fixture(autouse=True)
@@ -257,7 +256,9 @@ class TestCritere2Et3LettreEcriteSurLesPointsDesignes:
         designes = {0, 2, 4}
         _insert_fiche(db_path, offer_id, _points(8, designes))
         monkeypatch.setattr(
-            lettre_service, "query", _make_query(lambda p, o: [_lettre_result()])
+            lettre_service,
+            "generer_lettre_depuis_donnees",
+            lambda *a, **k: _resultat_lettre_ok(),
         )
 
         asyncio.run(_scenario_launch(offer_id))
@@ -325,23 +326,26 @@ class TestCritere5DesignationInexistanteIgnoree:
         assert _points_pour_lettre(db_path, offer_id) == []
 
 
-class TestCritere6Et7FicheSansDesignationPasDeLettre:
-    def test_aucun_point_designe_lettre_non_lancee_phrase_dediee(
-        self, db_path, monkeypatch
-    ):
+class TestCritere6Et7FicheSansDesignationLettreQuandMeme:
+    """EXE-162, critère 3 : la désignation de points ne gate plus le lancement —
+    seuls comptent la fiche terminée et le texte de l'offre. Inverse l'ancien
+    comportement d'EXE-132 (6Et7), où l'absence de désignation bloquait."""
+
+    def test_aucun_point_designe_la_lettre_part_quand_meme(self, db_path, monkeypatch):
         offer_id = 6
         _insert_offer(db_path, offer_id)
         _insert_fiche(db_path, offer_id, _points(5, set()))
         monkeypatch.setattr(
-            lettre_service, "query", _make_query(_jamais_appele("lettre"))
+            lettre_service,
+            "generer_lettre_depuis_donnees",
+            lambda *a, **k: _resultat_lettre_ok(),
         )
 
         asyncio.run(_scenario_launch(offer_id))
 
         row = _lettre_row(db_path, offer_id)
         assert row is not None
-        assert row["statut"] == "aucune"
-        assert not lettre_api.is_running(offer_id)
+        assert row["statut"] == "done"
 
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
@@ -349,8 +353,7 @@ class TestCritere6Et7FicheSansDesignationPasDeLettre:
             avancement = api_avancement._compute_avancement(conn, offer_id)
         finally:
             conn.close()
-        assert avancement["lettre"]["etat"] == "en_attente"
-        assert avancement["lettre"]["raison"] == RAISON_FICHE_AUCUNE_DESIGNATION
+        assert avancement["lettre"]["etat"] == "terminee"
 
 
 class TestCritere8OrigineSysteme:
@@ -361,7 +364,9 @@ class TestCritere8OrigineSysteme:
         _insert_offer(db_path, offer_id)
         _insert_fiche(db_path, offer_id, _points(4, {1}))
         monkeypatch.setattr(
-            lettre_service, "query", _make_query(lambda p, o: [_lettre_result()])
+            lettre_service,
+            "generer_lettre_depuis_donnees",
+            lambda *a, **k: _resultat_lettre_ok(),
         )
 
         asyncio.run(_scenario_launch(offer_id))
@@ -378,7 +383,9 @@ class TestCritere9ChoixDejaFaitNonRemplace:
         _insert_fiche(db_path, offer_id, _points(5, {1, 2, 3}))
         _insert_lettre_choix_moi(db_path, offer_id, [0])
         monkeypatch.setattr(
-            lettre_service, "query", _make_query(lambda p, o: [_lettre_result()])
+            lettre_service,
+            "generer_lettre_depuis_donnees",
+            lambda *a, **k: _resultat_lettre_ok(),
         )
 
         asyncio.run(_scenario_launch(offer_id))

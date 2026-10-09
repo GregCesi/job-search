@@ -3,30 +3,28 @@ feuille de style ni son éventuel script, et l'annonce dont le HTML porte un blo
 style arrive au tamis sans aucun caractère de ce bloc.
 
 Aucun test n'appelle un modèle réel : `boucle.appeler_modele` est remplacé par une
-doublure programmable (reprise de test_exe147_boucle_lettre.py), et `query` du SDK
-Claude Agent est remplacé par un faux générateur async (reprise de test_lettre.py).
-Aucun test ne lit ni n'écrit sous data/ : le CV de référence, le répertoire, les
-tournures interdites et la base sont posés dans tmp_path.
+doublure programmable (reprise de test_exe147_boucle_lettre.py). Aucun test ne lit
+ni n'écrit sous data/ : le CV de référence, le répertoire et les tournures
+interdites sont posés dans tmp_path.
+
+EXE-162 a retiré le critère 4 (« la lettre que l'application génère passe par le
+même nettoyage ») : la génération de l'application délègue désormais entièrement à
+`generer_lettre_depuis_donnees`, déjà couverte ici par les critères 1-3 — il n'y a
+plus de chemin de nettoyage séparé côté `service.py` à vérifier.
 """
 
-import asyncio
 import json
-import sqlite3
 
 import pytest
 import yaml
-from claude_agent_sdk import ResultMessage
 
 import orchestrator.job_search.lettre.boucle as boucle
-import orchestrator.job_search.lettre.service as lettre_service
-import orchestrator.job_search.storage.db as storage_db
 from orchestrator.job_search.lettre.boucle import (
     ConfigBoucle,
     ReponseModele,
     generer_lettre_depuis_donnees,
 )
 from orchestrator.job_search.lettre.redaction import strip_html, strip_style_and_script
-from orchestrator.job_search.storage.db import init_db
 
 CV_STYLE_HTML = (
     "<html><head><style>body { color: red; font-family: Arial; }\n"
@@ -273,115 +271,6 @@ def test_critere5_offre_avec_style_aucun_caractere_du_bloc_au_tamis(
     assert "background: blue" not in demande_tamis
     assert ".offre" not in demande_tamis
     assert "Poste de data engineer a Strasbourg." in demande_tamis
-
-
-# --- critère 4 : la lettre que l'application génère (service.py) ----------------
-
-
-def _fake_result(result=None, is_error=False, session_id="fake-session", cost=0.02):
-    return ResultMessage(
-        subtype="success" if not is_error else "error_during_execution",
-        duration_ms=1,
-        duration_api_ms=1,
-        is_error=is_error,
-        num_turns=1,
-        session_id=session_id,
-        total_cost_usd=cost,
-        result=result,
-        structured_output=None,
-    )
-
-
-def _make_query(behavior):
-    async def _query(*, prompt, options):
-        for m in behavior(prompt, options):
-            yield m
-
-    return _query
-
-
-@pytest.fixture
-def db_path(tmp_path, monkeypatch):
-    path = tmp_path / "job_search.sqlite"
-    monkeypatch.setattr(storage_db, "DB_PATH", path)
-    conn = sqlite3.connect(path)
-    init_db(conn)
-    conn.close()
-    return path
-
-
-@pytest.fixture
-def app_fixture_paths(tmp_path, monkeypatch):
-    prefs = tmp_path / "preferences_ton.md"
-    prefs.write_text("- Ton direct\n", encoding="utf-8")
-    tournures = tmp_path / "tournures_interdites.txt"
-    tournures.write_text(TOURNURES_INTERDITES, encoding="utf-8")
-    cv_ref = _cv_path(tmp_path, CV_STYLE_HTML)
-    monkeypatch.setattr(lettre_service, "LETTRE_PREFERENCES_PATH", prefs)
-    monkeypatch.setattr(lettre_service, "LETTRE_TOURNURES_PATH", tournures)
-    monkeypatch.setattr(lettre_service, "CV_REFERENCE_PATH", cv_ref)
-
-
-def _insert_offer(db_path, offer_id, description_raw="Texte de l'offre X"):
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute(
-            "INSERT INTO offers (id, source, source_id, fingerprint, title, "
-            "description_raw) VALUES (?, 'test', ?, 'fp', 'Titre', ?)",
-            (offer_id, str(offer_id), description_raw),
-        )
-        conn.execute(
-            "INSERT INTO verdicts (offer_id, status, created_at) "
-            "VALUES (?, 'retenu', '2026-10-07')",
-            (offer_id,),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _insert_fiche(db_path, offer_id):
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute(
-            "INSERT INTO fiches_entreprise (offer_id, statut, presentation, "
-            "points_json, created_at) VALUES (?, 'done', 'Présentation', ?, "
-            "'2026-10-07')",
-            (offer_id, json.dumps([{"position": "Point 0", "tas": "lettre"}])),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _lettre_row(db_path, offer_id):
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        return conn.execute(
-            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-    finally:
-        conn.close()
-
-
-def test_critere4_lettre_app_recoit_le_cv_nettoye_de_la_meme_facon(
-    db_path, app_fixture_paths, monkeypatch
-):
-    offer_id = 153
-    _insert_offer(db_path, offer_id)
-    _insert_fiche(db_path, offer_id)
-
-    def behavior(prompt, options):
-        return [_fake_result(result="Lettre.")]
-
-    monkeypatch.setattr(lettre_service, "query", _make_query(behavior))
-    asyncio.run(lettre_service.run_lettre(offer_id))
-
-    prompt_text = _lettre_row(db_path, offer_id)["prompt_text"]
-    assert "color: red" not in prompt_text
-    assert "font-family" not in prompt_text
-    assert "Gregoire Marchand" in prompt_text
 
 
 # --- unités : strip_style_and_script et strip_html -------------------------------

@@ -1,23 +1,24 @@
-"""Endpoints lettre de motivation (EXE-65) et reprise/régénération/historique (EXE-66).
+"""Endpoints lettre de motivation : boucle tamis/rédaction/vérificateur/juge
+(EXE-162), reprise/régénération/historique (EXE-66).
 
-Le choix des points est stocké avec la lettre, jamais dans la fiche entreprise
-(architecture.md, exceptions encadrées) : PUT /lettre/points ne touche jamais
-`fiches_entreprise.points_json`.
+GET/PUT /lettre/points restent pour compatibilité (hérités d'EXE-65) : la
+génération ne les lit plus depuis EXE-162 — la boucle retient elle-même un fait
+de la fiche, ou part en générique.
 
 POST déclenche la génération (action explicite, offre retenue + fiche terminée +
-au moins un point choisi — critères 3, 4, 8). Si une lettre est déjà `done`, POST la
+texte de l'offre présent — critère 3). Si une lettre est déjà `done`, POST la
 rend telle quelle sans rappeler le modèle (critère 2).
 
 PUT /lettre/texte enregistre le texte repris par l'utilisateur (calcul 100% Python,
-aucun appel modèle). POST /lettre/regenerer relance le modèle depuis le choix de
-points courant sans toucher à la version d'avant tant qu'elle n'a pas abouti.
-GET /lettre/versions rend l'historique, jamais réécrit ni tronqué.
+aucun appel modèle). POST /lettre/regenerer relance la boucle sans toucher à la
+version d'avant tant qu'elle n'a pas abouti. POST /lettre/ecarter écarte le fait
+retenu courant et régénère aussitôt (critère 13) ; POST /lettre/remettre le remet
+sans régénérer (critère 15). GET /lettre/versions rend l'historique, jamais
+réécrit ni tronqué.
 
 Enchaînement (TCK-281, EXE-127) : `launch_lettre_if_ready` est appelé par la fiche
 entreprise (api/fiche.py) dès qu'elle se termine — jamais par un changement de
-profil ni par un rescore. Il désigne lui-même les points (tous ceux de la fiche)
-si je n'en ai jamais choisi à la main, sans jamais remplacer un choix que j'ai
-fait (`points_choisis_origine`).
+profil ni par un rescore.
 """
 
 import asyncio
@@ -72,6 +73,13 @@ class LettreTexteIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     texte: str
+
+
+class FaitEcarteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    citation: str | None = None
+    url: str | None = None
 
 
 def _now() -> str:
@@ -153,6 +161,15 @@ def _row_to_lettre(row) -> dict:
         "regeneration_en_cours": bool(row["regeneration_en_cours"]),
         "regeneration_error": row["regeneration_error"],
         "points_choisis_origine": row["points_choisis_origine"],
+        "fait_retenu": json.loads(row["fait_retenu_json"])
+        if row["fait_retenu_json"]
+        else None,
+        "texte_type_id": row["texte_type_id"],
+        "nb_tours": row["nb_tours"],
+        "raison_fin": row["raison_fin"],
+        "jugement": json.loads(row["jugement_json"]) if row["jugement_json"] else None,
+        "releve": json.loads(row["releve_json"]) if row["releve_json"] else None,
+        "faits_ecartes": json.loads(row["faits_ecartes_json"] or "[]"),
     }
 
 
@@ -206,12 +223,11 @@ def _offer_text(conn, offer_id: int) -> str:
 
 
 async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
-    """Enchaîné dès que la fiche entreprise se termine (TCK-281) : reprend les
-    points que la fiche a elle-même désignés pour la lettre (EXE-132, champ
-    `pour_lettre` de chaque point) si je n'en ai jamais choisi à la main, puis
-    lance si les trois gardes (fiche terminée, texte présent, au moins un point)
-    sont satisfaites. Ne remplace jamais un choix que j'ai fait
-    (`points_choisis_origine == 'moi'`) — critère « ne doit pas arriver » du ticket."""
+    """Enchaîné dès que la fiche entreprise se termine (TCK-281) : lance si les
+    deux gardes (fiche terminée, texte présent — critère 3 d'EXE-162) sont
+    satisfaites. La désignation de points ci-dessous est héritée (EXE-132) :
+    elle n'est plus lue par la génération depuis EXE-162, mais reste écrite pour
+    ne jamais remplacer un choix que j'ai fait (`points_choisis_origine == 'moi'`)."""
     with get_conn() as conn:
         fiche_statut, points = _fiche_statut_et_points(conn, offer_id)
 
@@ -235,19 +251,9 @@ async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
                 (offer_id, json.dumps(designated), _now()),
             )
             conn.commit()
-            row = conn.execute(
-                "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
-            ).fetchone()
 
         offer_text = _offer_text(conn, offer_id)
-        chosen = resolve_chosen_indices(
-            points, row["points_choisis_json"] if row is not None else None
-        )
-        origine = row["points_choisis_origine"] if row is not None else None
-        if (
-            blocage_lancement_lettre(fiche_statut, offer_text, chosen, origine)
-            is not None
-        ):
+        if blocage_lancement_lettre(fiche_statut, offer_text) is not None:
             return None
 
     return await launch_lettre(offer_id)
@@ -271,13 +277,9 @@ async def create_lettre(offer_id: int, response: Response) -> dict:
             response.status_code = 200
             return _row_to_lettre(row)
 
-        fiche_statut, points = _fiche_statut_et_points(conn, offer_id)
+        fiche_statut, _points = _fiche_statut_et_points(conn, offer_id)
         offer_text = _offer_text(conn, offer_id)
-        chosen = resolve_chosen_indices(
-            points, row["points_choisis_json"] if row is not None else None
-        )
-        origine = row["points_choisis_origine"] if row is not None else None
-        blocage = blocage_lancement_lettre(fiche_statut, offer_text, chosen, origine)
+        blocage = blocage_lancement_lettre(fiche_statut, offer_text)
         if blocage is not None:
             raise HTTPException(status_code=409, detail=blocage)
     await launch_lettre(offer_id)
@@ -326,6 +328,14 @@ async def _regenerate(offer_id: int) -> None:
     mark_changed(offer_id)
 
 
+def _launch_regeneration(offer_id: int) -> None:
+    if offer_id not in _running:
+        _running.add(offer_id)
+        task = asyncio.create_task(_regenerate(offer_id))
+        _tasks.add(task)
+        task.add_done_callback(_tasks.discard)
+
+
 @router.post("/{offer_id}/lettre/regenerer")
 async def regenerer_lettre(offer_id: int, response: Response) -> dict:
     with get_conn() as conn:
@@ -347,13 +357,52 @@ async def regenerer_lettre(offer_id: int, response: Response) -> dict:
             )
         if offer_id not in _running:
             lettre_service.mark_regenerating(conn, offer_id)
-    if offer_id not in _running:
-        _running.add(offer_id)
-        task = asyncio.create_task(_regenerate(offer_id))
-        _tasks.add(task)
-        task.add_done_callback(_tasks.discard)
+    _launch_regeneration(offer_id)
     response.status_code = 202
     return {"regeneration_en_cours": True}
+
+
+@router.post("/{offer_id}/lettre/ecarter")
+async def ecarter_fait(offer_id: int, response: Response) -> dict:
+    """Écarte le fait retenu courant de la lettre et régénère aussitôt (EXE-162,
+    critère 13). Refuse avec une raison lisible si la lettre est générique ou
+    n'existe pas encore (critère 17)."""
+    with get_conn() as conn:
+        v = conn.execute(
+            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if v is None or v["status"] != "retenu":
+            raise HTTPException(
+                status_code=409,
+                detail="La lettre n'est régénérée que pour une offre retenue",
+            )
+        try:
+            lettre_service.ajouter_fait_ecarte(conn, offer_id)
+        except lettre_service.RienAEcarterError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if offer_id not in _running:
+            lettre_service.mark_regenerating(conn, offer_id)
+    _launch_regeneration(offer_id)
+    response.status_code = 202
+    return {"regeneration_en_cours": True}
+
+
+@router.post("/{offer_id}/lettre/remettre")
+def remettre_fait(offer_id: int, body: FaitEcarteIn) -> dict:
+    """Remet un fait écarté, sans régénérer (EXE-162, critère 15)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=404, detail="Pas de lettre pour cette offre"
+            )
+        lettre_service.retirer_fait_ecarte(conn, offer_id, body.citation, body.url)
+        row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+    return _row_to_lettre(row)
 
 
 def _lettre_page_ingredients(conn, offer_id: int) -> tuple[Coordonnees, str, str]:
@@ -419,7 +468,8 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT texte, tournures_signalees_json, nb_mots, depasse_longueur, "
-            "origine, created_at FROM lettre_versions WHERE offer_id = ? ORDER BY id ASC",
+            "origine, fait_retenu_json, created_at FROM lettre_versions "
+            "WHERE offer_id = ? ORDER BY id ASC",
             (offer_id,),
         ).fetchall()
     return [
@@ -429,6 +479,9 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
             "nb_mots": r["nb_mots"],
             "depasse_longueur": bool(r["depasse_longueur"]),
             "origine": r["origine"],
+            "fait_retenu": json.loads(r["fait_retenu_json"])
+            if r["fait_retenu_json"]
+            else None,
             "created_at": r["created_at"],
         }
         for r in rows
