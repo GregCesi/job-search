@@ -65,6 +65,7 @@ cp profiles/example.yaml profiles/moi.yaml        # votre profil : compétences,
 python -m orchestrator.job_search.run --profile profiles/moi.yaml
 
 # API
+source .venv/bin/activate
 uvicorn api.main:app --reload                     # http://localhost:8000
 
 # Interface
