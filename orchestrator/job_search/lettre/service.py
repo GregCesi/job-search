@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 from orchestrator.job_search.lettre.boucle import (
     GENERIQUE_ID,
+    MODELES_CLAUDE,
     RAISON_PLAFOND,
     RAISON_RIEN_A_REDIRE,
     ConfigBoucle,
@@ -37,7 +38,25 @@ from orchestrator.job_search.lettre.redaction import (
 from orchestrator.job_search.paths import LETTRE_TOURNURES_PATH
 from orchestrator.job_search.storage.db import get_connection, init_db
 
-MODELE = "sonnet"  # H2 du ticket EXE-162 : sonnet partout dans la boucle
+# EXE-166 : sonnet par défaut, choisi explicitement sinon (critères 1, 2, 4) —
+# jamais un modèle local (Ollama), cf. MODELES_CLAUDE de la boucle.
+MODELE_PAR_DEFAUT = "sonnet"
+
+
+def raison_modele_invalide(modele: str) -> str:
+    choix = " ou ".join(sorted(MODELES_CLAUDE))
+    return f"Modèle inconnu : « {modele} ». Choix possibles : {choix}."
+
+
+class ModeleInvalideError(ValueError):
+    """Modèle demandé hors de sonnet/opus (EXE-166, critère 3)."""
+
+
+def valider_modele(modele: str) -> None:
+    """Refuse avant tout appel de modèle (critère 3) : seuls sonnet et opus,
+    jamais un modèle local — MODELES_CLAUDE est la même liste que la boucle."""
+    if modele not in MODELES_CLAUDE:
+        raise ModeleInvalideError(raison_modele_invalide(modele))
 
 
 class LettreNonPreteError(RuntimeError):
@@ -77,16 +96,18 @@ def _append_version(
     depasse: bool,
     origine: str,
     fait_retenu: dict | None,
+    modele: str | None = None,
 ) -> None:
     """Ajoute une version à l'historique — jamais de réécriture ni de suppression
     d'une version existante (invariant du ticket EXE-66). Porte le fait retenu
-    (EXE-162, critère 7)."""
+    (EXE-162, critère 7) et le modèle qui l'a écrite, absent pour une reprise à
+    la main (EXE-166, critère 6)."""
     conn.execute(
         """
         INSERT INTO lettre_versions
             (offer_id, texte, tournures_signalees_json, nb_mots, depasse_longueur,
-             origine, fait_retenu_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             origine, fait_retenu_json, created_at, modele)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             offer_id,
@@ -97,6 +118,7 @@ def _append_version(
             origine,
             json.dumps(fait_retenu, ensure_ascii=False) if fait_retenu else None,
             _now(),
+            modele,
         ),
     )
 
@@ -141,14 +163,17 @@ def _filtrer_points_ecartes(points: list[dict], ecartes: list[dict]) -> list[dic
     return [p for p in points if _cle_fait(p) not in cles_ecartees]
 
 
-def _config_boucle() -> ConfigBoucle:
+def _config_boucle(modele: str) -> ConfigBoucle:
+    """Le modèle choisi tourne sur les quatre nœuds (critères 1, 2) : le
+    vérificateur, laissé à `None`, retombe sur celui de la rédaction
+    (`ConfigBoucle.modele_verificateur_effectif`), jamais un troisième modèle."""
     return ConfigBoucle(
-        modele_tamis=MODELE, modele_redaction=MODELE, modele_juge=MODELE
+        modele_tamis=modele, modele_redaction=modele, modele_juge=modele
     )
 
 
 async def _generate_via_boucle(
-    conn: sqlite3.Connection, offer_id: int
+    conn: sqlite3.Connection, offer_id: int, modele: str
 ) -> _GenerationBoucle:
     """Lance la boucle tamis → rédaction → vérificateur → juge (critère 1), sur
     les points de la fiche terminée moins les faits écartés (critères 4, 14) —
@@ -185,7 +210,7 @@ async def _generate_via_boucle(
         offer_text,
         entreprise,
         points_restants,
-        _config_boucle(),
+        _config_boucle(modele),
     )
 
     if resultat.raison_fin not in (RAISON_RIEN_A_REDIRE, RAISON_PLAFOND):
@@ -215,7 +240,7 @@ async def _generate_via_boucle(
 
 
 def _store_generation(
-    conn: sqlite3.Connection, offer_id: int, gen: _GenerationBoucle
+    conn: sqlite3.Connection, offer_id: int, gen: _GenerationBoucle, modele: str
 ) -> None:
     conn.execute(
         """
@@ -231,7 +256,7 @@ def _store_generation(
             json.dumps(gen.signalees, ensure_ascii=False),
             gen.nb_mots,
             int(gen.depasse),
-            MODELE,
+            modele,
             json.dumps(gen.fait_retenu, ensure_ascii=False)
             if gen.fait_retenu
             else None,
@@ -253,13 +278,15 @@ def _store_generation(
         gen.depasse,
         "modele",
         gen.fait_retenu,
+        modele,
     )
 
 
-async def run_lettre(offer_id: int) -> None:
-    """Produit la lettre de l'offre via la boucle. Toute exception (dont le
-    timeout, l'absence de fiche terminée, ou une raison de fin de boucle autre
-    que « rien à redire »/« plafond ») finit en `statut='error'`, sans qu'aucun
+async def run_lettre(offer_id: int, modele: str = MODELE_PAR_DEFAUT) -> None:
+    """Produit la lettre de l'offre via la boucle, sur le modèle choisi (sonnet
+    par défaut — EXE-166, critères 1, 2). Toute exception (dont le timeout,
+    l'absence de fiche terminée, ou une raison de fin de boucle autre que
+    « rien à redire »/« plafond ») finit en `statut='error'`, sans qu'aucun
     texte ne soit stocké (critère 9).
     """
     conn = get_connection()
@@ -267,8 +294,8 @@ async def run_lettre(offer_id: int) -> None:
         init_db(conn)
         reset_pending(conn, offer_id)
         try:
-            gen = await _generate_via_boucle(conn, offer_id)
-            _store_generation(conn, offer_id, gen)
+            gen = await _generate_via_boucle(conn, offer_id, modele)
+            _store_generation(conn, offer_id, gen, modele)
             conn.commit()
         except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf cv/service.py)
             conn.execute(
@@ -296,16 +323,17 @@ def mark_regenerating(conn: sqlite3.Connection, offer_id: int) -> None:
     conn.commit()
 
 
-async def run_lettre_regenerate(offer_id: int) -> None:
-    """Régénère la lettre de l'offre via la boucle, sur les faits restants après
-    exclusion (EXE-162). En cas d'échec ou de timeout, la version d'avant (texte,
-    signalements) reste en place intacte — seul l'état
-    `regeneration_en_cours`/`regeneration_error` change (critère 11 EXE-66)."""
+async def run_lettre_regenerate(offer_id: int, modele: str = MODELE_PAR_DEFAUT) -> None:
+    """Régénère la lettre de l'offre via la boucle, sur le modèle choisi (sonnet
+    par défaut) et les faits restants après exclusion (EXE-162). En cas d'échec
+    ou de timeout, la version d'avant (texte, signalements) reste en place
+    intacte — seul l'état `regeneration_en_cours`/`regeneration_error` change
+    (critère 11 EXE-66)."""
     conn = get_connection()
     try:
         init_db(conn)
         try:
-            gen = await _generate_via_boucle(conn, offer_id)
+            gen = await _generate_via_boucle(conn, offer_id, modele)
             conn.execute(
                 """
                 UPDATE lettres SET
@@ -320,7 +348,7 @@ async def run_lettre_regenerate(offer_id: int) -> None:
                     json.dumps(gen.signalees, ensure_ascii=False),
                     gen.nb_mots,
                     int(gen.depasse),
-                    MODELE,
+                    modele,
                     json.dumps(gen.fait_retenu, ensure_ascii=False)
                     if gen.fait_retenu
                     else None,
@@ -344,6 +372,7 @@ async def run_lettre_regenerate(offer_id: int) -> None:
                 gen.depasse,
                 "modele",
                 gen.fait_retenu,
+                modele,
             )
             conn.commit()
         except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf run_lettre)

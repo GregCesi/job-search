@@ -165,7 +165,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             depasse_longueur          INTEGER,
             origine                   TEXT NOT NULL, -- modele|moi (EXE-66)
             created_at                TEXT NOT NULL,
-            fait_retenu_json          TEXT  -- EXE-162 : fait retenu derrière cette version (critère 7)
+            fait_retenu_json          TEXT,  -- EXE-162 : fait retenu derrière cette version (critère 7)
+            modele                    TEXT  -- EXE-166 : modèle qui a écrit cette version ; NULL si origine='moi'
         );
 
         CREATE TABLE IF NOT EXISTS ajouts (
@@ -281,12 +282,14 @@ def migrate_lettres_schema(conn: sqlite3.Connection) -> None:
 
 
 def migrate_lettre_versions_schema(conn: sqlite3.Connection) -> None:
-    """Colonne ajoutée après la première livraison (EXE-162) — idempotente."""
+    """Colonnes ajoutées après la première livraison (EXE-162, EXE-166) — idempotente."""
     existing = {
         row[1] for row in conn.execute("PRAGMA table_info(lettre_versions)").fetchall()
     }
     if "fait_retenu_json" not in existing:
         conn.execute("ALTER TABLE lettre_versions ADD COLUMN fait_retenu_json TEXT")
+    if "modele" not in existing:
+        conn.execute("ALTER TABLE lettre_versions ADD COLUMN modele TEXT")
     conn.commit()
 
 

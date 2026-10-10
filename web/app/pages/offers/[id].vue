@@ -436,6 +436,20 @@
             <!-- Pas de lettre / erreur -->
             <div v-if="!lettre || lettre.statut === 'error'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
               <p v-if="lettre?.error_message" class="text-sm text-red-600">{{ lettre.error_message }}</p>
+              <div class="flex items-center gap-1 text-xs" role="radiogroup" aria-label="Modèle de la lettre">
+                <button
+                  type="button"
+                  @click="modeleLettre = 'sonnet'"
+                  :class="modeleLettre === 'sonnet' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'"
+                  class="px-2 py-1 rounded"
+                >Sonnet</button>
+                <button
+                  type="button"
+                  @click="modeleLettre = 'opus'"
+                  :class="modeleLettre === 'opus' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'"
+                  class="px-2 py-1 rounded"
+                >Opus</button>
+              </div>
               <button
                 @click="genererLettre"
                 :disabled="lettreBusy"
@@ -488,6 +502,22 @@
                   @click="copierTexte"
                   class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                 >{{ lettreCopied ? 'Copié !' : 'Copier' }}</button>
+                <div class="flex items-center gap-1 text-xs" role="radiogroup" aria-label="Modèle de la lettre">
+                  <button
+                    type="button"
+                    @click="modeleLettre = 'sonnet'"
+                    :disabled="lettre.regeneration_en_cours || lettreBusy"
+                    :class="modeleLettre === 'sonnet' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'"
+                    class="px-2 py-1 rounded disabled:opacity-50"
+                  >Sonnet</button>
+                  <button
+                    type="button"
+                    @click="modeleLettre = 'opus'"
+                    :disabled="lettre.regeneration_en_cours || lettreBusy"
+                    :class="modeleLettre === 'opus' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'"
+                    class="px-2 py-1 rounded disabled:opacity-50"
+                  >Opus</button>
+                </div>
                 <button
                   @click="regenererLettre"
                   :disabled="lettre.regeneration_en_cours || lettreBusy"
@@ -498,6 +528,7 @@
                   class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                 >Télécharger le PDF</button>
               </div>
+              <p v-if="lettre.modele" class="text-xs text-gray-400">Écrite par {{ lettre.modele }}</p>
               <p v-if="lettre.regeneration_error" class="text-xs text-red-600">{{ lettre.regeneration_error }}</p>
               <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600">{{ lettrePdfError }}</p>
@@ -563,7 +594,7 @@
                 <details v-for="(v, i) in lettreVersionsRecentesDabord" :key="i" class="rounded border border-gray-200 bg-gray-50">
                   <summary class="cursor-pointer px-3 py-2 text-xs text-gray-500 flex items-center justify-between select-none">
                     <span>{{ formatDateHeure(v.created_at) }}</span>
-                    <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0 ml-2">{{ v.origine === 'moi' ? 'moi' : 'modèle' }}</span>
+                    <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0 ml-2">{{ v.origine === 'moi' ? 'moi' : (v.modele ?? 'modèle') }}</span>
                   </summary>
                   <p class="text-xs text-gray-700 whitespace-pre-wrap px-3 pb-3">{{ v.texte }}</p>
                 </details>
@@ -1522,6 +1553,9 @@ let lettrePollTimer: ReturnType<typeof setInterval> | null = null
 
 const lettreUrl = () => `${config.public.apiBase}/offers/${id.value}/lettre`
 
+// EXE-166 : sonnet par défaut à chaque ouverture de l'offre, jamais mémorisé.
+const modeleLettre = ref<'sonnet' | 'opus'>('sonnet')
+
 const EMPTY_LETTRE: Lettre = {
   statut: 'pending',
   texte: null,
@@ -1596,7 +1630,7 @@ async function genererLettre() {
   lettreActionError.value = null
   lettreBusy.value = true
   try {
-    const res = await $fetch<Lettre>(lettreUrl(), { method: 'POST' })
+    const res = await $fetch<Lettre>(lettreUrl(), { method: 'POST', body: { modele: modeleLettre.value } })
     if (res.statut === 'done') {
       lettre.value = res
       texteEdit.value = res.texte ?? ''
@@ -1618,7 +1652,7 @@ async function regenererLettre() {
   lettreActionError.value = null
   lettreBusy.value = true
   try {
-    await $fetch(`${lettreUrl()}/regenerer`, { method: 'POST' })
+    await $fetch(`${lettreUrl()}/regenerer`, { method: 'POST', body: { modele: modeleLettre.value } })
     if (lettre.value) lettre.value = { ...lettre.value, regeneration_en_cours: true, regeneration_error: null }
     await chargerPieces()
     startLettrePolling()
@@ -1648,7 +1682,7 @@ async function ecarterFait() {
   lettreEcarterError.value = null
   lettreBusy.value = true
   try {
-    await $fetch(`${lettreUrl()}/ecarter`, { method: 'POST' })
+    await $fetch(`${lettreUrl()}/ecarter`, { method: 'POST', body: { modele: modeleLettre.value } })
     if (lettre.value) lettre.value = { ...lettre.value, regeneration_en_cours: true, regeneration_error: null }
     await chargerPieces()
     startLettrePolling()

@@ -19,6 +19,11 @@ réécrit ni tronqué.
 Enchaînement (TCK-281, EXE-127) : `launch_lettre_if_ready` est appelé par la fiche
 entreprise (api/fiche.py) dès qu'elle se termine — jamais par un changement de
 profil ni par un rescore.
+
+Modèle (EXE-166) : POST /lettre, /lettre/regenerer et /lettre/ecarter acceptent un
+corps optionnel `{"modele": "sonnet"|"opus"}` ; absent, sonnet. Un autre modèle est
+refusé (422) avant tout appel — `launch_lettre_if_ready` tourne toujours sur sonnet,
+quel que soit le choix fait ailleurs (critère 4).
 """
 
 import asyncio
@@ -81,6 +86,24 @@ class FaitEcarteIn(BaseModel):
 
     citation: str | None = None
     url: str | None = None
+
+
+class ModeleLettreIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    modele: str = lettre_service.MODELE_PAR_DEFAUT
+
+
+def _modele_choisi(body: ModeleLettreIn | None) -> str:
+    """Résout et valide le modèle demandé (EXE-166, critères 1-3) — refuse avant
+    tout appel de modèle, avant toute autre mutation, avec les deux choix
+    possibles dans le message."""
+    modele = body.modele if body is not None else lettre_service.MODELE_PAR_DEFAUT
+    try:
+        lettre_service.valider_modele(modele)
+    except lettre_service.ModeleInvalideError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return modele
 
 
 def _now() -> str:
@@ -179,20 +202,23 @@ def _row_to_lettre(row) -> dict:
     }
 
 
-async def _generate(offer_id: int) -> None:
+async def _generate(offer_id: int, modele: str) -> None:
     try:
-        await run_lettre(offer_id)
+        await run_lettre(offer_id, modele)
     finally:
         _running.discard(offer_id)
     mark_changed(offer_id)
 
 
-async def launch_lettre(offer_id: int) -> asyncio.Task | None:
+async def launch_lettre(
+    offer_id: int, modele: str = lettre_service.MODELE_PAR_DEFAUT
+) -> asyncio.Task | None:
     """Lance la génération si elle n'est pas déjà en cours ni déjà terminée —
-    idempotent (critères 2, 11, 12 du ticket EXE-127). Rend la tâche créée, ou
-    `None` si rien n'a été lancé. N'effectue aucune des gardes de lancement
-    (fiche terminée, texte présent, point choisi) : c'est à l'appelant de les
-    avoir vérifiées (route POST, ou `launch_lettre_if_ready`)."""
+    idempotent (critères 2, 11, 12 du ticket EXE-127), sur le modèle choisi
+    (sonnet par défaut — EXE-166). Rend la tâche créée, ou `None` si rien n'a
+    été lancé. N'effectue aucune des gardes de lancement (fiche terminée, texte
+    présent, point choisi) : c'est à l'appelant de les avoir vérifiées (route
+    POST, ou `launch_lettre_if_ready`)."""
     if offer_id in _running:
         return None
     with get_conn() as conn:
@@ -203,7 +229,7 @@ async def launch_lettre(offer_id: int) -> asyncio.Task | None:
             return None
         reset_pending(conn, offer_id)
     _running.add(offer_id)
-    task = asyncio.create_task(_generate(offer_id))
+    task = asyncio.create_task(_generate(offer_id, modele))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
     return task
@@ -262,11 +288,16 @@ async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
         if blocage_lancement_lettre(fiche_statut, offer_text) is not None:
             return None
 
-    return await launch_lettre(offer_id)
+    # Critère 4 : l'enchaînement automatique tourne toujours sur sonnet, quel
+    # que soit le modèle choisi ailleurs pour une génération ou régénération.
+    return await launch_lettre(offer_id, lettre_service.MODELE_PAR_DEFAUT)
 
 
 @router.post("/{offer_id}/lettre")
-async def create_lettre(offer_id: int, response: Response) -> dict:
+async def create_lettre(
+    offer_id: int, response: Response, body: ModeleLettreIn | None = None
+) -> dict:
+    modele = _modele_choisi(body)
     with get_conn() as conn:
         v = conn.execute(
             "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
@@ -288,7 +319,7 @@ async def create_lettre(offer_id: int, response: Response) -> dict:
         blocage = blocage_lancement_lettre(fiche_statut, offer_text)
         if blocage is not None:
             raise HTTPException(status_code=409, detail=blocage)
-    await launch_lettre(offer_id)
+    await launch_lettre(offer_id, modele)
     response.status_code = 202
     return {"statut": "pending"}
 
@@ -326,24 +357,27 @@ def put_lettre_texte(offer_id: int, body: LettreTexteIn) -> dict:
     return _row_to_lettre(row)
 
 
-async def _regenerate(offer_id: int) -> None:
+async def _regenerate(offer_id: int, modele: str) -> None:
     try:
-        await lettre_service.run_lettre_regenerate(offer_id)
+        await lettre_service.run_lettre_regenerate(offer_id, modele)
     finally:
         _running.discard(offer_id)
     mark_changed(offer_id)
 
 
-def _launch_regeneration(offer_id: int) -> None:
+def _launch_regeneration(offer_id: int, modele: str) -> None:
     if offer_id not in _running:
         _running.add(offer_id)
-        task = asyncio.create_task(_regenerate(offer_id))
+        task = asyncio.create_task(_regenerate(offer_id, modele))
         _tasks.add(task)
         task.add_done_callback(_tasks.discard)
 
 
 @router.post("/{offer_id}/lettre/regenerer")
-async def regenerer_lettre(offer_id: int, response: Response) -> dict:
+async def regenerer_lettre(
+    offer_id: int, response: Response, body: ModeleLettreIn | None = None
+) -> dict:
+    modele = _modele_choisi(body)
     with get_conn() as conn:
         v = conn.execute(
             "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
@@ -363,16 +397,20 @@ async def regenerer_lettre(offer_id: int, response: Response) -> dict:
             )
         if offer_id not in _running:
             lettre_service.mark_regenerating(conn, offer_id)
-    _launch_regeneration(offer_id)
+    _launch_regeneration(offer_id, modele)
     response.status_code = 202
     return {"regeneration_en_cours": True}
 
 
 @router.post("/{offer_id}/lettre/ecarter")
-async def ecarter_fait(offer_id: int, response: Response) -> dict:
+async def ecarter_fait(
+    offer_id: int, response: Response, body: ModeleLettreIn | None = None
+) -> dict:
     """Écarte le fait retenu courant de la lettre et régénère aussitôt (EXE-162,
-    critère 13). Refuse avec une raison lisible si la lettre est générique ou
-    n'existe pas encore (critère 17)."""
+    critère 13), sur le modèle choisi (sonnet par défaut — EXE-166). Refuse avec
+    une raison lisible si la lettre est générique ou n'existe pas encore
+    (critère 17)."""
+    modele = _modele_choisi(body)
     with get_conn() as conn:
         v = conn.execute(
             "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
@@ -388,7 +426,7 @@ async def ecarter_fait(offer_id: int, response: Response) -> dict:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if offer_id not in _running:
             lettre_service.mark_regenerating(conn, offer_id)
-    _launch_regeneration(offer_id)
+    _launch_regeneration(offer_id, modele)
     response.status_code = 202
     return {"regeneration_en_cours": True}
 
@@ -474,7 +512,7 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT texte, tournures_signalees_json, nb_mots, depasse_longueur, "
-            "origine, fait_retenu_json, created_at FROM lettre_versions "
+            "origine, fait_retenu_json, created_at, modele FROM lettre_versions "
             "WHERE offer_id = ? ORDER BY id ASC",
             (offer_id,),
         ).fetchall()
@@ -489,6 +527,7 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
             if r["fait_retenu_json"]
             else None,
             "created_at": r["created_at"],
+            "modele": r["modele"],
         }
         for r in rows
     ]

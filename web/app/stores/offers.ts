@@ -164,6 +164,7 @@ export interface LettreVersion {
   origine: 'modele' | 'moi'
   fait_retenu: FaitRetenu | null
   created_at: string
+  modele: string | null // EXE-166 : absent pour une version « moi »
 }
 
 export type PieceStatut = 'a_faire' | 'en_cours' | 'prete'
