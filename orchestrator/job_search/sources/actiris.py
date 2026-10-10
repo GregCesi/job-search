@@ -195,15 +195,17 @@ class ActirisSource(Source):
 
     def _map(self, reference: str, item: dict) -> JobOffer | None:
         type_offer = str(item.get("typeOffer") or "")
-        title_fr = str(item.get("titreFr") or "").strip()
-        title_nl = str(item.get("titreNl") or "").strip()
+        title_fr = html.unescape(str(item.get("titreFr") or "")).strip()
+        title_nl = html.unescape(str(item.get("titreNl") or "")).strip()
 
         detail = self._fetch_detail(reference, type_offer)
 
         title = title_fr or title_nl or (detail or {}).get("title") or "Sans titre"
         title = _strip_gender_suffix(title) or "Sans titre"
 
-        commune = str(item.get("communeFr") or item.get("communeNl") or "").strip()
+        commune = html.unescape(
+            str(item.get("communeFr") or item.get("communeNl") or "")
+        ).strip()
         code_postal = str(item.get("codePostal") or "").strip()
         location_line = ""
         if commune or code_postal:
