@@ -151,6 +151,7 @@ export interface Lettre {
   nb_mots: number | null
   depasse_longueur: boolean
   modele: string | null
+  modele_juge: string | null // EXE-169 : toujours opus, à part du modèle choisi
   cost_usd: number | null
   error_message: string | null
   created_at: string
@@ -175,6 +176,10 @@ export interface LettreVersion {
   fait_retenu: FaitRetenu | null
   created_at: string
   modele: string | null // EXE-166 : absent pour une version « moi »
+  modele_juge: string | null // EXE-169 : absent pour une version « moi »
+  jugement: Jugement | null // EXE-169 : absent pour une version « moi »
+  nb_tours: number | null // EXE-169 : absent pour une version « moi »
+  raison_fin: string | null // EXE-169 : absent pour une version « moi »
 }
 
 export type PieceStatut = 'a_faire' | 'en_cours' | 'prete'

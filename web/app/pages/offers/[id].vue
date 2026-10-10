@@ -546,7 +546,7 @@
                   class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                 >Télécharger le PDF</button>
               </div>
-              <p v-if="lettre.modele" class="text-xs text-gray-400">Écrite par {{ lettre.modele }}</p>
+              <p v-if="lettre.modele" class="text-xs text-gray-400">écrite par {{ nomModele(lettre.modele) }}, jugée par {{ nomModele(lettre.modele_juge) }}</p>
               <p v-if="lettre.regeneration_error" class="text-xs text-red-600">{{ lettre.regeneration_error }}</p>
               <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600">{{ lettrePdfError }}</p>
@@ -614,7 +614,20 @@
                     <span>{{ formatDateHeure(v.created_at) }}</span>
                     <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0 ml-2">{{ v.origine === 'moi' ? 'moi' : (v.modele ?? 'modèle') }}</span>
                   </summary>
-                  <p class="text-xs text-gray-700 whitespace-pre-wrap px-3 pb-3">{{ v.texte }}</p>
+                  <div class="px-3 pb-3 space-y-2">
+                    <p class="text-xs text-gray-700 whitespace-pre-wrap">{{ v.texte }}</p>
+                    <div v-if="v.jugement" class="rounded border border-gray-200 bg-white p-3 space-y-1 text-xs">
+                      <div class="flex items-center justify-between">
+                        <h4 class="font-semibold text-gray-400 uppercase tracking-wide">Verdict du juge</h4>
+                        <span class="text-gray-400">{{ v.nb_tours }} tour(s) — {{ v.raison_fin }}</span>
+                      </div>
+                      <p class="text-gray-400">{{ nomModele(v.modele) }} a écrit, {{ nomModele(v.modele_juge) }} a jugé.</p>
+                      <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Ressenti</summary><p class="text-gray-700 whitespace-pre-wrap">{{ v.jugement.ressenti }}</p></details>
+                      <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Détails</summary><p class="text-gray-700 whitespace-pre-wrap">{{ v.jugement.details }}</p></details>
+                      <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Réussites</summary><p class="text-gray-700 whitespace-pre-wrap">{{ v.jugement.reussites }}</p></details>
+                      <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Verdict</summary><p class="text-gray-700 whitespace-pre-wrap">{{ v.jugement.verdict }}</p></details>
+                    </div>
+                  </div>
                 </details>
               </div>
             </section>
@@ -1581,6 +1594,7 @@ const EMPTY_LETTRE: Lettre = {
   nb_mots: null,
   depasse_longueur: false,
   modele: null,
+  modele_juge: null,
   cost_usd: null,
   error_message: null,
   created_at: '',
@@ -1594,6 +1608,13 @@ const EMPTY_LETTRE: Lettre = {
   releve: null,
   faits_ecartes: [],
   etape: null,
+}
+
+// EXE-169, critères 9, 10 : nom affiché du modèle (sonnet/opus) — jamais le
+// nom d'alias brut reçu de l'API.
+const NOMS_MODELES: Record<string, string> = { sonnet: 'Sonnet', opus: 'Opus' }
+function nomModele(m: string | null): string {
+  return m ? (NOMS_MODELES[m] ?? m) : ''
 }
 
 // EXE-167, critère 8 : texte affiché pour chaque étape de la boucle — la

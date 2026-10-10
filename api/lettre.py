@@ -210,6 +210,7 @@ def _row_to_lettre(row, offer_id: int) -> dict:
         "nb_mots": row["nb_mots"],
         "depasse_longueur": bool(row["depasse_longueur"]),
         "modele": row["modele"],
+        "modele_juge": row["modele_juge"],
         "cost_usd": row["cost_usd"],
         "error_message": row["error_message"],
         "created_at": row["created_at"],
@@ -543,7 +544,8 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT texte, tournures_signalees_json, nb_mots, depasse_longueur, "
-            "origine, fait_retenu_json, created_at, modele FROM lettre_versions "
+            "origine, fait_retenu_json, created_at, modele, modele_juge, "
+            "jugement_json, nb_tours, raison_fin FROM lettre_versions "
             "WHERE offer_id = ? ORDER BY id ASC",
             (offer_id,),
         ).fetchall()
@@ -559,6 +561,10 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
             else None,
             "created_at": r["created_at"],
             "modele": r["modele"],
+            "modele_juge": r["modele_juge"],
+            "jugement": json.loads(r["jugement_json"]) if r["jugement_json"] else None,
+            "nb_tours": r["nb_tours"],
+            "raison_fin": r["raison_fin"],
         }
         for r in rows
     ]

@@ -43,6 +43,11 @@ from orchestrator.job_search.storage.db import get_connection, init_db
 # jamais un modèle local (Ollama), cf. MODELES_CLAUDE de la boucle.
 MODELE_PAR_DEFAUT = "sonnet"
 
+# EXE-169 : le juge tourne toujours sur opus, jamais sur le modèle choisi
+# (critères 1, 2) — un juge sonnet avait laissé passer des lettres que je
+# jugeais moi-même mauvaises.
+MODELE_JUGE = "opus"
+
 
 def raison_modele_invalide(modele: str) -> str:
     choix = " ou ".join(sorted(MODELES_CLAUDE))
@@ -80,6 +85,7 @@ class _GenerationBoucle:
     nb_tours: int
     raison_fin: str
     jugement: dict | None
+    modele_juge: str  # EXE-169 : toujours MODELE_JUGE, à part du modèle choisi
     releve: dict | None
     appels: list[dict]
 
@@ -98,17 +104,26 @@ def _append_version(
     origine: str,
     fait_retenu: dict | None,
     modele: str | None = None,
+    modele_juge: str | None = None,
+    jugement: dict | None = None,
+    nb_tours: int | None = None,
+    raison_fin: str | None = None,
 ) -> None:
     """Ajoute une version à l'historique — jamais de réécriture ni de suppression
     d'une version existante (invariant du ticket EXE-66). Porte le fait retenu
     (EXE-162, critère 7) et le modèle qui l'a écrite, absent pour une reprise à
-    la main (EXE-166, critère 6)."""
+    la main (EXE-166, critère 6). Pour une version écrite par la boucle (EXE-169,
+    critères 4, 6, 8) : le modèle du juge à part du modèle choisi, et le verdict
+    du juge sur cette lettre (ses quatre rubriques, le nombre de tours, la raison
+    de fin) — tous absents pour une reprise à la main, pour qu'une régénération
+    ultérieure ne touche jamais le jugement déjà écrit dans l'historique."""
     conn.execute(
         """
         INSERT INTO lettre_versions
             (offer_id, texte, tournures_signalees_json, nb_mots, depasse_longueur,
-             origine, fait_retenu_json, created_at, modele)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             origine, fait_retenu_json, created_at, modele, modele_juge,
+             jugement_json, nb_tours, raison_fin)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             offer_id,
@@ -120,6 +135,10 @@ def _append_version(
             json.dumps(fait_retenu, ensure_ascii=False) if fait_retenu else None,
             _now(),
             modele,
+            modele_juge,
+            json.dumps(jugement, ensure_ascii=False) if jugement else None,
+            nb_tours,
+            raison_fin,
         ),
     )
 
@@ -165,11 +184,13 @@ def _filtrer_points_ecartes(points: list[dict], ecartes: list[dict]) -> list[dic
 
 
 def _config_boucle(modele: str) -> ConfigBoucle:
-    """Le modèle choisi tourne sur les quatre nœuds (critères 1, 2) : le
+    """Le modèle choisi tourne sur le tamis et la rédaction (critères 1, 2) : le
     vérificateur, laissé à `None`, retombe sur celui de la rédaction
-    (`ConfigBoucle.modele_verificateur_effectif`), jamais un troisième modèle."""
+    (`ConfigBoucle.modele_verificateur_effectif`), jamais un troisième modèle.
+    Le juge tourne toujours sur `MODELE_JUGE` (EXE-169), jamais sur le modèle
+    choisi."""
     return ConfigBoucle(
-        modele_tamis=modele, modele_redaction=modele, modele_juge=modele
+        modele_tamis=modele, modele_redaction=modele, modele_juge=MODELE_JUGE
     )
 
 
@@ -214,13 +235,14 @@ async def _generate_via_boucle(
     # Critère 6 : absent, l'appel garde exactement sa forme d'avant la fiche —
     # aucun argument supplémentaire à qui n'a pas demandé à être écouté.
     kwargs_etape = {"on_etape": on_etape} if on_etape is not None else {}
+    config = _config_boucle(modele)
     resultat = await asyncio.to_thread(
         generer_lettre_depuis_donnees,
         offer["title"] or "",
         offer_text,
         entreprise,
         points_restants,
-        _config_boucle(modele),
+        config,
         **kwargs_etape,
     )
 
@@ -245,6 +267,7 @@ async def _generate_via_boucle(
         nb_tours=resultat.nb_tours,
         raison_fin=resultat.raison_fin,
         jugement=asdict(jugement) if jugement is not None else None,
+        modele_juge=config.modele_juge,
         releve=releve,
         appels=[asdict(a) for a in resultat.appels],
     )
@@ -257,9 +280,9 @@ def _store_generation(
         """
         UPDATE lettres SET
             statut='done', texte=?, tournures_signalees_json=?, nb_mots=?,
-            depasse_longueur=?, modele=?, fait_retenu_json=?, texte_type_id=?,
-            nb_tours=?, raison_fin=?, jugement_json=?, releve_json=?, appels_json=?,
-            error_message=NULL
+            depasse_longueur=?, modele=?, modele_juge=?, fait_retenu_json=?,
+            texte_type_id=?, nb_tours=?, raison_fin=?, jugement_json=?,
+            releve_json=?, appels_json=?, error_message=NULL
         WHERE offer_id=?
         """,
         (
@@ -268,6 +291,7 @@ def _store_generation(
             gen.nb_mots,
             int(gen.depasse),
             modele,
+            gen.modele_juge,
             json.dumps(gen.fait_retenu, ensure_ascii=False)
             if gen.fait_retenu
             else None,
@@ -290,6 +314,10 @@ def _store_generation(
         "modele",
         gen.fait_retenu,
         modele,
+        gen.modele_juge,
+        gen.jugement,
+        gen.nb_tours,
+        gen.raison_fin,
     )
 
 
@@ -360,9 +388,9 @@ async def run_lettre_regenerate(
                 """
                 UPDATE lettres SET
                     texte=?, tournures_signalees_json=?, nb_mots=?, depasse_longueur=?,
-                    modele=?, fait_retenu_json=?, texte_type_id=?, nb_tours=?,
-                    raison_fin=?, jugement_json=?, releve_json=?, appels_json=?,
-                    regeneration_en_cours=0, regeneration_error=NULL
+                    modele=?, modele_juge=?, fait_retenu_json=?, texte_type_id=?,
+                    nb_tours=?, raison_fin=?, jugement_json=?, releve_json=?,
+                    appels_json=?, regeneration_en_cours=0, regeneration_error=NULL
                 WHERE offer_id=?
                 """,
                 (
@@ -371,6 +399,7 @@ async def run_lettre_regenerate(
                     gen.nb_mots,
                     int(gen.depasse),
                     modele,
+                    gen.modele_juge,
                     json.dumps(gen.fait_retenu, ensure_ascii=False)
                     if gen.fait_retenu
                     else None,
@@ -395,6 +424,10 @@ async def run_lettre_regenerate(
                 "modele",
                 gen.fait_retenu,
                 modele,
+                gen.modele_juge,
+                gen.jugement,
+                gen.nb_tours,
+                gen.raison_fin,
             )
             conn.commit()
         except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf run_lettre)

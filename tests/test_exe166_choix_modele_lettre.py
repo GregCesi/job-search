@@ -146,7 +146,8 @@ class TestCritere1DefautSonnet:
         config = captured["config"]
         assert config.modele_tamis == "sonnet"
         assert config.modele_redaction == "sonnet"
-        assert config.modele_juge == "sonnet"
+        # EXE-169 : le juge tourne toujours sur opus, jamais sur le modèle choisi.
+        assert config.modele_juge == "opus"
         assert config.modele_verificateur_effectif() == "sonnet"
 
     def test_create_lettre_sans_corps_lance_sur_sonnet(self, db_path, monkeypatch):
