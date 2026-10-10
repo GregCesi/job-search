@@ -260,6 +260,15 @@
                     title="Miniature de la lettre"
                   />
                 </div>
+                <div
+                  v-else-if="cardAvancement('Lettre de motivation')?.etat === 'en_cours'"
+                  class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center"
+                >
+                  <svg class="w-4 h-4 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                  </svg>
+                </div>
                 <div v-else class="h-10 rounded bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center">
                   <span class="text-xs text-gray-300 italic">{{ cardPreview('Lettre de motivation') }}</span>
                 </div>
@@ -458,13 +467,22 @@
               <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
             </div>
 
-            <!-- En cours -->
-            <div v-else-if="lettre.statut === 'pending'" class="rounded-lg border border-gray-200 bg-white p-6 flex items-center justify-center gap-3 text-sm text-gray-500">
-              <svg class="w-5 h-5 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
+            <!-- En cours : génération ou régénération (EXE-167, critère 8) -->
+            <div v-else-if="lettre.statut === 'pending' || lettre.regeneration_en_cours" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+              <svg class="w-8 h-8 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
               </svg>
-              Génération en cours…
+              <p class="text-sm text-gray-500">{{ lettreEtapeTexte }}</p>
+              <div class="w-full max-w-xs">
+                <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                  <div
+                    class="h-1.5 rounded-full bg-indigo-500 transition-all"
+                    :style="{ width: `${lettre.etape?.pourcentage ?? 0}%` }"
+                  />
+                </div>
+                <p class="text-xs text-gray-400 mt-1">{{ lettre.etape?.pourcentage ?? 0 }}%</p>
+              </div>
             </div>
 
             <!-- Lettre prête -->
@@ -1575,7 +1593,25 @@ const EMPTY_LETTRE: Lettre = {
   jugement: null,
   releve: null,
   faits_ecartes: [],
+  etape: null,
 }
+
+// EXE-167, critère 8 : texte affiché pour chaque étape de la boucle — la
+// correction du vérificateur n'avance pas la barre mais a son propre texte.
+const ETAPE_LABELS: Record<string, string> = {
+  choix_du_fait: 'je choisis le fait à mettre en avant',
+  redaction: 'j\'écris la lettre',
+  verification: 'je relis la lettre',
+  correction: 'je corrige la lettre',
+  lecture_du_juge: 'le juge relit la lettre',
+}
+
+const lettreEtapeTexte = computed(() => {
+  const e = lettre.value?.etape
+  if (!e) return 'Génération en cours…'
+  const label = ETAPE_LABELS[e.etape] ?? e.etape
+  return `Tour ${e.tour} sur ${e.max_tours} : ${label}`
+})
 
 async function chargerLettre() {
   try {
@@ -1745,7 +1781,9 @@ function miniatureVisible(title: string): boolean {
 const activeCard = ref<string | null>(null)
 function openCard(title: string) {
   if (title === 'CV' && cv.value?.statut === 'done') { ouvrirApercu(title); return }
-  if (title === 'Lettre de motivation' && lettre.value?.statut === 'done') { ouvrirApercu(title); return }
+  // EXE-167, critère 8 : une régénération en cours ouvre l'écran de chargement
+  // (activeCard), jamais l'aperçu figé sur l'ancienne mise en page.
+  if (title === 'Lettre de motivation' && lettre.value?.statut === 'done' && !lettre.value.regeneration_en_cours) { ouvrirApercu(title); return }
   activeCard.value = title
   if (title === 'Mail de candidature') chargerMail()
 }

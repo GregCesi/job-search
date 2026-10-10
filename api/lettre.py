@@ -28,12 +28,14 @@ quel que soit le choix fait ailleurs (critère 4).
 
 import asyncio
 import json
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, ConfigDict
 
 import orchestrator.job_search.lettre.service as lettre_service
+from orchestrator.job_search.avancement import ProgressionLettre
 from orchestrator.job_search.lettre.redaction import (
     blocage_lancement_lettre,
     point_text,
@@ -60,6 +62,10 @@ router = APIRouter(prefix="/offers")
 _tasks: set[asyncio.Task] = set()
 _running: set[int] = set()
 
+# EXE-167, H3 : l'étape en cours vit dans la mémoire du processus, jamais en
+# base — posée au lancement, retirée dès que la génération/régénération finit.
+_progression: dict[int, ProgressionLettre] = {}
+
 
 def is_running(offer_id: int) -> bool:
     return offer_id in _running
@@ -67,6 +73,24 @@ def is_running(offer_id: int) -> bool:
 
 def running_offer_ids() -> set[int]:
     return set(_running)
+
+
+def progression_lettre(offer_id: int) -> dict | None:
+    """Étape en cours (EXE-167, critère 2) — None hors génération/régénération
+    (critère 4), même si une entrée orpheline subsiste encore en mémoire."""
+    if offer_id not in _running:
+        return None
+    tracker = _progression.get(offer_id)
+    return tracker.as_dict() if tracker is not None else None
+
+
+def _on_etape(offer_id: int) -> Callable[[dict], None]:
+    tracker = _progression.setdefault(offer_id, ProgressionLettre())
+
+    def _callback(signal: dict) -> None:
+        tracker.signaler(signal)
+
+    return _callback
 
 
 class PointsChoisisIn(BaseModel):
@@ -178,7 +202,7 @@ def _fait_retenu(row) -> dict | None:
     return {**fait, "sujet_libelle": sujet_libelle(fait.get("sujet"))}
 
 
-def _row_to_lettre(row) -> dict:
+def _row_to_lettre(row, offer_id: int) -> dict:
     return {
         "statut": row["statut"],
         "texte": row["texte"],
@@ -199,14 +223,18 @@ def _row_to_lettre(row) -> dict:
         "jugement": json.loads(row["jugement_json"]) if row["jugement_json"] else None,
         "releve": json.loads(row["releve_json"]) if row["releve_json"] else None,
         "faits_ecartes": json.loads(row["faits_ecartes_json"] or "[]"),
+        # EXE-167, critères 2, 4 : étape de la boucle en cours — None hors
+        # génération/régénération.
+        "etape": progression_lettre(offer_id),
     }
 
 
 async def _generate(offer_id: int, modele: str) -> None:
     try:
-        await run_lettre(offer_id, modele)
+        await run_lettre(offer_id, modele, on_etape=_on_etape(offer_id))
     finally:
         _running.discard(offer_id)
+        _progression.pop(offer_id, None)
     mark_changed(offer_id)
 
 
@@ -312,7 +340,7 @@ async def create_lettre(
         ).fetchone()
         if row is not None and row["statut"] == "done":
             response.status_code = 200
-            return _row_to_lettre(row)
+            return _row_to_lettre(row, offer_id)
 
         fiche_statut, _points = _fiche_statut_et_points(conn, offer_id)
         offer_text = _offer_text(conn, offer_id)
@@ -332,7 +360,7 @@ def get_lettre(offer_id: int) -> dict:
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Pas de lettre pour cette offre")
-    lettre = _row_to_lettre(row)
+    lettre = _row_to_lettre(row, offer_id)
     if lettre["statut"] == "pending" and offer_id not in _running:
         # Génération orpheline (API redémarrée en cours de route) : l'exposer comme relançable.
         lettre["statut"] = "error"
@@ -354,14 +382,17 @@ def put_lettre_texte(offer_id: int, body: LettreTexteIn) -> dict:
         row = conn.execute(
             "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
         ).fetchone()
-    return _row_to_lettre(row)
+    return _row_to_lettre(row, offer_id)
 
 
 async def _regenerate(offer_id: int, modele: str) -> None:
     try:
-        await lettre_service.run_lettre_regenerate(offer_id, modele)
+        await lettre_service.run_lettre_regenerate(
+            offer_id, modele, on_etape=_on_etape(offer_id)
+        )
     finally:
         _running.discard(offer_id)
+        _progression.pop(offer_id, None)
     mark_changed(offer_id)
 
 
@@ -446,7 +477,7 @@ def remettre_fait(offer_id: int, body: FaitEcarteIn) -> dict:
         row = conn.execute(
             "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
         ).fetchone()
-    return _row_to_lettre(row)
+    return _row_to_lettre(row, offer_id)
 
 
 def _lettre_page_ingredients(conn, offer_id: int) -> tuple[Coordonnees, str, str]:

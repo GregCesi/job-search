@@ -15,6 +15,7 @@ l'utilisateur — est journalisé dans `lettre_versions`, jamais réécrit ni ef
 import asyncio
 import json
 import sqlite3
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 
@@ -173,13 +174,19 @@ def _config_boucle(modele: str) -> ConfigBoucle:
 
 
 async def _generate_via_boucle(
-    conn: sqlite3.Connection, offer_id: int, modele: str
+    conn: sqlite3.Connection,
+    offer_id: int,
+    modele: str,
+    on_etape: Callable[[dict], None] | None = None,
 ) -> _GenerationBoucle:
     """Lance la boucle tamis → rédaction → vérificateur → juge (critère 1), sur
     les points de la fiche terminée moins les faits écartés (critères 4, 14) —
     jamais sur les points cochés ni la désignation de la fiche. Tourne dans un
     thread (critère 2) : `generer_lettre_depuis_donnees` appelle `asyncio.run` en
-    interne, incompatible avec la boucle d'événements de l'API."""
+    interne, incompatible avec la boucle d'événements de l'API.
+
+    `on_etape` (EXE-167) : transmis tel quel à la boucle, appelé depuis le
+    thread — optionnel, sans effet quand personne ne l'écoute (critère 6)."""
     offer = conn.execute(
         "SELECT title, description_raw, description, company FROM offers WHERE id = ?",
         (offer_id,),
@@ -204,6 +211,9 @@ async def _generate_via_boucle(
     points_restants = _filtrer_points_ecartes(points, ecartes)
     entreprise = fiche["employeur_nom"] or offer["company"] or ""
 
+    # Critère 6 : absent, l'appel garde exactement sa forme d'avant la fiche —
+    # aucun argument supplémentaire à qui n'a pas demandé à être écouté.
+    kwargs_etape = {"on_etape": on_etape} if on_etape is not None else {}
     resultat = await asyncio.to_thread(
         generer_lettre_depuis_donnees,
         offer["title"] or "",
@@ -211,6 +221,7 @@ async def _generate_via_boucle(
         entreprise,
         points_restants,
         _config_boucle(modele),
+        **kwargs_etape,
     )
 
     if resultat.raison_fin not in (RAISON_RIEN_A_REDIRE, RAISON_PLAFOND):
@@ -282,19 +293,26 @@ def _store_generation(
     )
 
 
-async def run_lettre(offer_id: int, modele: str = MODELE_PAR_DEFAUT) -> None:
+async def run_lettre(
+    offer_id: int,
+    modele: str = MODELE_PAR_DEFAUT,
+    on_etape: Callable[[dict], None] | None = None,
+) -> None:
     """Produit la lettre de l'offre via la boucle, sur le modèle choisi (sonnet
     par défaut — EXE-166, critères 1, 2). Toute exception (dont le timeout,
     l'absence de fiche terminée, ou une raison de fin de boucle autre que
     « rien à redire »/« plafond ») finit en `statut='error'`, sans qu'aucun
     texte ne soit stocké (critère 9).
+
+    `on_etape` (EXE-167, critère 2) : signal de progression optionnel, posé par
+    l'appelant (l'API) — absent par défaut, sans effet sur ce module.
     """
     conn = get_connection()
     try:
         init_db(conn)
         reset_pending(conn, offer_id)
         try:
-            gen = await _generate_via_boucle(conn, offer_id, modele)
+            gen = await _generate_via_boucle(conn, offer_id, modele, on_etape)
             _store_generation(conn, offer_id, gen, modele)
             conn.commit()
         except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf cv/service.py)
@@ -323,17 +341,21 @@ def mark_regenerating(conn: sqlite3.Connection, offer_id: int) -> None:
     conn.commit()
 
 
-async def run_lettre_regenerate(offer_id: int, modele: str = MODELE_PAR_DEFAUT) -> None:
+async def run_lettre_regenerate(
+    offer_id: int,
+    modele: str = MODELE_PAR_DEFAUT,
+    on_etape: Callable[[dict], None] | None = None,
+) -> None:
     """Régénère la lettre de l'offre via la boucle, sur le modèle choisi (sonnet
     par défaut) et les faits restants après exclusion (EXE-162). En cas d'échec
     ou de timeout, la version d'avant (texte, signalements) reste en place
     intacte — seul l'état `regeneration_en_cours`/`regeneration_error` change
-    (critère 11 EXE-66)."""
+    (critère 11 EXE-66). `on_etape` (EXE-167) : même contrat que `run_lettre`."""
     conn = get_connection()
     try:
         init_db(conn)
         try:
-            gen = await _generate_via_boucle(conn, offer_id, modele)
+            gen = await _generate_via_boucle(conn, offer_id, modele, on_etape)
             conn.execute(
                 """
                 UPDATE lettres SET

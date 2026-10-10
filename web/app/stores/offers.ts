@@ -135,6 +135,15 @@ export interface Releve {
   affirmations: { passage: string, manque: string }[]
 }
 
+// Étape en cours de la boucle (EXE-167, critères 2, 3) — présente seulement
+// pendant une génération ou une régénération.
+export interface LettreEtape {
+  etape: string
+  tour: number
+  max_tours: number
+  pourcentage: number
+}
+
 export interface Lettre {
   statut: LettreStatut
   texte: string | null
@@ -154,6 +163,7 @@ export interface Lettre {
   jugement: Jugement | null
   releve: Releve | null
   faits_ecartes: FaitRetenu[]
+  etape: LettreEtape | null
 }
 
 export interface LettreVersion {

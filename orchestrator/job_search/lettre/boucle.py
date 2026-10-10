@@ -24,6 +24,7 @@ import json
 import sqlite3
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypedDict
@@ -77,6 +78,14 @@ _FORBIDDEN_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebSearch", "WebFe
 RAISON_GENERIQUE_MANQUANT = "Le texte générique n'est pas écrit dans le répertoire"
 RAISON_RIEN_A_REDIRE = "Le juge n'a rien à redire"
 RAISON_PLAFOND = "Le plafond de tours est atteint"
+
+# EXE-167, critère 2 : noms d'étape rendus par le signal de progression — la
+# correction n'est pas comptée dans le plafond de dix étapes (critère 3).
+ETAPE_CHOIX_FAIT = "choix_du_fait"
+ETAPE_REDACTION = "redaction"
+ETAPE_VERIFICATION = "verification"
+ETAPE_CORRECTION = "correction"
+ETAPE_JUGE = "lecture_du_juge"
 
 _SCHEMA_TAMIS = {
     "type": "object",
@@ -222,6 +231,20 @@ class EtatBoucle(TypedDict):
     erreur: dict | None
     fin: bool
     raison_fin: str | None
+    # EXE-167, critère 6 : optionnel, sans effet quand personne ne l'écoute —
+    # jamais lu par le banc ni par les tests qui n'en ont pas besoin.
+    on_etape: Callable[[dict], None] | None
+
+
+def _signaler(
+    on_etape: Callable[[dict], None] | None, etape: str, tour: int, *, fin: bool = False
+) -> None:
+    """Signal d'étape (EXE-167, critères 2, 3) : appelé seulement quand un nœud
+    termine avec succès — jamais sur un nœud en échec, pour ne jamais inventer
+    une étape qui n'a pas eu lieu."""
+    if on_etape is None:
+        return
+    on_etape({"etape": etape, "tour": tour, "max_tours": MAX_TOURS, "fin": fin})
 
 
 def _appeler_claude(
@@ -417,6 +440,7 @@ def noeud_tamis(state: EtatBoucle) -> dict:
         texte_type = next(tt for tt in repertoire.textes_types if tt.id == GENERIQUE_ID)
         if not (texte_type.texte or "").strip():
             return {"erreur": {"noeud": "tamis", "raison": RAISON_GENERIQUE_MANQUANT}}
+        _signaler(state.get("on_etape"), ETAPE_CHOIX_FAIT, 1)
         return {"fait_retenu": None, "texte_type": texte_type}
 
     prompt = _prompt_tamis(
@@ -479,6 +503,7 @@ def noeud_tamis(state: EtatBoucle) -> dict:
             "erreur": {"noeud": "tamis", "raison": RAISON_GENERIQUE_MANQUANT},
         }
 
+    _signaler(state.get("on_etape"), ETAPE_CHOIX_FAIT, 1)
     return {
         "appels": state["appels"] + [appel],
         "fait_retenu": point,
@@ -729,6 +754,7 @@ def noeud_redaction(state: EtatBoucle) -> dict:
             "nb_mots": count_words(texte),
             "texte_corrige": texte,
         }
+        _signaler(state.get("on_etape"), ETAPE_CORRECTION, state["tour"])
         return {
             "appels": state["appels"] + [appel],
             "lettres": lettres[:-1] + [nouvelle],
@@ -744,10 +770,12 @@ def noeud_redaction(state: EtatBoucle) -> dict:
         "releve_correction": None,
         "jugement": None,
     }
+    nouveau_tour = state["tour"] + 1
+    _signaler(state.get("on_etape"), ETAPE_REDACTION, nouveau_tour)
     return {
         "appels": state["appels"] + [appel],
         "lettres": lettres + [lettre],
-        "tour": state["tour"] + 1,
+        "tour": nouveau_tour,
     }
 
 
@@ -864,6 +892,10 @@ def noeud_verificateur(state: EtatBoucle) -> dict:
 
     champ = "releve_correction" if apres_correction else "releve_redaction"
     nouvelle = {**derniere, champ: releve, "tournures_signalees": tournures}
+    # EXE-167, critère 3 : le vérificateur peut tourner deux fois dans le même
+    # tour (avant puis après une correction) — le suivi de progression dédoublonne
+    # par (étape, tour), ce second signal ne fait donc jamais avancer le pourcentage.
+    _signaler(state.get("on_etape"), ETAPE_VERIFICATION, state["tour"])
     return {
         "appels": state["appels"] + [appel],
         "lettres": lettres[:-1] + [nouvelle],
@@ -971,7 +1003,12 @@ def noeud_juge(state: EtatBoucle) -> dict:
     lettres = list(state["lettres"])
     lettres[-1] = {**lettres[-1], "jugement": jugement}
 
+    on_etape = state.get("on_etape")
     if jugement.rien_a_redire:
+        # EXE-167, critère 3 : la boucle peut s'arrêter avant le plafond — le
+        # signal porte `fin=True` pour que le pourcentage passe à 100 tout de
+        # suite, sans attendre un dixième tour qui n'aura jamais lieu.
+        _signaler(on_etape, ETAPE_JUGE, state["tour"], fin=True)
         return {
             "appels": state["appels"] + [appel],
             "lettres": lettres,
@@ -979,12 +1016,14 @@ def noeud_juge(state: EtatBoucle) -> dict:
             "raison_fin": RAISON_RIEN_A_REDIRE,
         }
     if state["tour"] >= MAX_TOURS:
+        _signaler(on_etape, ETAPE_JUGE, state["tour"], fin=True)
         return {
             "appels": state["appels"] + [appel],
             "lettres": lettres,
             "fin": True,
             "raison_fin": RAISON_PLAFOND,
         }
+    _signaler(on_etape, ETAPE_JUGE, state["tour"], fin=False)
     return {"appels": state["appels"] + [appel], "lettres": lettres, "fin": False}
 
 
@@ -1083,12 +1122,16 @@ def generer_lettre_depuis_donnees(
     repertoire_path: str | Path = REPERTOIRE_LETTRE_PATH,
     cv_reference_path: str | Path = CV_REFERENCE_PATH,
     tournures_path: str | Path = LETTRE_TOURNURES_PATH,
+    on_etape: Callable[[dict], None] | None = None,
 ) -> ResultatBoucle:
     """Lance la boucle tamis → rédaction → juge sur des données déjà résolues
     (EXE-151) — n'ouvre et ne lit aucune table, contrairement à
     `generer_lettre_boucle` qui résout depuis `offers` et `fiches_entreprise`.
     Sert la préparation du jeu du banc (`lettre/jeu.py`), qui résout ses offres
-    depuis le jeu plutôt que depuis la base."""
+    depuis le jeu plutôt que depuis la base.
+
+    `on_etape` (EXE-167, critère 6) : optionnel, appelé à chaque étape terminée
+    avec succès — absent pour le banc et le jeu, qui n'en tiennent pas compte."""
     charge = charger_repertoire(repertoire_path)
     # EXE-158, critères 13-14 : refus avant tout appel de modèle si la
     # consigne/le contexte du juge ou la consigne de reprise manquent.
@@ -1113,6 +1156,7 @@ def generer_lettre_depuis_donnees(
         "erreur": None,
         "fin": False,
         "raison_fin": None,
+        "on_etape": on_etape,
     }
     return _invoquer_graphe(etat_initial)
 
@@ -1124,6 +1168,7 @@ def generer_lettre_boucle(
     repertoire_path: str | Path = REPERTOIRE_LETTRE_PATH,
     cv_reference_path: str | Path = CV_REFERENCE_PATH,
     tournures_path: str | Path = LETTRE_TOURNURES_PATH,
+    on_etape: Callable[[dict], None] | None = None,
 ) -> ResultatBoucle:
     """Lance la boucle tamis → rédaction → juge sur une offre (critère 1).
 
@@ -1155,6 +1200,7 @@ def generer_lettre_boucle(
         repertoire_path=repertoire_path,
         cv_reference_path=cv_reference_path,
         tournures_path=tournures_path,
+        on_etape=on_etape,
     )
 
 

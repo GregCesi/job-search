@@ -69,7 +69,8 @@ def _compute_avancement(conn, offer_id: int) -> dict:
         "SELECT statut, error_message FROM cvs WHERE offer_id = ?", (offer_id,)
     ).fetchone()
     lettre_row = conn.execute(
-        "SELECT statut, error_message FROM lettres WHERE offer_id = ?",
+        "SELECT statut, error_message, regeneration_en_cours, regeneration_error "
+        "FROM lettres WHERE offer_id = ?",
         (offer_id,),
     ).fetchone()
 

@@ -5,6 +5,9 @@ Couvre les critères 1 à 7. La boucle (`generer_lettre_depuis_donnees`) est
 remplacée par une doublure qui enregistre la configuration reçue (H6 du
 ticket) — aucun test n'appelle un modèle réel, aucun test ne lit ni n'écrit
 sous data/ : la DB est un fichier tmp_path.
+
+Les doublures acceptent `**_etape` depuis EXE-167 : l'API passe toujours un
+signal d'étape (`on_etape`) à cette fonction, que ces tests n'observent pas.
 """
 
 import asyncio
@@ -133,7 +136,7 @@ class TestCritere1DefautSonnet:
         _insert_fiche(db_path, offer_id)
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):
             captured["config"] = config
             return _resultat_ok()
 
@@ -152,7 +155,7 @@ class TestCritere1DefautSonnet:
         _insert_fiche(db_path, offer_id)
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):
             captured["config"] = config
             return _resultat_ok()
 
@@ -178,7 +181,7 @@ class TestCritere2ChoixOpus:
         _insert_fiche(db_path, offer_id)
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):
             captured["config"] = config
             return _resultat_ok()
 
@@ -197,7 +200,7 @@ class TestCritere2ChoixOpus:
         _insert_fiche(db_path, offer_id)
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):
             captured["config"] = config
             return _resultat_ok()
 
@@ -226,7 +229,7 @@ class TestCritere2ChoixOpus:
 
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):
             captured["config"] = config
             return _resultat_ok("Régénérée.")
 
@@ -255,7 +258,7 @@ class TestCritere2ChoixOpus:
 
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):
             captured["config"] = config
             return _resultat_ok("Nouvelle accroche.", fait_retenu=None)
 
@@ -365,7 +368,7 @@ class TestCritere4EnchainementAutomatiqueSonnet:
         _insert_fiche(db_path, offer_id)
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):
             captured["config"] = config
             return _resultat_ok()
 
@@ -465,7 +468,7 @@ class TestCritere7AppelsPortentLeModeleUtilise:
         _insert_offer(db_path, offer_id)
         _insert_fiche(db_path, offer_id)
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):
             appel = Appel(
                 noeud="tamis",
                 modele=config.modele_tamis,
