@@ -276,7 +276,7 @@ class TestCritere4PointsMoinsEcartesSansChoixNiDesignation:
 
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_kwargs):
             captured["points_fiche"] = points_fiche
             return _resultat_ok()
 
@@ -570,7 +570,7 @@ class TestCritere14BoucleSuivanteSansFaitsEcartes:
 
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_kwargs):
             captured["points_fiche"] = points_fiche
             return _resultat_ok(fait_retenu=FAIT_1)
 
@@ -596,7 +596,7 @@ class TestCritere14BoucleSuivanteSansFaitsEcartes:
 
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_kwargs):
             captured["points_fiche"] = points_fiche
             return _resultat_ok(fait_retenu=None)
 
@@ -675,7 +675,7 @@ class TestCritere16FaitsEcartesPersistentALaFiche:
 
         captured = {}
 
-        def _double(titre, texte_offre, entreprise, points_fiche, config):
+        def _double(titre, texte_offre, entreprise, points_fiche, config, **_kwargs):
             captured["points_fiche"] = points_fiche
             return _resultat_ok()
 

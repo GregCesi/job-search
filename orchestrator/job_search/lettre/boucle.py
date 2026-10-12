@@ -37,6 +37,7 @@ from orchestrator.job_search.lettre.redaction import (
     count_words,
     detect_tournures,
     load_tournures_interdites,
+    normaliser_angle,
     resolve_offer_text,
     strip_html,
     strip_style_and_script,
@@ -225,6 +226,10 @@ class EtatBoucle(TypedDict):
     config: ConfigBoucle
     fait_retenu: dict | None
     texte_type: TexteType | None
+    # EXE-171, critères 1, 6 : mon angle d'accroche, normalisé (None si vide ou
+    # seulement des espaces) — rempli, il remplace le choix du tamis, jamais
+    # appelé dans ce cas.
+    angle: str | None
     lettres: list[dict]
     tour: int
     appels: list[Appel]
@@ -515,16 +520,26 @@ def _exemples_avec_texte(texte_type: TexteType) -> list:
     return [ex for ex in texte_type.exemples if (ex.texte or "").strip()]
 
 
+def _bloc_angle_redaction(angle: str) -> str:
+    """EXE-171, critères 1, 2 : mon angle remplace entièrement le fait retenu et
+    le texte type — rendu mot pour mot, présenté comme l'angle d'accroche que
+    j'ai choisi, jamais résumé ni complété par le code."""
+    return (
+        "**L'angle d'accroche que j'ai choisi** — pars de lui tel qu'il est "
+        f"écrit ci-dessous, sans le résumer, le reformuler ni le compléter :\n"
+        f"{angle}\n\n"
+    )
+
+
 def _blocs_communs_redaction(state: EtatBoucle) -> str:
     """Contenu partagé par la rédaction normale et la correction du vérificateur
     (EXE-160) : offre, posture, forme, sujets interdits, ce qui est vrai sur moi,
-    fait retenu, texte type, CV — jamais la reprise du juge ni le relevé du
-    vérificateur, construits par leurs blocs de queue respectifs."""
+    fait retenu ou angle, texte type, CV — jamais la reprise du juge ni le relevé
+    du vérificateur, construits par leurs blocs de queue respectifs."""
     repertoire = state["repertoire"]
     posture = repertoire.posture
     forme = repertoire.forme
-    texte_type = state["texte_type"]
-    fait = state["fait_retenu"]
+    angle = state.get("angle")
 
     posture_txt = (
         f"Rôle : {posture.role or ''}\n"
@@ -542,32 +557,41 @@ def _blocs_communs_redaction(state: EtatBoucle) -> str:
     )
     sujets_interdits_txt = _sujets_interdits_txt(repertoire)
 
-    if fait is not None:
-        fait_txt = f"**Fait retenu de l'entreprise** :\n{_texte_point(fait)}\n\n"
+    if angle:
+        # EXE-171, critère 2 : ni fait retenu, ni texte type quand l'angle est
+        # rempli — le tamis n'a jamais tourné pour cette génération.
+        fait_bloc = _bloc_angle_redaction(angle)
+        texte_type_bloc = ""
     else:
-        fait_txt = "**Aucun fait d'entreprise retenu** : lettre générique.\n\n"
+        texte_type = state["texte_type"]
+        fait = state["fait_retenu"]
+        if fait is not None:
+            fait_bloc = f"**Fait retenu de l'entreprise** :\n{_texte_point(fait)}\n\n"
+        else:
+            fait_bloc = "**Aucun fait d'entreprise retenu** : lettre générique.\n\n"
 
-    exemples_txt = (
-        "\n".join(
-            f"- {ex.entreprise} : {ex.fait} — texte : {ex.texte}"
-            for ex in _exemples_avec_texte(texte_type)
+        exemples_txt = (
+            "\n".join(
+                f"- {ex.entreprise} : {ex.fait} — texte : {ex.texte}"
+                for ex in _exemples_avec_texte(texte_type)
+            )
+            or "(aucun exemple avec texte)"
         )
-        or "(aucun exemple avec texte)"
-    )
-    # EXE-150, critères 1, 2 : le texte générique écrit à la main est envoyé en
-    # entier à la rédaction, seulement quand le tamis a choisi « generique » —
-    # un autre texte type ne reçoit jamais ce texte.
-    texte_generique_txt = (
-        f"Texte générique :\n{texte_type.texte or ''}\n\n"
-        if texte_type.id == GENERIQUE_ID
-        else ""
-    )
-    texte_type_txt = (
-        f"{texte_generique_txt}"
-        f"Conviction : {texte_type.conviction or ''}\n"
-        f"Ce que j'ai fait : {texte_type.ce_que_j_ai_fait or ''}\n"
-        f"Exemples :\n{exemples_txt}"
-    )
+        # EXE-150, critères 1, 2 : le texte générique écrit à la main est envoyé
+        # en entier à la rédaction, seulement quand le tamis a choisi
+        # « generique » — un autre texte type ne reçoit jamais ce texte.
+        texte_generique_txt = (
+            f"Texte générique :\n{texte_type.texte or ''}\n\n"
+            if texte_type.id == GENERIQUE_ID
+            else ""
+        )
+        texte_type_bloc = (
+            "**Texte type** :\n"
+            f"{texte_generique_txt}"
+            f"Conviction : {texte_type.conviction or ''}\n"
+            f"Ce que j'ai fait : {texte_type.ce_que_j_ai_fait or ''}\n"
+            f"Exemples :\n{exemples_txt}\n\n"
+        )
 
     return (
         f"**Offre** : {state['titre']}\n"
@@ -581,8 +605,8 @@ def _blocs_communs_redaction(state: EtatBoucle) -> str:
         f"**Forme** :\n{forme_txt}\n\n"
         f"**Sujets interdits** :\n{sujets_interdits_txt}\n\n"
         f"{_bloc_ce_qui_est_vrai_sur_moi(repertoire)}"
-        f"{fait_txt}"
-        f"**Texte type** :\n{texte_type_txt}\n\n"
+        f"{fait_bloc}"
+        f"{texte_type_bloc}"
         f"**CV de référence** :\n{state['cv_reference_text']}"
     )
 
@@ -782,13 +806,20 @@ def noeud_redaction(state: EtatBoucle) -> dict:
 def _prompt_verificateur(state: EtatBoucle, texte_lettre: str) -> str:
     """EXE-160, critère 5 : consigne du vérificateur, lettre, offre, ce qui est
     vrai sur moi, CV de référence, fait retenu avec sa citation — jamais la
-    posture, les sujets interdits ni les rubriques du juge."""
+    posture, les sujets interdits ni les rubriques du juge. EXE-171, critère 3 :
+    mon angle, quand il est rempli, est envoyé comme une source au même titre
+    que l'annonce, à la place du fait retenu — une phrase qui le reprend n'est
+    alors pas une affirmation non soutenue."""
     repertoire = state["repertoire"]
-    fait = state["fait_retenu"]
-    if fait is not None:
-        fait_txt = f"**Fait retenu de l'entreprise** :\n{_texte_point(fait)}\n\n"
+    angle = state.get("angle")
+    if angle:
+        fait_txt = f"**L'angle d'accroche que j'ai choisi** :\n{angle}\n\n"
     else:
-        fait_txt = "**Aucun fait d'entreprise retenu** : lettre générique.\n\n"
+        fait = state["fait_retenu"]
+        if fait is not None:
+            fait_txt = f"**Fait retenu de l'entreprise** :\n{_texte_point(fait)}\n\n"
+        else:
+            fait_txt = "**Aucun fait d'entreprise retenu** : lettre générique.\n\n"
     return (
         f"{repertoire.verificateur.consigne}\n\n"
         f"**Offre** : {state['titre']}\n"
@@ -1027,6 +1058,12 @@ def noeud_juge(state: EtatBoucle) -> dict:
     return {"appels": state["appels"] + [appel], "lettres": lettres, "fin": False}
 
 
+def _route_entree(state: EtatBoucle) -> str:
+    """EXE-171, critères 1, 6 : mon angle, quand il est rempli, remplace le choix
+    du tamis — celui-ci n'est jamais appelé dans ce cas."""
+    return "redaction" if state.get("angle") else "tamis"
+
+
 def _route_apres_tamis(state: EtatBoucle) -> str:
     return END if state.get("erreur") else "redaction"
 
@@ -1061,7 +1098,9 @@ def _construire_graphe():
     graphe.add_node("redaction", noeud_redaction)
     graphe.add_node("verificateur", noeud_verificateur)
     graphe.add_node("juge", noeud_juge)
-    graphe.set_entry_point("tamis")
+    graphe.set_conditional_entry_point(
+        _route_entree, {"tamis": "tamis", "redaction": "redaction"}
+    )
     graphe.add_conditional_edges(
         "tamis", _route_apres_tamis, {"redaction": "redaction", END: END}
     )
@@ -1123,6 +1162,7 @@ def generer_lettre_depuis_donnees(
     cv_reference_path: str | Path = CV_REFERENCE_PATH,
     tournures_path: str | Path = LETTRE_TOURNURES_PATH,
     on_etape: Callable[[dict], None] | None = None,
+    angle: str | None = None,
 ) -> ResultatBoucle:
     """Lance la boucle tamis → rédaction → juge sur des données déjà résolues
     (EXE-151) — n'ouvre et ne lit aucune table, contrairement à
@@ -1131,7 +1171,11 @@ def generer_lettre_depuis_donnees(
     depuis le jeu plutôt que depuis la base.
 
     `on_etape` (EXE-167, critère 6) : optionnel, appelé à chaque étape terminée
-    avec succès — absent pour le banc et le jeu, qui n'en tiennent pas compte."""
+    avec succès — absent pour le banc et le jeu, qui n'en tiennent pas compte.
+
+    `angle` (EXE-171, critères 1, 6, 7) : absent par défaut, sans effet sur une
+    génération sans angle — normalisé ici (un angle fait seulement d'espaces vaut
+    un champ vide), rempli il remplace le choix du tamis."""
     charge = charger_repertoire(repertoire_path)
     # EXE-158, critères 13-14 : refus avant tout appel de modèle si la
     # consigne/le contexte du juge ou la consigne de reprise manquent.
@@ -1150,6 +1194,7 @@ def generer_lettre_depuis_donnees(
         "config": config,
         "fait_retenu": None,
         "texte_type": None,
+        "angle": normaliser_angle(angle),
         "lettres": [],
         "tour": 0,
         "appels": [],

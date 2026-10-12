@@ -118,6 +118,12 @@ class ModeleLettreIn(BaseModel):
     modele: str = lettre_service.MODELE_PAR_DEFAUT
 
 
+class LettreAngleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    angle: str
+
+
 def _modele_choisi(body: ModeleLettreIn | None) -> str:
     """Résout et valide le modèle demandé (EXE-166, critères 1-3) — refuse avant
     tout appel de modèle, avant toute autre mutation, avec les deux choix
@@ -227,6 +233,9 @@ def _row_to_lettre(row, offer_id: int) -> dict:
         # EXE-167, critères 2, 4 : étape de la boucle en cours — None hors
         # génération/régénération.
         "etape": progression_lettre(offer_id),
+        # EXE-171, critère 5 : mon angle d'accroche, reste dans le champ après
+        # régénération et rechargement.
+        "angle": row["angle"],
     }
 
 
@@ -369,6 +378,23 @@ def get_lettre(offer_id: int) -> dict:
             "Génération interrompue (API redémarrée). Relancer la lettre."
         )
     return lettre
+
+
+@router.put("/{offer_id}/lettre/angle")
+def put_lettre_angle(offer_id: int, body: LettreAngleIn) -> dict:
+    """Enregistre mon angle d'accroche (EXE-171, critères 5, 7, 9) : refuse avec
+    un message qui donne la limite, avant tout enregistrement, s'il dépasse
+    MAX_ANGLE_CHARS caractères une fois normalisé. Peut être écrit avant que la
+    fiche entreprise ait terminé — ne déclenche jamais de génération."""
+    with get_conn() as conn:
+        try:
+            lettre_service.save_angle(conn, offer_id, body.angle)
+        except lettre_service.AngleTropLongError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+    return _row_to_lettre(row, offer_id)
 
 
 @router.put("/{offer_id}/lettre/texte")
@@ -545,7 +571,7 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
         rows = conn.execute(
             "SELECT texte, tournures_signalees_json, nb_mots, depasse_longueur, "
             "origine, fait_retenu_json, created_at, modele, modele_juge, "
-            "jugement_json, nb_tours, raison_fin FROM lettre_versions "
+            "jugement_json, nb_tours, raison_fin, angle_utilise FROM lettre_versions "
             "WHERE offer_id = ? ORDER BY id ASC",
             (offer_id,),
         ).fetchall()
@@ -565,6 +591,8 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
             "jugement": json.loads(r["jugement_json"]) if r["jugement_json"] else None,
             "nb_tours": r["nb_tours"],
             "raison_fin": r["raison_fin"],
+            # EXE-171, critère 14 : angle qui a produit cette version ; None sinon.
+            "angle_utilise": r["angle_utilise"],
         }
         for r in rows
     ]

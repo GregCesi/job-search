@@ -109,6 +109,16 @@ def detect_tournures(texte: str, tournures: list[str]) -> list[str]:
     return found
 
 
+def normaliser_angle(angle: str | None) -> str | None:
+    """Un angle fait seulement d'espaces, ou absent, vaut un champ vide (EXE-171,
+    critère 7) — jamais résumé, reformulé ni complété, seulement débarrassé de ses
+    espaces de bord."""
+    if angle is None:
+        return None
+    angle = angle.strip()
+    return angle or None
+
+
 def resolve_offer_text(description_raw: str | None, description: str | None) -> str:
     """Texte de l'offre à envoyer au modèle (EXE-84) : le texte brut s'il contient
     autre chose que des espaces, sinon le texte nettoyé. Chaîne vide si les deux sont

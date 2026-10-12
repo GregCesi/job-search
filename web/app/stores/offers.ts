@@ -176,6 +176,7 @@ export interface Lettre {
   releve: Releve | null
   faits_ecartes: FaitRetenu[]
   etape: LettreEtape | null
+  angle: string | null // EXE-171 : mon angle d'accroche, remplace le choix du tamis
 }
 
 export interface LettreVersion {
@@ -191,6 +192,7 @@ export interface LettreVersion {
   jugement: Jugement | null // EXE-169 : absent pour une version « moi »
   nb_tours: number | null // EXE-169 : absent pour une version « moi »
   raison_fin: string | null // EXE-169 : absent pour une version « moi »
+  angle_utilise: string | null // EXE-171 : angle qui a produit cette version ; absent sinon
 }
 
 export type PieceStatut = 'a_faire' | 'en_cours' | 'prete'

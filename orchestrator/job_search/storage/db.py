@@ -158,6 +158,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             releve_json               TEXT,  -- EXE-162 : dernier relevé du vérificateur (critère 5, 22)
             appels_json               TEXT,  -- EXE-162 : trace demande/réponse de chaque appel de la boucle
             faits_ecartes_json        TEXT NOT NULL DEFAULT '[]', -- EXE-162 : faits écartés (citation+lien)
+            angle                     TEXT,  -- EXE-171 : mon angle d'accroche, remplace le choix du tamis
             UNIQUE(offer_id)
         );
 
@@ -175,7 +176,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             modele_juge               TEXT,  -- EXE-169 : modèle du juge ; NULL si origine='moi'
             jugement_json             TEXT,  -- EXE-169 : les quatre rubriques du juge sur cette version
             nb_tours                  INTEGER, -- EXE-169 : nombre de tours de la boucle pour cette version
-            raison_fin                TEXT  -- EXE-169 : raison de fin de la boucle pour cette version
+            raison_fin                TEXT,  -- EXE-169 : raison de fin de la boucle pour cette version
+            angle_utilise             TEXT  -- EXE-171 : angle qui a produit cette version ; NULL sinon
         );
 
         CREATE TABLE IF NOT EXISTS ajouts (
@@ -289,6 +291,8 @@ def migrate_lettres_schema(conn: sqlite3.Connection) -> None:
         )
     if "modele_juge" not in existing:
         conn.execute("ALTER TABLE lettres ADD COLUMN modele_juge TEXT")
+    if "angle" not in existing:
+        conn.execute("ALTER TABLE lettres ADD COLUMN angle TEXT")
     conn.commit()
 
 
@@ -310,6 +314,8 @@ def migrate_lettre_versions_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE lettre_versions ADD COLUMN nb_tours INTEGER")
     if "raison_fin" not in existing:
         conn.execute("ALTER TABLE lettre_versions ADD COLUMN raison_fin TEXT")
+    if "angle_utilise" not in existing:
+        conn.execute("ALTER TABLE lettre_versions ADD COLUMN angle_utilise TEXT")
     conn.commit()
 
 

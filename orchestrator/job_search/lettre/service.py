@@ -34,6 +34,7 @@ from orchestrator.job_search.lettre.redaction import (
     detect_tournures,
     exceeds_length,
     load_tournures_interdites,
+    normaliser_angle,
     resolve_offer_text,
 )
 from orchestrator.job_search.paths import LETTRE_TOURNURES_PATH
@@ -74,6 +75,19 @@ class RienAEcarterError(RuntimeError):
     jamais générée."""
 
 
+# EXE-171, critère 9 : au-delà, l'angle est refusé avant tout enregistrement —
+# donc avant tout appel de modèle, puisqu'il n'est jamais stocké.
+MAX_ANGLE_CHARS = 1500
+
+
+def raison_angle_trop_long() -> str:
+    return f"L'angle ne peut pas dépasser {MAX_ANGLE_CHARS} caractères."
+
+
+class AngleTropLongError(ValueError):
+    """Angle normalisé de plus de MAX_ANGLE_CHARS caractères (EXE-171, critère 9)."""
+
+
 @dataclass
 class _GenerationBoucle:
     texte: str
@@ -88,6 +102,7 @@ class _GenerationBoucle:
     modele_juge: str  # EXE-169 : toujours MODELE_JUGE, à part du modèle choisi
     releve: dict | None
     appels: list[dict]
+    angle_utilise: str | None  # EXE-171, critère 10 : None si générée sans angle
 
 
 def _now() -> str:
@@ -108,6 +123,7 @@ def _append_version(
     jugement: dict | None = None,
     nb_tours: int | None = None,
     raison_fin: str | None = None,
+    angle_utilise: str | None = None,
 ) -> None:
     """Ajoute une version à l'historique — jamais de réécriture ni de suppression
     d'une version existante (invariant du ticket EXE-66). Porte le fait retenu
@@ -116,14 +132,16 @@ def _append_version(
     critères 4, 6, 8) : le modèle du juge à part du modèle choisi, et le verdict
     du juge sur cette lettre (ses quatre rubriques, le nombre de tours, la raison
     de fin) — tous absents pour une reprise à la main, pour qu'une régénération
-    ultérieure ne touche jamais le jugement déjà écrit dans l'historique."""
+    ultérieure ne touche jamais le jugement déjà écrit dans l'historique.
+    `angle_utilise` (EXE-171, critère 10) : l'angle qui a produit cette version,
+    absent (None) si elle vient du tamis ou d'une reprise à la main."""
     conn.execute(
         """
         INSERT INTO lettre_versions
             (offer_id, texte, tournures_signalees_json, nb_mots, depasse_longueur,
              origine, fait_retenu_json, created_at, modele, modele_juge,
-             jugement_json, nb_tours, raison_fin)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             jugement_json, nb_tours, raison_fin, angle_utilise)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             offer_id,
@@ -139,6 +157,7 @@ def _append_version(
             json.dumps(jugement, ensure_ascii=False) if jugement else None,
             nb_tours,
             raison_fin,
+            angle_utilise,
         ),
     )
 
@@ -163,6 +182,35 @@ def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
         (offer_id, _now()),
     )
     conn.commit()
+
+
+def save_angle(
+    conn: sqlite3.Connection, offer_id: int, angle: str | None
+) -> str | None:
+    """Enregistre mon angle d'accroche (EXE-171, critères 5, 7, 9) : refuse avant
+    tout enregistrement (donc avant tout appel de modèle) si l'angle normalisé
+    dépasse MAX_ANGLE_CHARS, sinon enregistre l'angle normalisé (None si vide ou
+    seulement des espaces). Crée la ligne `lettres` si elle n'existe pas encore —
+    l'angle peut être écrit avant que la fiche entreprise ait terminé (critère 8)."""
+    normalise = normaliser_angle(angle)
+    if normalise is not None and len(normalise) > MAX_ANGLE_CHARS:
+        raise AngleTropLongError(raison_angle_trop_long())
+    conn.execute(
+        """
+        INSERT INTO lettres (offer_id, statut, angle, created_at) VALUES (?, 'aucune', ?, ?)
+        ON CONFLICT(offer_id) DO UPDATE SET angle=excluded.angle
+        """,
+        (offer_id, normalise, _now()),
+    )
+    conn.commit()
+    return normalise
+
+
+def _fetch_angle(conn: sqlite3.Connection, offer_id: int) -> str | None:
+    row = conn.execute(
+        "SELECT angle FROM lettres WHERE offer_id = ?", (offer_id,)
+    ).fetchone()
+    return row["angle"] if row else None
 
 
 def _cle_fait(point: dict) -> tuple:
@@ -231,6 +279,9 @@ async def _generate_via_boucle(
     ecartes = _fetch_faits_ecartes(conn, offer_id)
     points_restants = _filtrer_points_ecartes(points, ecartes)
     entreprise = fiche["employeur_nom"] or offer["company"] or ""
+    # EXE-171, critère 8 : relu à chaque génération/régénération — tant que mon
+    # angle est rempli, toute génération de cette offre part de lui.
+    angle = _fetch_angle(conn, offer_id)
 
     # Critère 6 : absent, l'appel garde exactement sa forme d'avant la fiche —
     # aucun argument supplémentaire à qui n'a pas demandé à être écouté.
@@ -243,6 +294,7 @@ async def _generate_via_boucle(
         entreprise,
         points_restants,
         config,
+        angle=angle,
         **kwargs_etape,
     )
 
@@ -270,6 +322,7 @@ async def _generate_via_boucle(
         modele_juge=config.modele_juge,
         releve=releve,
         appels=[asdict(a) for a in resultat.appels],
+        angle_utilise=angle,
     )
 
 
@@ -318,6 +371,7 @@ def _store_generation(
         gen.jugement,
         gen.nb_tours,
         gen.raison_fin,
+        angle_utilise=gen.angle_utilise,
     )
 
 
@@ -428,6 +482,7 @@ async def run_lettre_regenerate(
                 gen.jugement,
                 gen.nb_tours,
                 gen.raison_fin,
+                angle_utilise=gen.angle_utilise,
             )
             conn.commit()
         except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf run_lettre)

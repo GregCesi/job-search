@@ -442,8 +442,34 @@
           </div>
 
           <template v-else>
+            <!-- Mon angle (EXE-171) : visible dans tous les états de la lettre,
+                 pour qu'un angle écrit avant que la fiche termine parte avec la
+                 première génération (critère 8). -->
+            <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+              <label for="lettre-angle" class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Mon angle</label>
+              <textarea
+                id="lettre-angle"
+                ref="angleEditRef"
+                v-model="angleEdit"
+                :disabled="angleBusy"
+                rows="1"
+                class="w-full rounded-lg border border-gray-200 p-3 text-sm text-gray-800 leading-relaxed resize-none overflow-hidden disabled:bg-gray-50 disabled:text-gray-400"
+                @input="autoGrowAngle"
+              />
+              <p class="text-xs text-gray-400">Si tu l'écris, la lettre part de ton angle au lieu du fait choisi par l'outil.</p>
+              <div class="flex items-center gap-2">
+                <button
+                  @click="sauvegarderAngle"
+                  :disabled="angleBusy"
+                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                >{{ angleBusy ? 'Enregistrement…' : 'Enregistrer mon angle' }}</button>
+                <span v-if="angleSaved" class="text-xs text-green-600">Enregistré.</span>
+              </div>
+              <p v-if="angleError" class="text-xs text-red-600">{{ angleError }}</p>
+            </section>
+
             <!-- Pas de lettre / erreur -->
-            <div v-if="!lettre || lettre.statut === 'error'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+            <div v-if="!lettre || lettre.statut === 'error' || lettre.statut === 'aucune'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
               <p v-if="lettre?.error_message" class="text-sm text-red-600">{{ lettre.error_message }}</p>
               <div class="flex items-center gap-1 text-xs" role="radiogroup" aria-label="Modèle de la lettre">
                 <button
@@ -615,6 +641,7 @@
                     <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0 ml-2">{{ v.origine === 'moi' ? 'moi' : (v.modele ?? 'modèle') }}</span>
                   </summary>
                   <div class="px-3 pb-3 space-y-2">
+                    <p v-if="v.angle_utilise" class="text-xs text-indigo-600 italic">Écrite depuis mon angle : « {{ v.angle_utilise }} »</p>
                     <p class="text-xs text-gray-700 whitespace-pre-wrap">{{ v.texte }}</p>
                     <div v-if="v.jugement" class="rounded border border-gray-200 bg-white p-3 space-y-1 text-xs">
                       <div class="flex items-center justify-between">
@@ -1687,6 +1714,7 @@ const EMPTY_LETTRE: Lettre = {
   releve: null,
   faits_ecartes: [],
   etape: null,
+  angle: null,
 }
 
 // EXE-169, critères 9, 10 : nom affiché du modèle (sonnet/opus) — jamais le
@@ -1717,9 +1745,13 @@ async function chargerLettre() {
   try {
     lettre.value = await $fetch<Lettre>(lettreUrl())
     texteEdit.value = lettre.value.texte ?? ''
+    angleEdit.value = lettre.value.angle ?? ''
   } catch (e) {
     // 404 = pas encore de lettre ; toute autre erreur (réseau) garde l'état courant
-    if ((e as { statusCode?: number }).statusCode === 404) lettre.value = null
+    if ((e as { statusCode?: number }).statusCode === 404) {
+      lettre.value = null
+      angleEdit.value = ''
+    }
   }
 }
 
@@ -1841,6 +1873,40 @@ async function copierTexte() {
   lettreCopied.value = true
   if (lettreCopiedTimer) clearTimeout(lettreCopiedTimer)
   lettreCopiedTimer = setTimeout(() => { lettreCopied.value = false }, 1500)
+}
+
+// ── Mon angle (EXE-171) ──────────────────────────────────────────────────────
+const angleEdit = ref('')
+const angleEditRef = ref<HTMLTextAreaElement | null>(null)
+const angleBusy = ref(false)
+const angleSaved = ref(false)
+const angleError = ref<string | null>(null)
+let angleSavedTimer: ReturnType<typeof setTimeout> | null = null
+
+function autoGrowAngle() {
+  const el = angleEditRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+watch(angleEdit, () => nextTick(autoGrowAngle))
+
+async function sauvegarderAngle() {
+  angleError.value = null
+  angleBusy.value = true
+  try {
+    const res = await $fetch<Lettre>(`${lettreUrl()}/angle`, { method: 'PUT', body: { angle: angleEdit.value } })
+    lettre.value = lettre.value ? { ...lettre.value, angle: res.angle } : res
+    angleEdit.value = res.angle ?? ''
+    angleSaved.value = true
+    if (angleSavedTimer) clearTimeout(angleSavedTimer)
+    angleSavedTimer = setTimeout(() => { angleSaved.value = false }, 1500)
+  } catch (e) {
+    angleError.value = messageErreurLettre(e)
+  } finally {
+    angleBusy.value = false
+  }
 }
 
 // ── Frise ────────────────────────────────────────────────────────────────
