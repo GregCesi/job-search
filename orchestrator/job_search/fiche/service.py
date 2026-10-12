@@ -6,6 +6,7 @@ Frontière (architecture.md §4) : un appel SDK ne part que d'une action explici
 
 import asyncio
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -76,9 +77,44 @@ _FICHE_SCHEMA = {
                 "required": ["position"],
             },
         },
+        # Trois listes du dossier (EXE-170, critère 1) : ce qui a été cherché
+        # sans être trouvé, les signaux d'alerte, les pages ouvertes pendant la
+        # recherche. Parsing défensif obligatoire malgré `required` plus bas
+        # (architecture.md §3) : une réponse qui en omet une devient une liste
+        # vide, jamais une erreur (critère 3).
+        "manques": {"type": "array", "items": {"type": "string"}},
+        "alertes": {"type": "array", "items": {"type": "string"}},
+        "sources": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "titre": {"type": ["string", "null"]},
+                    "url": {"type": ["string", "null"]},
+                },
+                "required": ["titre", "url"],
+            },
+        },
     },
-    "required": ["mode", "presentation", "employeur", "points"],
+    "required": [
+        "mode",
+        "presentation",
+        "employeur",
+        "points",
+        "manques",
+        "alertes",
+        "sources",
+    ],
 }
+
+_URL_HTTP = re.compile(r"^https?://", re.IGNORECASE)
+
+
+def _url_http(url) -> str | None:
+    """Une source sans lien http(s) n'est pas gardée (critère 5) : contenu issu
+    du web, même filtre que `lienSur` côté front."""
+    return url if isinstance(url, str) and _URL_HTTP.match(url) else None
+
 
 # Trois champs déclarés explicitement à chaque appel : `allowed_tools` ne fait qu'auto-approuver,
 # seul `tools` fixe l'ensemble disponible (TCK-224 phase 0).
@@ -98,7 +134,8 @@ def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
         ON CONFLICT(offer_id) DO UPDATE SET
             statut='pending', mode=NULL, presentation=NULL, employeur_nom=NULL, employeur_entite=NULL,
             employeur_type_source=NULL, employeur_confiance=NULL, employeur_methode=NULL,
-            employeur_urls_json=NULL, points_json=NULL, session_id=NULL, cost_usd=NULL,
+            employeur_urls_json=NULL, points_json=NULL, manques_json=NULL, alertes_json=NULL,
+            sources_json=NULL, session_id=NULL, cost_usd=NULL,
             tools_called_json=NULL, api_key_source=NULL, prompt_text=NULL,
             error_message=NULL, created_at=excluded.created_at
         """,
@@ -139,6 +176,9 @@ class ResultatRecherche:
     employeur_methode: str | None
     employeur_urls: list[str]
     points: list[dict]
+    manques: list[str]
+    alertes: list[str]
+    sources: list[dict]
     session_id: str | None
     cost_usd: float | None
     tools_called: list[str]
@@ -208,6 +248,13 @@ async def rechercher_entreprise(
         }
         for p in raw_points
     ]
+    manques = [m for m in (out.get("manques") or []) if isinstance(m, str)]
+    alertes = [a for a in (out.get("alertes") or []) if isinstance(a, str)]
+    sources = [
+        {"titre": s.get("titre"), "url": s.get("url")}
+        for s in (out.get("sources") or [])
+        if isinstance(s, dict) and _url_http(s.get("url"))
+    ]
     return ResultatRecherche(
         mode=out.get("mode"),
         presentation=out.get("presentation"),
@@ -218,6 +265,9 @@ async def rechercher_entreprise(
         employeur_methode=employeur.get("methode"),
         employeur_urls=employeur.get("urls") or [],
         points=points,
+        manques=manques,
+        alertes=alertes,
+        sources=sources,
         session_id=result.session_id,
         cost_usd=result.total_cost_usd,
         tools_called=tools_called,
@@ -250,7 +300,8 @@ async def run_fiche(offer_id: int) -> None:
                 UPDATE fiches_entreprise SET
                     statut='done', mode=?, presentation=?, employeur_nom=?, employeur_entite=?,
                     employeur_type_source=?, employeur_confiance=?, employeur_methode=?,
-                    employeur_urls_json=?, points_json=?, session_id=?, cost_usd=?,
+                    employeur_urls_json=?, points_json=?, manques_json=?, alertes_json=?,
+                    sources_json=?, session_id=?, cost_usd=?,
                     tools_called_json=?, api_key_source=?, prompt_text=?, error_message=NULL
                 WHERE offer_id=?
                 """,
@@ -264,6 +315,9 @@ async def run_fiche(offer_id: int) -> None:
                     resultat.employeur_methode,
                     json.dumps(resultat.employeur_urls, ensure_ascii=False),
                     json.dumps(resultat.points, ensure_ascii=False),
+                    json.dumps(resultat.manques, ensure_ascii=False),
+                    json.dumps(resultat.alertes, ensure_ascii=False),
+                    json.dumps(resultat.sources, ensure_ascii=False),
                     resultat.session_id,
                     resultat.cost_usd,
                     json.dumps(resultat.tools_called),

@@ -851,9 +851,11 @@
             <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
               <div class="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
                 <span><span class="text-gray-400">Employeur</span> <span class="font-medium text-gray-700">{{ fiche.employeur_nom ?? 'non trouvé' }}</span></span>
+                <span v-if="fiche.employeur_entite"><span class="text-gray-400">Entité précise</span> {{ fiche.employeur_entite }}</span>
                 <span v-if="fiche.employeur_confiance"><span class="text-gray-400">Confiance</span> {{ fiche.employeur_confiance }}</span>
                 <span><span class="text-gray-400">Mode</span> {{ fiche.mode === 'offre_seule' ? 'offre seule' : 'entreprise' }}</span>
               </div>
+              <p v-if="fiche.employeur_methode" class="text-xs text-gray-500 italic">{{ fiche.employeur_methode }}</p>
               <p v-if="fiche.presentation" class="text-sm text-gray-700 leading-relaxed">{{ fiche.presentation }}</p>
             </div>
 
@@ -901,6 +903,48 @@
                 <p v-if="explainError === idx" class="text-xs text-red-600">L'explication a échoué.</p>
                 <div v-if="point.explication" class="text-xs text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-wrap">{{ point.explication }}</div>
               </div>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
+              <p class="text-xs font-medium text-gray-500">Ce qu'on n'a pas trouvé</p>
+              <p v-if="!fiche.manques.length" class="text-sm text-gray-400 italic">Rien de noté.</p>
+              <ul v-else class="text-sm text-gray-700 list-disc list-inside space-y-0.5">
+                <li v-for="(manque, idx) in fiche.manques" :key="idx">{{ manque }}</li>
+              </ul>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
+              <p class="text-xs font-medium text-gray-500">Signaux d'alerte</p>
+              <p v-if="!fiche.alertes.length" class="text-sm text-gray-400 italic">Rien de noté.</p>
+              <ul v-else class="text-sm text-gray-700 list-disc list-inside space-y-0.5">
+                <li v-for="(alerte, idx) in fiche.alertes" :key="idx">{{ alerte }}</li>
+              </ul>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
+              <p class="text-xs font-medium text-gray-500">Sources</p>
+              <p v-if="!fiche.sources.length" class="text-sm text-gray-400 italic">Rien de noté.</p>
+              <ul v-else class="text-sm space-y-0.5">
+                <li v-for="(source, idx) in fiche.sources" :key="idx">
+                  <a :href="source.url!" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline break-all">{{ source.titre ?? source.url }} ↗</a>
+                </li>
+              </ul>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+              <p class="text-xs font-medium text-gray-500">Mon avis</p>
+              <textarea
+                v-model="avisEdit"
+                rows="4"
+                class="w-full text-sm border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                placeholder="Qu'est-ce que je pense de cette entreprise, en bien comme en mal ?"
+              />
+              <p v-if="avisError" class="text-xs text-red-600">{{ avisError }}</p>
+              <button
+                @click="enregistrerAvis"
+                :disabled="avisSaving"
+                class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
+              >{{ avisSaving ? '…' : 'Enregistrer' }}</button>
             </div>
           </template>
         </div>
@@ -1035,6 +1079,26 @@ async function chargerFiche() {
   }
 }
 
+// ── Mon avis sur l'entreprise (EXE-170) ─────────────────────────────────────
+const avisEdit = ref('')
+const avisSaving = ref(false)
+const avisError = ref<string | null>(null)
+
+watch(fiche, (f) => { avisEdit.value = f?.avis ?? '' }, { immediate: true })
+
+async function enregistrerAvis() {
+  avisSaving.value = true
+  avisError.value = null
+  try {
+    await $fetch(`${ficheUrl()}/avis`, { method: 'PUT', body: { avis: avisEdit.value } })
+    if (fiche.value) fiche.value.avis = avisEdit.value
+  } catch (e) {
+    avisError.value = (e as { data?: { detail?: string } })?.data?.detail ?? 'Enregistrement impossible.'
+  } finally {
+    avisSaving.value = false
+  }
+}
+
 function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
 }
@@ -1060,7 +1124,22 @@ function lienSur(url: string | null): string | null {
 }
 
 async function preparerFiche() {
-  const empty = { mode: null, presentation: null, employeur_nom: null, employeur_confiance: null, points: [], session_id: null, cost_usd: null, propose_intermediaire: false }
+  const empty = {
+    mode: null,
+    presentation: null,
+    employeur_nom: null,
+    employeur_entite: null,
+    employeur_methode: null,
+    employeur_confiance: null,
+    points: [],
+    manques: [],
+    alertes: [],
+    sources: [],
+    avis: null,
+    session_id: null,
+    cost_usd: null,
+    propose_intermediaire: false,
+  }
   try {
     await $fetch(ficheUrl(), { method: 'POST' })
   } catch {

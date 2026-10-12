@@ -74,13 +74,24 @@ export interface FichePoint {
   sujet_libelle: string | null // EXE-162, critère 23 : absent si le point n'a pas de sujet
 }
 
+export interface FicheSource {
+  titre: string | null
+  url: string | null
+}
+
 export interface FicheEntreprise {
   statut: 'pending' | 'done' | 'error'
   mode: 'entreprise' | 'offre_seule' | null
   presentation: string | null
   employeur_nom: string | null
+  employeur_entite: string | null
+  employeur_methode: string | null
   employeur_confiance: string | null
   points: FichePoint[]
+  manques: string[]
+  alertes: string[]
+  sources: FicheSource[]
+  avis: string | null
   session_id: string | null
   cost_usd: number | null
   error_message: string | null

@@ -43,6 +43,8 @@ def running_offer_ids() -> set[int]:
 
 Tas = Literal["lettre", "entretien", "rien"]
 
+AVIS_MAX_LEN = 4000
+
 
 class PointPatch(BaseModel):
     model_config = ConfigDict(
@@ -50,6 +52,12 @@ class PointPatch(BaseModel):
     )  # `reaction` n'existe plus : un champ inconnu doit échouer, pas être ignoré
 
     tas: Tas | None = None
+
+
+class AvisPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    avis: str = ""
 
 
 _AGENCE_OU_AGREGATEUR = {"agence", "agregateur"}
@@ -77,6 +85,10 @@ def _row_to_fiche(row, company: str | None) -> dict:
         "employeur_methode": row["employeur_methode"],
         "employeur_urls": json.loads(row["employeur_urls_json"] or "[]"),
         "points": _points_avec_libelle(row["points_json"]),
+        "manques": json.loads(row["manques_json"] or "[]"),
+        "alertes": json.loads(row["alertes_json"] or "[]"),
+        "sources": json.loads(row["sources_json"] or "[]"),
+        "avis": row["avis_entreprise"],
         "session_id": row["session_id"],
         "cost_usd": row["cost_usd"],
         "tools_called": json.loads(row["tools_called_json"] or "[]"),
@@ -164,6 +176,26 @@ def get_fiche(offer_id: int) -> dict:
             "Génération interrompue (API redémarrée). Relancer la fiche."
         )
     return fiche
+
+
+@router.put("/{offer_id}/fiche/avis", status_code=204)
+def put_avis(offer_id: int, body: AvisPatch) -> None:
+    """Mon avis sur l'entreprise : donnée d'interaction humaine, jamais envoyée
+    à un modèle (EXE-170, critère 10) — ni ce PUT ni aucune lecture de la fiche
+    n'appellent le SDK."""
+    if len(body.avis) > AVIS_MAX_LEN:
+        raise HTTPException(
+            status_code=422,
+            detail=f"L'avis est limité à {AVIS_MAX_LEN} caractères",
+        )
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE fiches_entreprise SET avis_entreprise = ? WHERE offer_id = ?",
+            (body.avis, offer_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Pas de fiche pour cette offre")
+        conn.commit()
 
 
 @router.post("/{offer_id}/fiche/intermediaire", status_code=200)
