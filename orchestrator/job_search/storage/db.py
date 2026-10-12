@@ -78,6 +78,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             employeur_confiance   TEXT,   -- sur|probable|non_trouve
             employeur_methode     TEXT,
             employeur_urls_json   TEXT,   -- JSON array de strings
+            employeur_site        TEXT,   -- adresse du site officiel, http(s) seulement (EXE-172)
             points_json           TEXT,   -- JSON array [{position,citation,url,tas,explication,pour_lettre,famille,date}]
             manques_json          TEXT,   -- JSON array de strings (EXE-170)
             alertes_json          TEXT,   -- JSON array de strings (EXE-170)
@@ -366,6 +367,10 @@ def migrate_fiches_entreprise_schema(conn: sqlite3.Connection) -> None:
     for col in ("manques_json", "alertes_json", "sources_json", "avis_entreprise"):
         if col not in existing:
             conn.execute(f"ALTER TABLE fiches_entreprise ADD COLUMN {col} TEXT")
+
+    # EXE-172 : adresse du site officiel — idempotent, fiches antérieures lues sans elle.
+    if "employeur_site" not in existing:
+        conn.execute("ALTER TABLE fiches_entreprise ADD COLUMN employeur_site TEXT")
 
     # Corrections post-essai (2026-09-28) : tas 'ne_se_pretend_pas' → 'rien'. Les champs `reaction`
     # restent tels quels dans le JSON existant — plus lus ni écrits, mais non purgés (pas de perte).

@@ -87,6 +87,7 @@ export interface FicheEntreprise {
   employeur_entite: string | null
   employeur_methode: string | null
   employeur_confiance: string | null
+  employeur_site: string | null
   points: FichePoint[]
   manques: string[]
   alertes: string[]

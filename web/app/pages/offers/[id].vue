@@ -850,130 +850,151 @@
 
       <!-- Fiche entreprise -->
       <div v-else class="flex-1 overflow-y-auto p-6">
-        <div class="max-w-3xl mx-auto space-y-4">
-          <!-- Pas de fiche / erreur -->
-          <div v-if="!fiche || fiche.statut === 'error'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
-            <p v-if="fiche?.error_message" class="text-sm text-red-600">{{ fiche.error_message }}</p>
-            <p v-if="!isRetenue" class="text-sm text-gray-400 italic">La fiche n'est produite que pour une offre retenue.</p>
+        <!-- Pas de fiche / erreur -->
+        <div v-if="!fiche || fiche.statut === 'error'" class="max-w-3xl mx-auto rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+          <p v-if="fiche?.error_message" class="text-sm text-red-600">{{ fiche.error_message }}</p>
+          <p v-if="!isRetenue" class="text-sm text-gray-400 italic">La fiche n'est produite que pour une offre retenue.</p>
+          <button
+            v-else
+            @click="preparerFiche"
+            class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+          >
+            Préparer la fiche
+          </button>
+        </div>
+
+        <!-- En cours -->
+        <div v-else-if="fiche.statut === 'pending'" class="max-w-3xl mx-auto rounded-lg border border-gray-200 bg-white p-6 flex items-center justify-center gap-3 text-sm text-gray-500">
+          <svg class="w-5 h-5 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+          </svg>
+          Recherche en cours…
+        </div>
+
+        <!-- Fiche prête : entreprise en haut à gauche, faits dans un bloc qui
+             défile, manques/alertes/avis à droite (EXE-172) -->
+        <div v-else class="max-w-6xl mx-auto space-y-4">
+
+          <div v-if="fiche.propose_intermediaire" class="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <span class="text-amber-800">« {{ offer?.company }} » ressemble à un intermédiaire (agence / agrégateur), pas à l'employeur.</span>
             <button
-              v-else
-              @click="preparerFiche"
-              class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
-            >
-              Préparer la fiche
-            </button>
+              @click="ajouterIntermediaire"
+              :disabled="addingIntermediaire"
+              class="ml-auto shrink-0 px-2.5 py-1 rounded-full bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+            >{{ addingIntermediaire ? '…' : `Ajouter ${offer?.company} aux intermédiaires` }}</button>
           </div>
 
-          <!-- En cours -->
-          <div v-else-if="fiche.statut === 'pending'" class="rounded-lg border border-gray-200 bg-white p-6 flex items-center justify-center gap-3 text-sm text-gray-500">
-            <svg class="w-5 h-5 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-            </svg>
-            Recherche en cours…
-          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 
-          <!-- Fiche prête -->
-          <template v-else>
-            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
-              <div class="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
-                <span><span class="text-gray-400">Employeur</span> <span class="font-medium text-gray-700">{{ fiche.employeur_nom ?? 'non trouvé' }}</span></span>
-                <span v-if="fiche.employeur_entite"><span class="text-gray-400">Entité précise</span> {{ fiche.employeur_entite }}</span>
-                <span v-if="fiche.employeur_confiance"><span class="text-gray-400">Confiance</span> {{ fiche.employeur_confiance }}</span>
-                <span><span class="text-gray-400">Mode</span> {{ fiche.mode === 'offre_seule' ? 'offre seule' : 'entreprise' }}</span>
-              </div>
-              <p v-if="fiche.employeur_methode" class="text-xs text-gray-500 italic">{{ fiche.employeur_methode }}</p>
-              <p v-if="fiche.presentation" class="text-sm text-gray-700 leading-relaxed">{{ fiche.presentation }}</p>
-            </div>
+            <!-- Colonne gauche : entreprise + faits (~2/3) -->
+            <div class="lg:col-span-2 space-y-4 min-w-0">
 
-            <div v-if="fiche.propose_intermediaire" class="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              <span class="text-amber-800">« {{ offer?.company }} » ressemble à un intermédiaire (agence / agrégateur), pas à l'employeur.</span>
-              <button
-                @click="ajouterIntermediaire"
-                :disabled="addingIntermediaire"
-                class="ml-auto shrink-0 px-2.5 py-1 rounded-full bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
-              >{{ addingIntermediaire ? '…' : `Ajouter ${offer?.company} aux intermédiaires` }}</button>
-            </div>
-
-            <p v-if="!fiche.points.length" class="text-sm text-gray-400 italic">Aucun point restitué.</p>
-
-            <div
-              v-for="(point, idx) in fiche.points" :key="idx"
-              class="rounded-lg border border-gray-200 bg-white p-4 space-y-3"
-            >
-              <div class="space-y-1">
-                <p class="text-sm text-gray-800">{{ point.position }}</p>
-                <p v-if="point.citation" class="text-xs text-gray-500 italic border-l-2 border-gray-200 pl-2">« {{ point.citation }} »</p>
+              <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+                <h2 class="text-base font-semibold text-gray-900">{{ fiche.employeur_nom ?? 'Employeur non trouvé' }}</h2>
+                <p v-if="fiche.employeur_entite" class="text-sm text-gray-500">{{ fiche.employeur_entite }}</p>
+                <p v-if="ficheAvertissement" class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">{{ ficheAvertissement }}</p>
+                <p v-if="fiche.presentation" class="text-sm text-gray-700 leading-relaxed">{{ fiche.presentation }}</p>
                 <a
-                  v-if="lienSur(point.url)" :href="lienSur(point.url)!" target="_blank" rel="noopener noreferrer"
-                  class="text-xs text-indigo-600 hover:underline break-all"
-                >{{ point.url }} ↗</a>
-                <span v-if="point.sujet_libelle" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 inline-block">{{ point.sujet_libelle }}</span>
+                  v-if="lienSur(fiche.employeur_site)"
+                  :href="lienSur(fiche.employeur_site)!"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-block text-sm text-indigo-600 hover:underline font-medium"
+                >Site de l'entreprise ↗</a>
+
+                <details v-if="fiche.employeur_methode" class="text-xs text-gray-500 pt-1">
+                  <summary class="cursor-pointer text-gray-400 select-none">Comment l'employeur a été identifié</summary>
+                  <p class="mt-1 italic">{{ fiche.employeur_methode }}</p>
+                </details>
+
+                <details class="text-xs text-gray-500">
+                  <summary class="cursor-pointer text-gray-400 select-none">Sources ({{ fiche.sources.length }})</summary>
+                  <p v-if="!fiche.sources.length" class="mt-1 text-gray-400 italic">Rien de noté.</p>
+                  <ul v-else class="mt-1 space-y-0.5">
+                    <li v-for="(source, idx) in fiche.sources" :key="idx">
+                      <a :href="source.url!" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline break-all">{{ source.titre ?? source.url }} ↗</a>
+                    </li>
+                  </ul>
+                </details>
               </div>
 
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span class="text-[10px] text-gray-400 mr-1 w-16">Tas</span>
+              <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+                <p class="text-xs font-medium text-gray-500">Faits pour la lettre ({{ fiche.points.length }})</p>
+                <p v-if="!fiche.points.length" class="text-sm text-gray-400 italic">Aucun point restitué.</p>
+                <div v-else class="max-h-[50vh] overflow-y-auto space-y-3 pr-1">
+                  <div
+                    v-for="(point, idx) in fiche.points" :key="idx"
+                    class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2"
+                  >
+                    <div class="space-y-1">
+                      <p class="text-sm text-gray-800">{{ point.position }}</p>
+                      <p v-if="point.citation" class="text-xs text-gray-500 italic border-l-2 border-gray-200 pl-2">« {{ point.citation }} »</p>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <a
+                          v-if="lienSur(point.url)" :href="lienSur(point.url)!" target="_blank" rel="noopener noreferrer"
+                          class="text-xs text-indigo-600 hover:underline break-all"
+                        >{{ point.url }} ↗</a>
+                        <span v-if="point.sujet_libelle" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 inline-block">{{ point.sujet_libelle }}</span>
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <span class="text-[10px] text-gray-400 mr-1">Tas</span>
+                      <button
+                        v-for="t in TAS" :key="t.value"
+                        @click="annoter(idx, t.value)"
+                        class="px-2.5 py-1 rounded-full border text-xs transition-colors"
+                        :class="point.tas === t.value ? 'bg-teal-600 border-teal-600 text-white' : 'border-gray-200 text-gray-600 hover:border-teal-300'"
+                      >{{ t.label }}</button>
+                      <button
+                        @click="expliquer(idx)"
+                        :disabled="explaining === idx"
+                        class="ml-auto text-xs text-indigo-600 hover:underline disabled:text-gray-400"
+                      >{{ explaining === idx ? 'Explication en cours…' : 'Expliquer' }}</button>
+                    </div>
+                    <p v-if="explainError === idx" class="text-xs text-red-600">L'explication a échoué.</p>
+                    <div v-if="point.explication" class="text-xs text-gray-700 bg-white border border-gray-100 rounded p-3 whitespace-pre-wrap">{{ point.explication }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Colonne droite : ce qui manque, alertes, mon avis (~1/3) -->
+            <div class="space-y-4 min-w-0">
+              <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
+                <p class="text-xs font-medium text-gray-500">Ce qu'on n'a pas trouvé ({{ fiche.manques.length }})</p>
+                <p v-if="!fiche.manques.length" class="text-sm text-gray-400 italic">Rien de noté.</p>
+                <ul v-else class="text-sm text-gray-700 list-disc list-inside space-y-0.5">
+                  <li v-for="(manque, idx) in fiche.manques" :key="idx">{{ manque }}</li>
+                </ul>
+              </div>
+
+              <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-1">
+                <p class="text-xs font-medium text-amber-800">Signaux d'alerte ({{ fiche.alertes.length }})</p>
+                <p v-if="!fiche.alertes.length" class="text-sm text-amber-700 italic">Rien de noté.</p>
+                <ul v-else class="text-sm text-amber-900 list-disc list-inside space-y-0.5">
+                  <li v-for="(alerte, idx) in fiche.alertes" :key="idx">{{ alerte }}</li>
+                </ul>
+              </div>
+
+              <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+                <p class="text-xs font-medium text-gray-500">Mon avis</p>
+                <textarea
+                  v-model="avisEdit"
+                  rows="4"
+                  class="w-full text-sm border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="Qu'est-ce que je pense de cette entreprise, en bien comme en mal ?"
+                />
+                <p v-if="avisError" class="text-xs text-red-600">{{ avisError }}</p>
                 <button
-                  v-for="t in TAS" :key="t.value"
-                  @click="annoter(idx, t.value)"
-                  class="px-2.5 py-1 rounded-full border text-xs transition-colors"
-                  :class="point.tas === t.value ? 'bg-teal-600 border-teal-600 text-white' : 'border-gray-200 text-gray-600 hover:border-teal-300'"
-                >{{ t.label }}</button>
-              </div>
-
-              <div class="space-y-2">
-                <button
-                  @click="expliquer(idx)"
-                  :disabled="explaining === idx"
-                  class="text-xs text-indigo-600 hover:underline disabled:text-gray-400"
-                >{{ explaining === idx ? 'Explication en cours…' : 'Expliquer' }}</button>
-                <p v-if="explainError === idx" class="text-xs text-red-600">L'explication a échoué.</p>
-                <div v-if="point.explication" class="text-xs text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-wrap">{{ point.explication }}</div>
+                  @click="enregistrerAvis"
+                  :disabled="avisSaving"
+                  class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
+                >{{ avisSaving ? '…' : 'Enregistrer' }}</button>
               </div>
             </div>
-
-            <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
-              <p class="text-xs font-medium text-gray-500">Ce qu'on n'a pas trouvé</p>
-              <p v-if="!fiche.manques.length" class="text-sm text-gray-400 italic">Rien de noté.</p>
-              <ul v-else class="text-sm text-gray-700 list-disc list-inside space-y-0.5">
-                <li v-for="(manque, idx) in fiche.manques" :key="idx">{{ manque }}</li>
-              </ul>
-            </div>
-
-            <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
-              <p class="text-xs font-medium text-gray-500">Signaux d'alerte</p>
-              <p v-if="!fiche.alertes.length" class="text-sm text-gray-400 italic">Rien de noté.</p>
-              <ul v-else class="text-sm text-gray-700 list-disc list-inside space-y-0.5">
-                <li v-for="(alerte, idx) in fiche.alertes" :key="idx">{{ alerte }}</li>
-              </ul>
-            </div>
-
-            <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
-              <p class="text-xs font-medium text-gray-500">Sources</p>
-              <p v-if="!fiche.sources.length" class="text-sm text-gray-400 italic">Rien de noté.</p>
-              <ul v-else class="text-sm space-y-0.5">
-                <li v-for="(source, idx) in fiche.sources" :key="idx">
-                  <a :href="source.url!" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline break-all">{{ source.titre ?? source.url }} ↗</a>
-                </li>
-              </ul>
-            </div>
-
-            <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
-              <p class="text-xs font-medium text-gray-500">Mon avis</p>
-              <textarea
-                v-model="avisEdit"
-                rows="4"
-                class="w-full text-sm border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                placeholder="Qu'est-ce que je pense de cette entreprise, en bien comme en mal ?"
-              />
-              <p v-if="avisError" class="text-xs text-red-600">{{ avisError }}</p>
-              <button
-                @click="enregistrerAvis"
-                :disabled="avisSaving"
-                class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
-              >{{ avisSaving ? '…' : 'Enregistrer' }}</button>
-            </div>
-          </template>
+          </div>
         </div>
       </div>
     </div>
@@ -994,6 +1015,18 @@ const offer = ref<OfferDetail | null>(null)
 
 const fiche = ref<FicheEntreprise | null>(null)
 const isRetenue = computed(() => offer.value?.verdict === 'retenu')
+
+// Remplace les étiquettes « Mode »/« Confiance » (EXE-172, critère 9) : une
+// seule ligne quand la confiance est faible ou que la fiche n'a vu que l'offre.
+const ficheAvertissement = computed<string | null>(() => {
+  const f = fiche.value
+  if (!f) return null
+  const raisons: string[] = []
+  if (f.mode === 'offre_seule') raisons.push("construite sur l'offre seule, sans entreprise distincte identifiée")
+  if (f.employeur_confiance === 'probable') raisons.push('confiance probable, non confirmée')
+  if (f.employeur_confiance === 'non_trouve') raisons.push('entreprise non trouvée avec certitude')
+  return raisons.length ? raisons.join(' ; ') : null
+})
 
 onMounted(async () => {
   offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
@@ -1158,6 +1191,7 @@ async function preparerFiche() {
     employeur_entite: null,
     employeur_methode: null,
     employeur_confiance: null,
+    employeur_site: null,
     points: [],
     manques: [],
     alertes: [],

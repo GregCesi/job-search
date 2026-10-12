@@ -84,6 +84,7 @@ def _row_to_fiche(row, company: str | None) -> dict:
         "employeur_confiance": row["employeur_confiance"],
         "employeur_methode": row["employeur_methode"],
         "employeur_urls": json.loads(row["employeur_urls_json"] or "[]"),
+        "employeur_site": row["employeur_site"],
         "points": _points_avec_libelle(row["points_json"]),
         "manques": json.loads(row["manques_json"] or "[]"),
         "alertes": json.loads(row["alertes_json"] or "[]"),

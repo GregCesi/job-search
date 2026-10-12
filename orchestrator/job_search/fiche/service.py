@@ -47,6 +47,9 @@ _FICHE_SCHEMA = {
                     "enum": ["sur", "probable", "non_trouve"],
                 },
                 "urls": {"type": "array", "items": {"type": "string"}},
+                # Adresse du site officiel, facultative (EXE-172, critère 1) :
+                # absente de `required` plus bas, jamais déduite en code.
+                "site": {"type": ["string", "null"]},
             },
             "required": [
                 "nom",
@@ -134,7 +137,7 @@ def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
         ON CONFLICT(offer_id) DO UPDATE SET
             statut='pending', mode=NULL, presentation=NULL, employeur_nom=NULL, employeur_entite=NULL,
             employeur_type_source=NULL, employeur_confiance=NULL, employeur_methode=NULL,
-            employeur_urls_json=NULL, points_json=NULL, manques_json=NULL, alertes_json=NULL,
+            employeur_urls_json=NULL, employeur_site=NULL, points_json=NULL, manques_json=NULL, alertes_json=NULL,
             sources_json=NULL, session_id=NULL, cost_usd=NULL,
             tools_called_json=NULL, api_key_source=NULL, prompt_text=NULL,
             error_message=NULL, created_at=excluded.created_at
@@ -175,6 +178,7 @@ class ResultatRecherche:
     employeur_confiance: str | None
     employeur_methode: str | None
     employeur_urls: list[str]
+    employeur_site: str | None
     points: list[dict]
     manques: list[str]
     alertes: list[str]
@@ -264,6 +268,9 @@ async def rechercher_entreprise(
         employeur_confiance=employeur.get("confiance"),
         employeur_methode=employeur.get("methode"),
         employeur_urls=employeur.get("urls") or [],
+        # Filtre http(s), jamais déduite d'une source ou d'un nom de domaine
+        # (EXE-172, critère 2 ; « ce qui ne doit pas arriver »).
+        employeur_site=_url_http(employeur.get("site")),
         points=points,
         manques=manques,
         alertes=alertes,
@@ -300,7 +307,7 @@ async def run_fiche(offer_id: int) -> None:
                 UPDATE fiches_entreprise SET
                     statut='done', mode=?, presentation=?, employeur_nom=?, employeur_entite=?,
                     employeur_type_source=?, employeur_confiance=?, employeur_methode=?,
-                    employeur_urls_json=?, points_json=?, manques_json=?, alertes_json=?,
+                    employeur_urls_json=?, employeur_site=?, points_json=?, manques_json=?, alertes_json=?,
                     sources_json=?, session_id=?, cost_usd=?,
                     tools_called_json=?, api_key_source=?, prompt_text=?, error_message=NULL
                 WHERE offer_id=?
@@ -314,6 +321,7 @@ async def run_fiche(offer_id: int) -> None:
                     resultat.employeur_confiance,
                     resultat.employeur_methode,
                     json.dumps(resultat.employeur_urls, ensure_ascii=False),
+                    resultat.employeur_site,
                     json.dumps(resultat.points, ensure_ascii=False),
                     json.dumps(resultat.manques, ensure_ascii=False),
                     json.dumps(resultat.alertes, ensure_ascii=False),
