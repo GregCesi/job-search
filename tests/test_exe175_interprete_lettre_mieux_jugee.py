@@ -8,8 +8,10 @@ nœud « interprete »). Ensuite le répertoire (`repertoire.py`) et le banc
 (`banc.py`), sur le même principe. Enfin le service (`service.py`), avec
 `generer_lettre_depuis_donnees` elle-même remplacée par une doublure qui rend
 un `ResultatBoucle` explicite (reprise de test_exe162_boucle_app.py). Aucun
-test n'appelle un modèle réel, aucun test ne lit ni n'écrit sous data/, aucun
-test n'écrit dans le mlflow.db du dépôt.
+test n'appelle un modèle réel, aucun test ne lit ni n'écrit sous data/.
+L'isolation MLflow est globale (conftest.py) : aucun test n'écrit dans le
+mlflow.db du dépôt, y compris ceux du palier banc qui laissent `lancer_banc`
+écrire un run réel dans la base isolée.
 """
 
 import asyncio
@@ -948,3 +950,136 @@ def test_critere17_tableau_compte_les_lettres_finales_par_decision(
     assert resume.finales_j_appelle == 1
     assert resume.finales_je_passe == 1
     assert resume.finales_j_hesite == 0
+
+
+def test_critere18_rapport_montre_la_lettre_retenue_avec_son_tour(
+    repertoire_path, cv_path, tournures_path, tmp_path, modeles_banc
+):
+    jeu = _jeu_banc(1)
+    modeles_banc.programmer("tamis", _TAMIS_POINT_0)
+    modeles_banc.programmer("redaction", "Lettre 1.", "Lettre 2.", "Lettre 3.")
+    modeles_banc.programmer(
+        "juge",
+        _juge(decision="j'appelle", details="tour 1"),
+        _juge(decision="je passe", details="tour 2"),
+        _juge(decision="j'hésite", details="tour 3"),
+    )
+
+    resultat = banc.lancer_banc(
+        jeu,
+        [1],
+        ["sonnet"],
+        repertoire_path=repertoire_path(),
+        cv_reference_path=cv_path,
+        tournures_path=tournures_path,
+        banc_dir=tmp_path / "banc",
+    )
+
+    texte_rapport = resultat.rapport_path.read_text(encoding="utf-8")
+    assert "Lettre 1." in texte_rapport
+    assert "tour 1 retenu" in texte_rapport
+    # La lettre non retenue (tour 3) ne figure pas comme « lettre finale ».
+    section_lettres_finales = texte_rapport.split("### Lettres finales")[1].split(
+        "## Annexe"
+    )[0]
+    assert "Lettre 3." not in section_lettres_finales
+
+
+def test_critere19_annexe_montre_decision_a_chaque_tour_et_ce_que_je_veux_lire(
+    repertoire_path, cv_path, tournures_path, tmp_path, modeles_banc
+):
+    jeu = _jeu_banc(1)
+    modeles_banc.programmer("tamis", _TAMIS_POINT_0)
+    modeles_banc.programmer("redaction", "Lettre 1.")
+    modeles_banc.programmer("juge", _juge(decision="je passe"), _JUGE_RIEN_A_REDIRE)
+    modeles_banc.programmer(
+        "interprete",
+        json.dumps(
+            {
+                "ce_que_je_veux_lire": "Plus concret, moins de superlatifs.",
+                "lettre": "Lettre réécrite par l'interprète.",
+            }
+        ),
+    )
+
+    resultat = banc.lancer_banc(
+        jeu,
+        [1],
+        ["sonnet,interprete=opus"],
+        repertoire_path=repertoire_path(),
+        cv_reference_path=cv_path,
+        tournures_path=tournures_path,
+        banc_dir=tmp_path / "banc",
+    )
+
+    texte_rapport = resultat.rapport_path.read_text(encoding="utf-8")
+    annexe = texte_rapport.split("## Annexe")[1]
+    assert "Décision : je passe" in annexe
+    assert "Décision : j'appelle" in annexe
+    assert "Ce que je veux lire : Plus concret, moins de superlatifs." in annexe
+    # Dans l'annexe, la rubrique précède la lettre qu'elle introduit.
+    index_rubrique = annexe.index("Ce que je veux lire")
+    index_lettre = annexe.index("Lettre réécrite par l'interprète.")
+    assert index_rubrique < index_lettre
+
+
+def test_critere20_run_mlflow_porte_le_modele_de_l_interprete_et_les_trois_comptes(
+    repertoire_path, cv_path, tournures_path, tmp_path, modeles_banc
+):
+    from mlflow.tracking import MlflowClient
+
+    jeu = _jeu_banc(1)
+    modeles_banc.programmer("tamis", _TAMIS_POINT_0)
+    modeles_banc.programmer("redaction", "Lettre 1.")
+    modeles_banc.programmer("juge", _juge(decision="je passe"), _JUGE_RIEN_A_REDIRE)
+    modeles_banc.programmer(
+        "interprete",
+        json.dumps(
+            {"ce_que_je_veux_lire": "Plus concret.", "lettre": "Lettre réécrite."}
+        ),
+    )
+
+    banc.lancer_banc(
+        jeu,
+        [1],
+        ["sonnet,interprete=opus"],
+        repertoire_path=repertoire_path(),
+        cv_reference_path=cv_path,
+        tournures_path=tournures_path,
+        banc_dir=tmp_path / "banc",
+    )
+
+    client = MlflowClient()
+    experiment = client.get_experiment_by_name(banc.EXPERIMENT_NAME)
+    run = client.search_runs([experiment.experiment_id])[0]
+    assert run.data.params["modele_interprete"] == "opus"
+    metrics = run.data.metrics
+    assert metrics["finales_j_appelle"] == 1.0
+    assert metrics["finales_j_hesite"] == 0.0
+    assert metrics["finales_je_passe"] == 0.0
+
+
+def test_critere20_sans_interprete_le_parametre_est_absent(
+    repertoire_path, cv_path, tournures_path, tmp_path, modeles_banc
+):
+    from mlflow.tracking import MlflowClient
+
+    jeu = _jeu_banc(1)
+    modeles_banc.programmer("tamis", _TAMIS_POINT_0)
+    modeles_banc.programmer("redaction", "Lettre 1.")
+    modeles_banc.programmer("juge", _JUGE_RIEN_A_REDIRE)
+
+    banc.lancer_banc(
+        jeu,
+        [1],
+        ["sonnet"],
+        repertoire_path=repertoire_path(),
+        cv_reference_path=cv_path,
+        tournures_path=tournures_path,
+        banc_dir=tmp_path / "banc",
+    )
+
+    client = MlflowClient()
+    experiment = client.get_experiment_by_name(banc.EXPERIMENT_NAME)
+    run = client.search_runs([experiment.experiment_id])[0]
+    assert "modele_interprete" not in run.data.params
