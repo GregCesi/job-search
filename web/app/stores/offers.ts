@@ -181,6 +181,7 @@ export interface Lettre {
 }
 
 export interface LettreVersion {
+  id: number // EXE-174 : identifie la version pour la demande à part des appels
   texte: string
   tournures_signalees: string[]
   nb_mots: number
@@ -195,6 +196,26 @@ export interface LettreVersion {
   raison_fin: string | null // EXE-169 : absent pour une version « moi »
   angle_utilise: string | null // EXE-171 : angle qui a produit cette version ; absent sinon
   repartie_de_ma_lettre: boolean // EXE-173 : vraie seulement pour la version finale d'une boucle repartie d'une version « moi »
+  // EXE-174, critères 1, 4, 5 : nombre et coût total des appels de la
+  // génération qui a produit cette version — 0/null pour une version écrite
+  // à la main ou une version d'avant ce ticket. Le détail (demande, réponse)
+  // se lit à part, par `fetchLettreVersionAppels`.
+  nb_appels: number
+  cout_total: number | null
+  trace_id: string | null // EXE-174, critère 8 : identifiant de la trace MLflow ; absent sinon
+}
+
+// EXE-174, critères 1, 6 : détail complet d'un appel de la boucle, rendu par
+// `fetchLettreVersionAppels` — jamais inclus dans `LettreVersion` (critère 5).
+export interface AppelTrace {
+  noeud: 'tamis' | 'redaction' | 'juge' | 'verificateur'
+  modele: string
+  tour: number
+  duree_s: number
+  cout_usd: number | null
+  demande: string
+  reponse: string
+  nb_jetons: number | null
 }
 
 export type PieceStatut = 'a_faire' | 'en_cours' | 'prete'

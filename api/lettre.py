@@ -623,38 +623,76 @@ def get_lettre_mise_en_page(offer_id: int) -> Response:
     return Response(content=html, media_type="text/html")
 
 
+def _cout_total(appels: list[dict]) -> float | None:
+    couts = [a["cout_usd"] for a in appels if a.get("cout_usd") is not None]
+    return sum(couts) if couts else None
+
+
 @router.get("/{offer_id}/lettre/versions")
 def get_lettre_versions(offer_id: int) -> list[dict]:
+    """EXE-174, critère 5 : le nombre d'appels et leur coût total, jamais les
+    demandes ni les réponses — le détail d'une version se lit par une demande
+    à part (`GET .../versions/{version_id}/appels`)."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT texte, tournures_signalees_json, nb_mots, depasse_longueur, "
+            "SELECT id, texte, tournures_signalees_json, nb_mots, depasse_longueur, "
             "origine, fait_retenu_json, created_at, modele, modele_juge, "
             "jugement_json, nb_tours, raison_fin, angle_utilise, "
-            "repartie_de_ma_lettre FROM lettre_versions "
+            "repartie_de_ma_lettre, appels_json, trace_id FROM lettre_versions "
             "WHERE offer_id = ? ORDER BY id ASC",
             (offer_id,),
         ).fetchall()
-    return [
-        {
-            "texte": r["texte"],
-            "tournures_signalees": json.loads(r["tournures_signalees_json"] or "[]"),
-            "nb_mots": r["nb_mots"],
-            "depasse_longueur": bool(r["depasse_longueur"]),
-            "origine": r["origine"],
-            "fait_retenu": json.loads(r["fait_retenu_json"])
-            if r["fait_retenu_json"]
-            else None,
-            "created_at": r["created_at"],
-            "modele": r["modele"],
-            "modele_juge": r["modele_juge"],
-            "jugement": json.loads(r["jugement_json"]) if r["jugement_json"] else None,
-            "nb_tours": r["nb_tours"],
-            "raison_fin": r["raison_fin"],
-            # EXE-171, critère 14 : angle qui a produit cette version ; None sinon.
-            "angle_utilise": r["angle_utilise"],
-            # EXE-173, critère 10 : vraie seulement pour la version finale
-            # d'une boucle repartie d'une version « moi ».
-            "repartie_de_ma_lettre": bool(r["repartie_de_ma_lettre"]),
-        }
-        for r in rows
-    ]
+    resultats = []
+    for r in rows:
+        appels = json.loads(r["appels_json"]) if r["appels_json"] else []
+        resultats.append(
+            {
+                "id": r["id"],
+                "texte": r["texte"],
+                "tournures_signalees": json.loads(
+                    r["tournures_signalees_json"] or "[]"
+                ),
+                "nb_mots": r["nb_mots"],
+                "depasse_longueur": bool(r["depasse_longueur"]),
+                "origine": r["origine"],
+                "fait_retenu": json.loads(r["fait_retenu_json"])
+                if r["fait_retenu_json"]
+                else None,
+                "created_at": r["created_at"],
+                "modele": r["modele"],
+                "modele_juge": r["modele_juge"],
+                "jugement": json.loads(r["jugement_json"])
+                if r["jugement_json"]
+                else None,
+                "nb_tours": r["nb_tours"],
+                "raison_fin": r["raison_fin"],
+                # EXE-171, critère 14 : angle qui a produit cette version ; None sinon.
+                "angle_utilise": r["angle_utilise"],
+                # EXE-173, critère 10 : vraie seulement pour la version finale
+                # d'une boucle repartie d'une version « moi ».
+                "repartie_de_ma_lettre": bool(r["repartie_de_ma_lettre"]),
+                # EXE-174, critères 1, 4, 5 : compte et coût des appels de la
+                # génération qui a produit cette version ; 0/None sans appels
+                # (version écrite à la main, ou version d'avant ce ticket).
+                "nb_appels": len(appels),
+                "cout_total": _cout_total(appels),
+                # EXE-174, critère 8 : identifiant de la trace MLflow ; None si
+                # MLflow n'a pas pu écrire ou si la version n'a aucun appel.
+                "trace_id": r["trace_id"],
+            }
+        )
+    return resultats
+
+
+@router.get("/{offer_id}/lettre/versions/{version_id}/appels")
+def get_lettre_version_appels(offer_id: int, version_id: int) -> list[dict]:
+    """EXE-174, critère 5 : détail complet (demande, réponse) des appels d'une
+    version précise — jamais mêlé à la liste des versions."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT appels_json FROM lettre_versions WHERE id = ? AND offer_id = ?",
+            (version_id, offer_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Version introuvable")
+    return json.loads(row["appels_json"]) if row["appels_json"] else []

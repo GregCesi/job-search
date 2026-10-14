@@ -361,6 +361,7 @@ class TestCritere6AppelsEnregistresAvecLaLettre:
                 "cout_usd": 0.01,
                 "demande": "demande du tamis",
                 "reponse": "réponse du tamis",
+                "tour": 0,  # EXE-174 : champ ajouté à Appel, non précisé ici
                 "nb_jetons": None,
             }
         ]

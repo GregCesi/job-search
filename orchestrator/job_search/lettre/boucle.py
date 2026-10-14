@@ -178,7 +178,9 @@ class Jugement:
 
 @dataclass
 class Appel:
-    """Trace d'un appel de modèle (critère 20) : jamais persisté, seulement rendu."""
+    """Trace d'un appel de modèle (critère 20), désormais persistée par version
+    (EXE-174, critère 1) — le numéro de tour est celui signalé par `_signaler`
+    au même nœud, jamais recalculé ailleurs."""
 
     noeud: Literal["tamis", "redaction", "juge", "verificateur"]
     modele: str
@@ -186,6 +188,7 @@ class Appel:
     cout_usd: float | None
     demande: str
     reponse: str
+    tour: int = 0  # EXE-174, critère 1 : numéro du tour de cet appel
     nb_jetons: int | None = None  # EXE-152, critères 19, 20
 
 
@@ -490,6 +493,7 @@ def noeud_tamis(state: EtatBoucle) -> dict:
         cout_usd=reponse.cout_usd,
         demande=prompt,
         reponse=reponse.texte,
+        tour=1,  # EXE-174 : même numéro que le signal ETAPE_CHOIX_FAIT ci-dessous
         nb_jetons=reponse.nb_jetons,
     )
 
@@ -774,6 +778,9 @@ def noeud_redaction(state: EtatBoucle) -> dict:
         }
 
     texte = reponse.texte
+    # EXE-174 : une correction reste sur le tour courant, une nouvelle lettre
+    # ouvre le tour suivant — même numéro que celui passé à `_signaler` ci-dessous.
+    tour = state["tour"] if en_correction else state["tour"] + 1
     appel = Appel(
         noeud="redaction",
         modele=state["config"].modele_redaction,
@@ -781,6 +788,7 @@ def noeud_redaction(state: EtatBoucle) -> dict:
         cout_usd=reponse.cout_usd,
         demande=prompt,
         reponse=texte,
+        tour=tour,
         nb_jetons=reponse.nb_jetons,
     )
 
@@ -791,7 +799,7 @@ def noeud_redaction(state: EtatBoucle) -> dict:
             "nb_mots": count_words(texte),
             "texte_corrige": texte,
         }
-        _signaler(state.get("on_etape"), ETAPE_CORRECTION, state["tour"])
+        _signaler(state.get("on_etape"), ETAPE_CORRECTION, tour)
         return {
             "appels": state["appels"] + [appel],
             "lettres": lettres[:-1] + [nouvelle],
@@ -807,7 +815,7 @@ def noeud_redaction(state: EtatBoucle) -> dict:
         "releve_correction": None,
         "jugement": None,
     }
-    nouveau_tour = state["tour"] + 1
+    nouveau_tour = tour
     _signaler(state.get("on_etape"), ETAPE_REDACTION, nouveau_tour)
     return {
         "appels": state["appels"] + [appel],
@@ -931,6 +939,7 @@ def noeud_verificateur(state: EtatBoucle) -> dict:
         cout_usd=reponse.cout_usd,
         demande=prompt,
         reponse=reponse.texte,
+        tour=state["tour"],  # EXE-174 : même numéro que le signal ETAPE_VERIFICATION
         nb_jetons=reponse.nb_jetons,
     )
 
@@ -1042,6 +1051,7 @@ def noeud_juge(state: EtatBoucle) -> dict:
         cout_usd=reponse.cout_usd,
         demande=prompt,
         reponse=reponse.texte,
+        tour=state["tour"],  # EXE-174 : même numéro que le signal ETAPE_JUGE
         nb_jetons=reponse.nb_jetons,
     )
     lettres = list(state["lettres"])

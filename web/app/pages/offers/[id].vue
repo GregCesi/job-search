@@ -665,6 +665,38 @@
                       <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Réussites</summary><p class="text-gray-700 whitespace-pre-wrap">{{ v.jugement.reussites }}</p></details>
                       <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Verdict</summary><p class="text-gray-700 whitespace-pre-wrap">{{ v.jugement.verdict }}</p></details>
                     </div>
+
+                    <!-- Trace de la version (EXE-174, critères 10-13) -->
+                    <details v-if="v.nb_appels > 0" class="rounded border border-gray-200 bg-white" @toggle="chargerAppelsVersion(v.id)">
+                      <summary class="cursor-pointer px-3 py-2 text-xs text-gray-500 select-none">
+                        Trace ({{ v.nb_appels }} appel{{ v.nb_appels > 1 ? 's' : '' }}{{ v.cout_total != null ? `, $${v.cout_total.toFixed(4)}` : '' }})
+                      </summary>
+                      <div class="px-3 pb-3 space-y-2 text-xs">
+                        <div v-if="v.trace_id" class="flex items-center gap-2 text-gray-400">
+                          <span>Trace MLflow :</span>
+                          <code class="select-all text-gray-600">{{ v.trace_id }}</code>
+                          <button @click="copierTraceId(v.trace_id)" class="text-indigo-600 hover:underline">Copier</button>
+                        </div>
+                        <div v-if="!appelsParVersion[v.id]" class="text-gray-400 italic">Chargement…</div>
+                        <div v-else class="space-y-2">
+                          <div v-for="groupe in appelsParTour(appelsParVersion[v.id]!)" :key="groupe.tour" class="space-y-1">
+                            <p class="text-gray-400 font-semibold uppercase tracking-wide">Tour {{ groupe.tour }}</p>
+                            <details v-for="(a, j) in groupe.appels" :key="j" class="rounded border border-gray-100 bg-gray-50">
+                              <summary class="cursor-pointer px-2 py-1 text-gray-600 flex items-center justify-between select-none">
+                                <span>{{ a.noeud }} — {{ nomModele(a.modele) }}</span>
+                                <span class="text-gray-400">{{ a.duree_s.toFixed(1) }}s{{ a.cout_usd != null ? ` — $${a.cout_usd.toFixed(4)}` : '' }}</span>
+                              </summary>
+                              <div class="px-2 pb-2 space-y-1">
+                                <p class="text-gray-400">Demande</p>
+                                <p class="text-gray-700 whitespace-pre-wrap">{{ a.demande }}</p>
+                                <p class="text-gray-400">Réponse</p>
+                                <p class="text-gray-700 whitespace-pre-wrap">{{ a.reponse }}</p>
+                              </div>
+                            </details>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
                   </div>
                 </details>
               </div>
@@ -1015,7 +1047,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { Avancement, AvancementPiece, Cv, FicheEntreprise, FicheTas, Lettre, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
+import type { Avancement, AvancementPiece, AppelTrace, Cv, FicheEntreprise, FicheTas, Lettre, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -1802,6 +1834,26 @@ async function chargerLettre() {
 
 async function chargerLettreVersions() {
   lettreVersions.value = await $fetch<LettreVersion[]>(`${lettreUrl()}/versions`)
+}
+
+// EXE-174, critère 5 : le détail (demande, réponse) d'une version se charge à
+// part, à la demande (dépliage de la section Trace), jamais avec la liste.
+const appelsParVersion = ref<Record<number, AppelTrace[]>>({})
+
+async function chargerAppelsVersion(versionId: number) {
+  if (appelsParVersion.value[versionId]) return
+  appelsParVersion.value[versionId] = await $fetch<AppelTrace[]>(
+    `${lettreUrl()}/versions/${versionId}/appels`,
+  )
+}
+
+function appelsParTour(appels: AppelTrace[]): { tour: number, appels: AppelTrace[] }[] {
+  const tours = [...new Set(appels.map(a => a.tour))].sort((a, b) => a - b)
+  return tours.map(tour => ({ tour, appels: appels.filter(a => a.tour === tour) }))
+}
+
+async function copierTraceId(traceId: string) {
+  await navigator.clipboard.writeText(traceId)
 }
 
 function shouldPollLettre(l: Lettre | null): boolean {

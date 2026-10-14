@@ -179,7 +179,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             nb_tours                  INTEGER, -- EXE-169 : nombre de tours de la boucle pour cette version
             raison_fin                TEXT,  -- EXE-169 : raison de fin de la boucle pour cette version
             angle_utilise             TEXT,  -- EXE-171 : angle qui a produit cette version ; NULL sinon
-            repartie_de_ma_lettre     INTEGER NOT NULL DEFAULT 0  -- EXE-173 : version écrite par la boucle repartie d'une version « moi »
+            repartie_de_ma_lettre     INTEGER NOT NULL DEFAULT 0, -- EXE-173 : version écrite par la boucle repartie d'une version « moi »
+            appels_json               TEXT,  -- EXE-174 : appels de la génération qui a produit cette version ; NULL si aucun
+            trace_id                  TEXT   -- EXE-174 : identifiant de la trace MLflow ; NULL si MLflow n'a pas pu écrire ou si appels_json est NULL
         );
 
         CREATE TABLE IF NOT EXISTS ajouts (
@@ -323,6 +325,10 @@ def migrate_lettre_versions_schema(conn: sqlite3.Connection) -> None:
             "ALTER TABLE lettre_versions ADD COLUMN repartie_de_ma_lettre "
             "INTEGER NOT NULL DEFAULT 0"
         )
+    if "appels_json" not in existing:
+        conn.execute("ALTER TABLE lettre_versions ADD COLUMN appels_json TEXT")
+    if "trace_id" not in existing:
+        conn.execute("ALTER TABLE lettre_versions ADD COLUMN trace_id TEXT")
     conn.commit()
 
 

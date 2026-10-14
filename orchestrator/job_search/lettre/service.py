@@ -39,6 +39,7 @@ from orchestrator.job_search.lettre.redaction import (
 )
 from orchestrator.job_search.paths import LETTRE_TOURNURES_PATH
 from orchestrator.job_search.storage.db import get_connection, init_db
+from orchestrator.job_search.tracking.lettre_tracing import tracer_generation
 
 # EXE-166 : sonnet par défaut, choisi explicitement sinon (critères 1, 2, 4) —
 # jamais un modèle local (Ollama), cf. MODELES_CLAUDE de la boucle.
@@ -138,6 +139,8 @@ def _append_version(
     raison_fin: str | None = None,
     angle_utilise: str | None = None,
     repartie_de_ma_lettre: bool = False,
+    appels: list[dict] | None = None,
+    trace_id: str | None = None,
 ) -> None:
     """Ajoute une version à l'historique — jamais de réécriture ni de suppression
     d'une version existante (invariant du ticket EXE-66). Porte le fait retenu
@@ -150,15 +153,18 @@ def _append_version(
     `angle_utilise` (EXE-171, critère 10) : l'angle qui a produit cette version,
     absent (None) si elle vient du tamis ou d'une reprise à la main.
     `repartie_de_ma_lettre` (EXE-173, critère 10) : vraie seulement pour la
-    version finale d'une boucle repartie d'une version « moi »."""
+    version finale d'une boucle repartie d'une version « moi ».
+    `appels`/`trace_id` (EXE-174, critères 1, 2, 8) : les appels de modèle de la
+    génération qui a produit cette version et l'identifiant de sa trace MLflow —
+    absents (None) pour une reprise à la main."""
     conn.execute(
         """
         INSERT INTO lettre_versions
             (offer_id, texte, tournures_signalees_json, nb_mots, depasse_longueur,
              origine, fait_retenu_json, created_at, modele, modele_juge,
              jugement_json, nb_tours, raison_fin, angle_utilise,
-             repartie_de_ma_lettre)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             repartie_de_ma_lettre, appels_json, trace_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             offer_id,
@@ -176,6 +182,8 @@ def _append_version(
             raison_fin,
             angle_utilise,
             int(repartie_de_ma_lettre),
+            json.dumps(appels, ensure_ascii=False) if appels else None,
+            trace_id,
         ),
     )
 
@@ -355,6 +363,28 @@ async def _generate_via_boucle(
     )
 
 
+def _mode_generation(gen: _GenerationBoucle, *, repartie_de_ma_lettre: bool) -> str:
+    """Mode de génération porté par la trace MLflow (EXE-174, critère 7) : les
+    trois valeurs possibles sont mutuellement exclusives — une reprise depuis
+    ma lettre ne part jamais du tamis ni de mon angle (EXE-173, critère 3)."""
+    if repartie_de_ma_lettre:
+        return "depuis_ma_lettre"
+    return "angle" if gen.angle_utilise else "tamis"
+
+
+def _tracer(
+    gen: _GenerationBoucle, offer_id: int, modele: str, mode: str
+) -> str | None:
+    return tracer_generation(
+        gen.appels,
+        offer_id=offer_id,
+        mode=mode,
+        modele_redaction=modele,
+        modele_juge=gen.modele_juge,
+        raison_fin=gen.raison_fin,
+    )
+
+
 def _update_lettre_courante(
     conn: sqlite3.Connection,
     offer_id: int,
@@ -366,7 +396,10 @@ def _update_lettre_courante(
     """Remplace la lettre courante par une génération réussie — régénération
     ordinaire ou reprise depuis ma lettre qui l'a réécrite (EXE-173, critères
     5-10) : même mise à jour, plus la marque de reprise sur la nouvelle version
-    dans ce second cas."""
+    dans ce second cas. Trace MLflow de la génération (EXE-174, critères 6-9) :
+    calculée ici, jamais dans la boucle — le banc n'appelle jamais ce chemin."""
+    mode = _mode_generation(gen, repartie_de_ma_lettre=repartie_de_ma_lettre)
+    trace_id = _tracer(gen, offer_id, modele, mode)
     conn.execute(
         """
         UPDATE lettres SET
@@ -411,6 +444,8 @@ def _update_lettre_courante(
         gen.raison_fin,
         angle_utilise=gen.angle_utilise,
         repartie_de_ma_lettre=repartie_de_ma_lettre,
+        appels=gen.appels,
+        trace_id=trace_id,
     )
 
 
@@ -434,13 +469,20 @@ def valider_repart_de_ma_lettre(conn: sqlite3.Connection, offer_id: int) -> str:
 
 
 def enregistrer_jugement_sur_ma_version(
-    conn: sqlite3.Connection, offer_id: int, jugement: dict | None, modele_juge: str
+    conn: sqlite3.Connection,
+    offer_id: int,
+    jugement: dict | None,
+    modele_juge: str,
+    appels: list[dict] | None = None,
+    trace_id: str | None = None,
 ) -> None:
     """EXE-173, critère 9 : pose le jugement du juge sur ma version la plus
     récente écrite à la main (origine='moi') — remplace, pour ce seul cas,
     l'absence de jugement sur une reprise à la main (EXE-169, critère 8). Ne
     touche ni le texte ni rien d'autre de cette version — jamais réécrite,
-    jamais effacée."""
+    jamais effacée. `appels`/`trace_id` (EXE-174, critère 3) : l'appel du juge
+    sur ma lettre, posé ici quand la régénération depuis ma lettre ne produit
+    aucune nouvelle version."""
     row = conn.execute(
         "SELECT id FROM lettre_versions WHERE offer_id = ? AND origine = 'moi' "
         "ORDER BY id DESC LIMIT 1",
@@ -449,10 +491,13 @@ def enregistrer_jugement_sur_ma_version(
     if row is None:
         return
     conn.execute(
-        "UPDATE lettre_versions SET jugement_json=?, modele_juge=? WHERE id=?",
+        "UPDATE lettre_versions SET jugement_json=?, modele_juge=?, "
+        "appels_json=?, trace_id=? WHERE id=?",
         (
             json.dumps(jugement, ensure_ascii=False) if jugement else None,
             modele_juge,
+            json.dumps(appels, ensure_ascii=False) if appels else None,
+            trace_id,
             row["id"],
         ),
     )
@@ -461,6 +506,8 @@ def enregistrer_jugement_sur_ma_version(
 def _store_generation(
     conn: sqlite3.Connection, offer_id: int, gen: _GenerationBoucle, modele: str
 ) -> None:
+    mode = _mode_generation(gen, repartie_de_ma_lettre=False)
+    trace_id = _tracer(gen, offer_id, modele, mode)
     conn.execute(
         """
         UPDATE lettres SET
@@ -504,6 +551,8 @@ def _store_generation(
         gen.nb_tours,
         gen.raison_fin,
         angle_utilise=gen.angle_utilise,
+        appels=gen.appels,
+        trace_id=trace_id,
     )
 
 
@@ -606,17 +655,29 @@ async def run_lettre_regenerate_depuis_ma_lettre(
             gen = await _generate_via_boucle(
                 conn, offer_id, modele, on_etape, ma_lettre=ma_lettre
             )
-            enregistrer_jugement_sur_ma_version(
-                conn, offer_id, gen.jugement_ma_lettre, MODELE_JUGE
-            )
             if gen.nb_tours > 0:
+                # Critère 3 : une nouvelle version naît — ses appels et sa
+                # trace vont sur elle, pas sur ma version ; seul le jugement
+                # (déjà posé par le juge sur ma lettre) y est répété.
+                enregistrer_jugement_sur_ma_version(
+                    conn, offer_id, gen.jugement_ma_lettre, MODELE_JUGE
+                )
                 _update_lettre_courante(
                     conn, offer_id, gen, modele, repartie_de_ma_lettre=True
                 )
             else:
-                # Critère 4 : rien à redire sur ma lettre — elle reste la
-                # lettre courante, seules les rubriques d'observation (verdict,
-                # tours, raison) et la fin de régénération sont posées.
+                # Critère 3/4 : rien à redire sur ma lettre — elle reste la
+                # lettre courante, aucune version n'est créée. L'appel unique
+                # du juge et sa trace sont gardés sur ma version.
+                trace_id = _tracer(gen, offer_id, modele, "depuis_ma_lettre")
+                enregistrer_jugement_sur_ma_version(
+                    conn,
+                    offer_id,
+                    gen.jugement_ma_lettre,
+                    MODELE_JUGE,
+                    appels=gen.appels,
+                    trace_id=trace_id,
+                )
                 conn.execute(
                     """
                     UPDATE lettres SET
