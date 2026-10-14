@@ -70,6 +70,16 @@ class LettreNonPreteError(RuntimeError):
     """Aucune lettre `done` pour cette offre (EXE-66) : rien à reprendre ni à régénérer."""
 
 
+RAISON_PAS_MA_MAIN = (
+    "La lettre affichée n'est pas une version que j'ai réécrite moi-même."
+)
+
+
+class LettrePasDeMaMainError(RuntimeError):
+    """La lettre affichée n'est pas une version « moi » (EXE-173, critère 2) :
+    repartir d'elle n'a pas de sens, refusé avant tout appel de modèle."""
+
+
 class RienAEcarterError(RuntimeError):
     """Aucun fait retenu à écarter (EXE-162, critère 17) : lettre générique ou
     jamais générée."""
@@ -103,6 +113,9 @@ class _GenerationBoucle:
     releve: dict | None
     appels: list[dict]
     angle_utilise: str | None  # EXE-171, critère 10 : None si générée sans angle
+    # EXE-173, critère 9 : le jugement du tout premier appel du juge sur ma
+    # lettre — None hors reprise depuis ma lettre.
+    jugement_ma_lettre: dict | None = None
 
 
 def _now() -> str:
@@ -124,6 +137,7 @@ def _append_version(
     nb_tours: int | None = None,
     raison_fin: str | None = None,
     angle_utilise: str | None = None,
+    repartie_de_ma_lettre: bool = False,
 ) -> None:
     """Ajoute une version à l'historique — jamais de réécriture ni de suppression
     d'une version existante (invariant du ticket EXE-66). Porte le fait retenu
@@ -134,14 +148,17 @@ def _append_version(
     de fin) — tous absents pour une reprise à la main, pour qu'une régénération
     ultérieure ne touche jamais le jugement déjà écrit dans l'historique.
     `angle_utilise` (EXE-171, critère 10) : l'angle qui a produit cette version,
-    absent (None) si elle vient du tamis ou d'une reprise à la main."""
+    absent (None) si elle vient du tamis ou d'une reprise à la main.
+    `repartie_de_ma_lettre` (EXE-173, critère 10) : vraie seulement pour la
+    version finale d'une boucle repartie d'une version « moi »."""
     conn.execute(
         """
         INSERT INTO lettre_versions
             (offer_id, texte, tournures_signalees_json, nb_mots, depasse_longueur,
              origine, fait_retenu_json, created_at, modele, modele_juge,
-             jugement_json, nb_tours, raison_fin, angle_utilise)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             jugement_json, nb_tours, raison_fin, angle_utilise,
+             repartie_de_ma_lettre)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             offer_id,
@@ -158,6 +175,7 @@ def _append_version(
             nb_tours,
             raison_fin,
             angle_utilise,
+            int(repartie_de_ma_lettre),
         ),
     )
 
@@ -247,6 +265,7 @@ async def _generate_via_boucle(
     offer_id: int,
     modele: str,
     on_etape: Callable[[dict], None] | None = None,
+    ma_lettre: str | None = None,
 ) -> _GenerationBoucle:
     """Lance la boucle tamis → rédaction → vérificateur → juge (critère 1), sur
     les points de la fiche terminée moins les faits écartés (critères 4, 14) —
@@ -255,7 +274,10 @@ async def _generate_via_boucle(
     interne, incompatible avec la boucle d'événements de l'API.
 
     `on_etape` (EXE-167) : transmis tel quel à la boucle, appelé depuis le
-    thread — optionnel, sans effet quand personne ne l'écoute (critère 6)."""
+    thread — optionnel, sans effet quand personne ne l'écoute (critère 6).
+
+    `ma_lettre` (EXE-173, critères 3, 5) : absent par défaut. Rempli, la boucle
+    repart de ce texte — le juge la lit avant toute reprise."""
     offer = conn.execute(
         "SELECT title, description_raw, description, company FROM offers WHERE id = ?",
         (offer_id,),
@@ -295,6 +317,7 @@ async def _generate_via_boucle(
         points_restants,
         config,
         angle=angle,
+        ma_lettre=ma_lettre,
         **kwargs_etape,
     )
 
@@ -308,6 +331,11 @@ async def _generate_via_boucle(
     jugement = derniere["jugement"]
     releve = dernier_releve(derniere)
     fait_retenu = None if resultat.fait_retenu == GENERIQUE_ID else resultat.fait_retenu
+    jugement_ma_lettre = (
+        asdict(resultat.jugement_ma_lettre)
+        if resultat.jugement_ma_lettre is not None
+        else None
+    )
 
     return _GenerationBoucle(
         texte=texte,
@@ -323,6 +351,110 @@ async def _generate_via_boucle(
         releve=releve,
         appels=[asdict(a) for a in resultat.appels],
         angle_utilise=angle,
+        jugement_ma_lettre=jugement_ma_lettre,
+    )
+
+
+def _update_lettre_courante(
+    conn: sqlite3.Connection,
+    offer_id: int,
+    gen: _GenerationBoucle,
+    modele: str,
+    *,
+    repartie_de_ma_lettre: bool = False,
+) -> None:
+    """Remplace la lettre courante par une génération réussie — régénération
+    ordinaire ou reprise depuis ma lettre qui l'a réécrite (EXE-173, critères
+    5-10) : même mise à jour, plus la marque de reprise sur la nouvelle version
+    dans ce second cas."""
+    conn.execute(
+        """
+        UPDATE lettres SET
+            texte=?, tournures_signalees_json=?, nb_mots=?, depasse_longueur=?,
+            modele=?, modele_juge=?, fait_retenu_json=?, texte_type_id=?,
+            nb_tours=?, raison_fin=?, jugement_json=?, releve_json=?,
+            appels_json=?, regeneration_en_cours=0, regeneration_error=NULL
+        WHERE offer_id=?
+        """,
+        (
+            gen.texte,
+            json.dumps(gen.signalees, ensure_ascii=False),
+            gen.nb_mots,
+            int(gen.depasse),
+            modele,
+            gen.modele_juge,
+            json.dumps(gen.fait_retenu, ensure_ascii=False)
+            if gen.fait_retenu
+            else None,
+            gen.texte_type_id,
+            gen.nb_tours,
+            gen.raison_fin,
+            json.dumps(gen.jugement, ensure_ascii=False) if gen.jugement else None,
+            json.dumps(gen.releve, ensure_ascii=False) if gen.releve else None,
+            json.dumps(gen.appels, ensure_ascii=False),
+            offer_id,
+        ),
+    )
+    _append_version(
+        conn,
+        offer_id,
+        gen.texte,
+        gen.signalees,
+        gen.nb_mots,
+        gen.depasse,
+        "modele",
+        gen.fait_retenu,
+        modele,
+        gen.modele_juge,
+        gen.jugement,
+        gen.nb_tours,
+        gen.raison_fin,
+        angle_utilise=gen.angle_utilise,
+        repartie_de_ma_lettre=repartie_de_ma_lettre,
+    )
+
+
+def valider_repart_de_ma_lettre(conn: sqlite3.Connection, offer_id: int) -> str:
+    """Refuse avant tout appel de modèle (EXE-173, critère 2) si la lettre
+    affichée n'est pas une version que j'ai réécrite moi-même — rend son texte
+    sinon, pour amorcer la boucle dessus (critère 3)."""
+    row = conn.execute(
+        "SELECT statut, texte FROM lettres WHERE offer_id = ?", (offer_id,)
+    ).fetchone()
+    if row is None or row["statut"] != "done":
+        raise LettrePasDeMaMainError(RAISON_PAS_MA_MAIN)
+    derniere = conn.execute(
+        "SELECT origine FROM lettre_versions WHERE offer_id = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (offer_id,),
+    ).fetchone()
+    if derniere is None or derniere["origine"] != "moi":
+        raise LettrePasDeMaMainError(RAISON_PAS_MA_MAIN)
+    return row["texte"]
+
+
+def enregistrer_jugement_sur_ma_version(
+    conn: sqlite3.Connection, offer_id: int, jugement: dict | None, modele_juge: str
+) -> None:
+    """EXE-173, critère 9 : pose le jugement du juge sur ma version la plus
+    récente écrite à la main (origine='moi') — remplace, pour ce seul cas,
+    l'absence de jugement sur une reprise à la main (EXE-169, critère 8). Ne
+    touche ni le texte ni rien d'autre de cette version — jamais réécrite,
+    jamais effacée."""
+    row = conn.execute(
+        "SELECT id FROM lettre_versions WHERE offer_id = ? AND origine = 'moi' "
+        "ORDER BY id DESC LIMIT 1",
+        (offer_id,),
+    ).fetchone()
+    if row is None:
+        return
+    conn.execute(
+        "UPDATE lettre_versions SET jugement_json=?, modele_juge=? WHERE id=?",
+        (
+            json.dumps(jugement, ensure_ascii=False) if jugement else None,
+            modele_juge,
+            row["id"],
+        ),
     )
 
 
@@ -438,52 +570,69 @@ async def run_lettre_regenerate(
         init_db(conn)
         try:
             gen = await _generate_via_boucle(conn, offer_id, modele, on_etape)
+            _update_lettre_courante(conn, offer_id, gen, modele)
+            conn.commit()
+        except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf run_lettre)
             conn.execute(
-                """
-                UPDATE lettres SET
-                    texte=?, tournures_signalees_json=?, nb_mots=?, depasse_longueur=?,
-                    modele=?, modele_juge=?, fait_retenu_json=?, texte_type_id=?,
-                    nb_tours=?, raison_fin=?, jugement_json=?, releve_json=?,
-                    appels_json=?, regeneration_en_cours=0, regeneration_error=NULL
-                WHERE offer_id=?
-                """,
-                (
-                    gen.texte,
-                    json.dumps(gen.signalees, ensure_ascii=False),
-                    gen.nb_mots,
-                    int(gen.depasse),
-                    modele,
-                    gen.modele_juge,
-                    json.dumps(gen.fait_retenu, ensure_ascii=False)
-                    if gen.fait_retenu
-                    else None,
-                    gen.texte_type_id,
-                    gen.nb_tours,
-                    gen.raison_fin,
-                    json.dumps(gen.jugement, ensure_ascii=False)
-                    if gen.jugement
-                    else None,
-                    json.dumps(gen.releve, ensure_ascii=False) if gen.releve else None,
-                    json.dumps(gen.appels, ensure_ascii=False),
-                    offer_id,
-                ),
+                "UPDATE lettres SET regeneration_en_cours=0, regeneration_error=? "
+                "WHERE offer_id=?",
+                (f"{type(exc).__name__}: {exc}"[:2000], offer_id),
             )
-            _append_version(
-                conn,
-                offer_id,
-                gen.texte,
-                gen.signalees,
-                gen.nb_mots,
-                gen.depasse,
-                "modele",
-                gen.fait_retenu,
-                modele,
-                gen.modele_juge,
-                gen.jugement,
-                gen.nb_tours,
-                gen.raison_fin,
-                angle_utilise=gen.angle_utilise,
+            conn.commit()
+            if not isinstance(exc, Exception):
+                raise
+    finally:
+        conn.close()
+
+
+async def run_lettre_regenerate_depuis_ma_lettre(
+    offer_id: int,
+    ma_lettre: str,
+    modele: str = MODELE_PAR_DEFAUT,
+    on_etape: Callable[[dict], None] | None = None,
+) -> None:
+    """Repart de ma lettre (EXE-173) : le juge la lit d'abord (critère 3), sur
+    le modèle choisi pour la rédaction si une reprise s'ensuit — le juge reste
+    toujours sur `MODELE_JUGE` (EXE-169). Son jugement est posé sur ma version
+    (critère 9) quoi qu'il arrive. S'il n'a rien à redire, ma lettre reste la
+    lettre courante, sans nouvelle version (critère 4). Sinon, la rédaction la
+    reprend depuis ce ressenti (critères 5-8), et la version finale porte la
+    marque « repartie de ma lettre » (critère 10). Même traitement d'échec que
+    `run_lettre_regenerate` : la version d'avant reste en place intacte."""
+    conn = get_connection()
+    try:
+        init_db(conn)
+        try:
+            gen = await _generate_via_boucle(
+                conn, offer_id, modele, on_etape, ma_lettre=ma_lettre
             )
+            enregistrer_jugement_sur_ma_version(
+                conn, offer_id, gen.jugement_ma_lettre, MODELE_JUGE
+            )
+            if gen.nb_tours > 0:
+                _update_lettre_courante(
+                    conn, offer_id, gen, modele, repartie_de_ma_lettre=True
+                )
+            else:
+                # Critère 4 : rien à redire sur ma lettre — elle reste la
+                # lettre courante, seules les rubriques d'observation (verdict,
+                # tours, raison) et la fin de régénération sont posées.
+                conn.execute(
+                    """
+                    UPDATE lettres SET
+                        jugement_json=?, nb_tours=0, raison_fin=?, modele_juge=?,
+                        regeneration_en_cours=0, regeneration_error=NULL
+                    WHERE offer_id=?
+                    """,
+                    (
+                        json.dumps(gen.jugement_ma_lettre, ensure_ascii=False)
+                        if gen.jugement_ma_lettre
+                        else None,
+                        gen.raison_fin,
+                        MODELE_JUGE,
+                        offer_id,
+                    ),
+                )
             conn.commit()
         except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf run_lettre)
             conn.execute(

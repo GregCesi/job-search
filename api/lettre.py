@@ -11,7 +11,10 @@ rend telle quelle sans rappeler le modèle (critère 2).
 
 PUT /lettre/texte enregistre le texte repris par l'utilisateur (calcul 100% Python,
 aucun appel modèle). POST /lettre/regenerer relance la boucle sans toucher à la
-version d'avant tant qu'elle n'a pas abouti. POST /lettre/ecarter écarte le fait
+version d'avant tant qu'elle n'a pas abouti. POST /lettre/regenerer-depuis-ma-lettre
+(EXE-173) repart de ma dernière version « moi » : le juge la lit d'abord, la
+rédaction ne la reprend que s'il a quelque chose à redire — refusé si la lettre
+affichée n'est pas une réécriture de ma main. POST /lettre/ecarter écarte le fait
 retenu courant et régénère aussitôt (critère 13) ; POST /lettre/remettre le remet
 sans régénérer (critère 15). GET /lettre/versions rend l'historique, jamais
 réécrit ni tronqué.
@@ -431,6 +434,31 @@ def _launch_regeneration(offer_id: int, modele: str) -> None:
         task.add_done_callback(_tasks.discard)
 
 
+async def _regenerate_depuis_ma_lettre(
+    offer_id: int, ma_lettre: str, modele: str
+) -> None:
+    try:
+        await lettre_service.run_lettre_regenerate_depuis_ma_lettre(
+            offer_id, ma_lettre, modele, on_etape=_on_etape(offer_id)
+        )
+    finally:
+        _running.discard(offer_id)
+        _progression.pop(offer_id, None)
+    mark_changed(offer_id)
+
+
+def _launch_regeneration_depuis_ma_lettre(
+    offer_id: int, ma_lettre: str, modele: str
+) -> None:
+    if offer_id not in _running:
+        _running.add(offer_id)
+        task = asyncio.create_task(
+            _regenerate_depuis_ma_lettre(offer_id, ma_lettre, modele)
+        )
+        _tasks.add(task)
+        task.add_done_callback(_tasks.discard)
+
+
 @router.post("/{offer_id}/lettre/regenerer")
 async def regenerer_lettre(
     offer_id: int, response: Response, body: ModeleLettreIn | None = None
@@ -456,6 +484,36 @@ async def regenerer_lettre(
         if offer_id not in _running:
             lettre_service.mark_regenerating(conn, offer_id)
     _launch_regeneration(offer_id, modele)
+    response.status_code = 202
+    return {"regeneration_en_cours": True}
+
+
+@router.post("/{offer_id}/lettre/regenerer-depuis-ma-lettre")
+async def regenerer_depuis_ma_lettre(
+    offer_id: int, response: Response, body: ModeleLettreIn | None = None
+) -> dict:
+    """Repart de ma lettre (EXE-173) : le juge la lit d'abord ; sans rien à
+    redire, elle reste la lettre courante (critère 4) ; sinon la rédaction la
+    reprend depuis son ressenti (critères 5-10). Refuse avant tout appel de
+    modèle si la lettre affichée n'est pas une version que j'ai réécrite
+    moi-même (critère 2)."""
+    modele = _modele_choisi(body)
+    with get_conn() as conn:
+        v = conn.execute(
+            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if v is None or v["status"] != "retenu":
+            raise HTTPException(
+                status_code=409,
+                detail="La lettre n'est régénérée que pour une offre retenue",
+            )
+        try:
+            ma_lettre = lettre_service.valider_repart_de_ma_lettre(conn, offer_id)
+        except lettre_service.LettrePasDeMaMainError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if offer_id not in _running:
+            lettre_service.mark_regenerating(conn, offer_id)
+    _launch_regeneration_depuis_ma_lettre(offer_id, ma_lettre, modele)
     response.status_code = 202
     return {"regeneration_en_cours": True}
 
@@ -571,7 +629,8 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
         rows = conn.execute(
             "SELECT texte, tournures_signalees_json, nb_mots, depasse_longueur, "
             "origine, fait_retenu_json, created_at, modele, modele_juge, "
-            "jugement_json, nb_tours, raison_fin, angle_utilise FROM lettre_versions "
+            "jugement_json, nb_tours, raison_fin, angle_utilise, "
+            "repartie_de_ma_lettre FROM lettre_versions "
             "WHERE offer_id = ? ORDER BY id ASC",
             (offer_id,),
         ).fetchall()
@@ -593,6 +652,9 @@ def get_lettre_versions(offer_id: int) -> list[dict]:
             "raison_fin": r["raison_fin"],
             # EXE-171, critère 14 : angle qui a produit cette version ; None sinon.
             "angle_utilise": r["angle_utilise"],
+            # EXE-173, critère 10 : vraie seulement pour la version finale
+            # d'une boucle repartie d'une version « moi ».
+            "repartie_de_ma_lettre": bool(r["repartie_de_ma_lettre"]),
         }
         for r in rows
     ]

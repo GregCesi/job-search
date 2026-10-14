@@ -568,6 +568,12 @@
                   class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
                 >{{ lettre.regeneration_en_cours ? 'Régénération en cours…' : 'Régénérer' }}</button>
                 <button
+                  v-if="derniereLettreVersionEstMoi"
+                  @click="regenererDepuisMaLettre"
+                  :disabled="lettre.regeneration_en_cours || lettreBusy"
+                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                >{{ lettre.regeneration_en_cours ? 'Régénération en cours…' : 'Régénérer à partir de ma lettre' }}</button>
+                <button
                   @click="telechargerLettrePdf"
                   class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                 >Télécharger le PDF</button>
@@ -576,6 +582,7 @@
               <p v-if="lettre.regeneration_error" class="text-xs text-red-600">{{ lettre.regeneration_error }}</p>
               <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600">{{ lettrePdfError }}</p>
+              <p v-if="lettreRepartSansReecriture" class="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">Le juge n'a rien à redire : ta lettre est gardée telle quelle.</p>
 
               <!-- Fait retenu / accroche -->
               <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
@@ -638,7 +645,10 @@
                 <details v-for="(v, i) in lettreVersionsRecentesDabord" :key="i" class="rounded border border-gray-200 bg-gray-50">
                   <summary class="cursor-pointer px-3 py-2 text-xs text-gray-500 flex items-center justify-between select-none">
                     <span>{{ formatDateHeure(v.created_at) }}</span>
-                    <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0 ml-2">{{ v.origine === 'moi' ? 'moi' : (v.modele ?? 'modèle') }}</span>
+                    <span class="flex items-center gap-1 flex-shrink-0 ml-2">
+                      <span v-if="v.repartie_de_ma_lettre" class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">Repartie de ma lettre</span>
+                      <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{{ v.origine === 'moi' ? 'moi' : (v.modele ?? 'modèle') }}</span>
+                    </span>
                   </summary>
                   <div class="px-3 pb-3 space-y-2">
                     <p v-if="v.angle_utilise" class="text-xs text-indigo-600 italic">Écrite depuis mon angle : « {{ v.angle_utilise }} »</p>
@@ -648,7 +658,8 @@
                         <h4 class="font-semibold text-gray-400 uppercase tracking-wide">Verdict du juge</h4>
                         <span class="text-gray-400">{{ v.nb_tours }} tour(s) — {{ v.raison_fin }}</span>
                       </div>
-                      <p class="text-gray-400">{{ nomModele(v.modele) }} a écrit, {{ nomModele(v.modele_juge) }} a jugé.</p>
+                      <p v-if="v.origine === 'moi'" class="text-gray-400">{{ nomModele(v.modele_juge) }} a jugé.</p>
+                      <p v-else class="text-gray-400">{{ nomModele(v.modele) }} a écrit, {{ nomModele(v.modele_juge) }} a jugé.</p>
                       <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Ressenti</summary><p class="text-gray-700 whitespace-pre-wrap">{{ v.jugement.ressenti }}</p></details>
                       <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Détails</summary><p class="text-gray-700 whitespace-pre-wrap">{{ v.jugement.details }}</p></details>
                       <details class="space-y-1"><summary class="cursor-pointer text-gray-600">Réussites</summary><p class="text-gray-700 whitespace-pre-wrap">{{ v.jugement.reussites }}</p></details>
@@ -1855,6 +1866,37 @@ async function regenererLettre() {
   lettreBusy.value = true
   try {
     await $fetch(`${lettreUrl()}/regenerer`, { method: 'POST', body: { modele: modeleLettre.value } })
+    if (lettre.value) lettre.value = { ...lettre.value, regeneration_en_cours: true, regeneration_error: null }
+    await chargerPieces()
+    startLettrePolling()
+  } catch (e) {
+    lettreActionError.value = messageErreurLettre(e)
+  } finally {
+    lettreBusy.value = false
+  }
+}
+
+// EXE-173 : la dernière version de l'historique est la mienne — je peux
+// repartir d'elle, le juge la lit avant toute reprise.
+const derniereLettreVersionEstMoi = computed(() => {
+  const versions = lettreVersions.value
+  return versions.length > 0 && versions[versions.length - 1].origine === 'moi'
+})
+
+// Critère 16 : le juge n'a rien à redire sur ma lettre — `nb_tours === 0` avec
+// un jugement posé ne se produit que par ce chemin, jamais par une génération
+// ou une régénération ordinaire (qui comptent toujours au moins un tour avant
+// le premier jugement).
+const lettreRepartSansReecriture = computed(() => {
+  const l = lettre.value
+  return !!l && l.nb_tours === 0 && !!l.jugement
+})
+
+async function regenererDepuisMaLettre() {
+  lettreActionError.value = null
+  lettreBusy.value = true
+  try {
+    await $fetch(`${lettreUrl()}/regenerer-depuis-ma-lettre`, { method: 'POST', body: { modele: modeleLettre.value } })
     if (lettre.value) lettre.value = { ...lettre.value, regeneration_en_cours: true, regeneration_error: null }
     await chargerPieces()
     startLettrePolling()

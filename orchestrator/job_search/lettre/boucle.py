@@ -213,6 +213,10 @@ class ResultatBoucle:
     # EXE-152, critères 14, 15 : nature de l'arrêt pour le banc, sans reparser
     # `raison_fin` — None si la boucle s'est terminée sans erreur.
     erreur_type: Literal["reponse_illisible", "appel_echoue"] | None = None
+    # EXE-173, critère 9 : le jugement du tout premier appel du juge, posé sur
+    # ma lettre avant toute reprise — None hors mode « repartie de ma lettre »,
+    # ou si cet appel a échoué.
+    jugement_ma_lettre: Jugement | None = None
 
 
 class EtatBoucle(TypedDict):
@@ -230,6 +234,10 @@ class EtatBoucle(TypedDict):
     # seulement des espaces) — rempli, il remplace le choix du tamis, jamais
     # appelé dans ce cas.
     angle: str | None
+    # EXE-173, critères 3, 5 : la boucle repart de ma lettre — le tamis n'est
+    # jamais appelé, l'entrée est le juge, et la rédaction qui suit ne reçoit ni
+    # fait retenu ni texte type.
+    repart_de_ma_lettre: bool
     lettres: list[dict]
     tour: int
     appels: list[Appel]
@@ -561,6 +569,11 @@ def _blocs_communs_redaction(state: EtatBoucle) -> str:
         # EXE-171, critère 2 : ni fait retenu, ni texte type quand l'angle est
         # rempli — le tamis n'a jamais tourné pour cette génération.
         fait_bloc = _bloc_angle_redaction(angle)
+        texte_type_bloc = ""
+    elif state.get("repart_de_ma_lettre"):
+        # EXE-173, critère 5 : repartie de ma lettre, sans angle — le tamis n'a
+        # pas tourné non plus, aucun fait ni texte type n'existe à envoyer.
+        fait_bloc = ""
         texte_type_bloc = ""
     else:
         texte_type = state["texte_type"]
@@ -1060,7 +1073,11 @@ def noeud_juge(state: EtatBoucle) -> dict:
 
 def _route_entree(state: EtatBoucle) -> str:
     """EXE-171, critères 1, 6 : mon angle, quand il est rempli, remplace le choix
-    du tamis — celui-ci n'est jamais appelé dans ce cas."""
+    du tamis — celui-ci n'est jamais appelé dans ce cas. EXE-173, critère 3 :
+    repartie de ma lettre, l'entrée est le juge — il la lit avant que le tamis
+    ou la rédaction n'aient jamais tourné."""
+    if state.get("repart_de_ma_lettre"):
+        return "juge"
     return "redaction" if state.get("angle") else "tamis"
 
 
@@ -1099,7 +1116,7 @@ def _construire_graphe():
     graphe.add_node("verificateur", noeud_verificateur)
     graphe.add_node("juge", noeud_juge)
     graphe.set_conditional_entry_point(
-        _route_entree, {"tamis": "tamis", "redaction": "redaction"}
+        _route_entree, {"tamis": "tamis", "redaction": "redaction", "juge": "juge"}
     )
     graphe.add_conditional_edges(
         "tamis", _route_apres_tamis, {"redaction": "redaction", END: END}
@@ -1140,15 +1157,25 @@ def _invoquer_graphe(etat_initial: EtatBoucle) -> ResultatBoucle:
     erreur_type = erreur.get("type") if erreur else None
     fait = etat_final.get("fait_retenu")
     texte_type = etat_final.get("texte_type")
+    lettres = etat_final["lettres"]
+    # EXE-173, critère 9 : le jugement sur ma lettre est celui de la toute
+    # première entrée — distinct du jugement final quand une reprise a réécrit
+    # la lettre (lettres[-1] devient alors une autre entrée).
+    jugement_ma_lettre = (
+        lettres[0]["jugement"]
+        if etat_final.get("repart_de_ma_lettre") and lettres
+        else None
+    )
 
     return ResultatBoucle(
         fait_retenu=fait if fait is not None else GENERIQUE_ID,
         texte_type_id=texte_type.id if texte_type is not None else GENERIQUE_ID,
-        lettres=etat_final["lettres"],
+        lettres=lettres,
         nb_tours=etat_final["tour"],
         raison_fin=raison,
         appels=etat_final["appels"],
         erreur_type=erreur_type,
+        jugement_ma_lettre=jugement_ma_lettre,
     )
 
 
@@ -1163,6 +1190,7 @@ def generer_lettre_depuis_donnees(
     tournures_path: str | Path = LETTRE_TOURNURES_PATH,
     on_etape: Callable[[dict], None] | None = None,
     angle: str | None = None,
+    ma_lettre: str | None = None,
 ) -> ResultatBoucle:
     """Lance la boucle tamis → rédaction → juge sur des données déjà résolues
     (EXE-151) — n'ouvre et ne lit aucune table, contrairement à
@@ -1175,13 +1203,34 @@ def generer_lettre_depuis_donnees(
 
     `angle` (EXE-171, critères 1, 6, 7) : absent par défaut, sans effet sur une
     génération sans angle — normalisé ici (un angle fait seulement d'espaces vaut
-    un champ vide), rempli il remplace le choix du tamis."""
+    un champ vide), rempli il remplace le choix du tamis.
+
+    `ma_lettre` (EXE-173, critères 3, 5) : absent par défaut. Rempli, la boucle
+    repart de ce texte mot pour mot — le tamis n'est jamais appelé, l'entrée du
+    graphe est le juge, qui la lit avant toute reprise."""
     charge = charger_repertoire(repertoire_path)
     # EXE-158, critères 13-14 : refus avant tout appel de modèle si la
     # consigne/le contexte du juge ou la consigne de reprise manquent.
     valider_juge_et_redaction(charge.repertoire)
     cv_reference_text = strip_html(Path(cv_reference_path).read_text(encoding="utf-8"))
     tournures = load_tournures_interdites(Path(tournures_path))
+
+    lettres_initiales: list[dict] = (
+        [
+            {
+                "texte": ma_lettre,
+                "texte_redige": ma_lettre,
+                "nb_mots": count_words(ma_lettre),
+                "tournures_signalees": None,
+                "releve_redaction": None,
+                "texte_corrige": None,
+                "releve_correction": None,
+                "jugement": None,
+            }
+        ]
+        if ma_lettre is not None
+        else []
+    )
 
     etat_initial: EtatBoucle = {
         "titre": titre,
@@ -1195,7 +1244,8 @@ def generer_lettre_depuis_donnees(
         "fait_retenu": None,
         "texte_type": None,
         "angle": normaliser_angle(angle),
-        "lettres": [],
+        "repart_de_ma_lettre": ma_lettre is not None,
+        "lettres": lettres_initiales,
         "tour": 0,
         "appels": [],
         "erreur": None,

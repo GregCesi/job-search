@@ -178,7 +178,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             jugement_json             TEXT,  -- EXE-169 : les quatre rubriques du juge sur cette version
             nb_tours                  INTEGER, -- EXE-169 : nombre de tours de la boucle pour cette version
             raison_fin                TEXT,  -- EXE-169 : raison de fin de la boucle pour cette version
-            angle_utilise             TEXT  -- EXE-171 : angle qui a produit cette version ; NULL sinon
+            angle_utilise             TEXT,  -- EXE-171 : angle qui a produit cette version ; NULL sinon
+            repartie_de_ma_lettre     INTEGER NOT NULL DEFAULT 0  -- EXE-173 : version écrite par la boucle repartie d'une version « moi »
         );
 
         CREATE TABLE IF NOT EXISTS ajouts (
@@ -317,6 +318,11 @@ def migrate_lettre_versions_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE lettre_versions ADD COLUMN raison_fin TEXT")
     if "angle_utilise" not in existing:
         conn.execute("ALTER TABLE lettre_versions ADD COLUMN angle_utilise TEXT")
+    if "repartie_de_ma_lettre" not in existing:
+        conn.execute(
+            "ALTER TABLE lettre_versions ADD COLUMN repartie_de_ma_lettre "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
     conn.commit()
 
 

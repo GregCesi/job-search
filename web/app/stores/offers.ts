@@ -194,6 +194,7 @@ export interface LettreVersion {
   nb_tours: number | null // EXE-169 : absent pour une version « moi »
   raison_fin: string | null // EXE-169 : absent pour une version « moi »
   angle_utilise: string | null // EXE-171 : angle qui a produit cette version ; absent sinon
+  repartie_de_ma_lettre: boolean // EXE-173 : vraie seulement pour la version finale d'une boucle repartie d'une version « moi »
 }
 
 export type PieceStatut = 'a_faire' | 'en_cours' | 'prete'
