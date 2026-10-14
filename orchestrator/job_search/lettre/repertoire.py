@@ -126,6 +126,15 @@ class Verificateur(BaseModel):
     consigne: str | None = None
 
 
+class Interprete(BaseModel):
+    """EXE-175, critères 9, 12, 15 : rôle du banc seulement — sa consigne n'est
+    requise que si une configuration du banc nomme ce rôle (`valider_interprete`)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    consigne: str | None = None
+
+
 class Repertoire(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -143,6 +152,7 @@ class Repertoire(BaseModel):
     juge: Juge = Field(default_factory=Juge)
     redaction: Redaction = Field(default_factory=Redaction)
     verificateur: Verificateur = Field(default_factory=Verificateur)
+    interprete: Interprete = Field(default_factory=Interprete)
 
 
 @dataclass(frozen=True)
@@ -294,6 +304,16 @@ def valider_juge_et_redaction(repertoire: Repertoire) -> None:
         raise RepertoireError(
             "le répertoire de la lettre n'a pas de consigne de correction pour la "
             "rédaction"
+        )
+
+
+def valider_interprete(repertoire: Repertoire) -> None:
+    """EXE-175, critère 15 : appelée par le banc seulement quand une
+    configuration nomme l'interprète — sans cette consigne, aucun appel du
+    modèle de l'interprète ne doit partir."""
+    if not (repertoire.interprete.consigne or "").strip():
+        raise RepertoireError(
+            "le répertoire de la lettre n'a pas de consigne de l'interprète"
         )
 
 

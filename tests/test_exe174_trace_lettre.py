@@ -159,6 +159,7 @@ _JUGE_RIEN_A_REDIRE = json.dumps(
         "details": "Rien à redire.",
         "reussites": "Rien à redire.",
         "verdict": "Rien à redire.",
+        "decision": "j'appelle",  # EXE-175, critère 1
     }
 )
 
@@ -171,6 +172,7 @@ def _juge_remarques(texte="trop long") -> str:
             "details": texte,
             "reussites": "Une accroche correcte.",
             "verdict": "À revoir.",
+            "decision": "j'appelle",  # EXE-175, critère 1
         }
     )
 
@@ -330,6 +332,7 @@ def _resultat_sans_reecriture() -> ResultatBoucle:
                 "jugement": JUGEMENT_RIEN_A_REDIRE,
                 "releve_redaction": None,
                 "releve_correction": None,
+                "tour": 0,  # EXE-175 : ma lettre, jamais réécrite
             }
         ],
         nb_tours=0,
@@ -354,6 +357,7 @@ def _resultat_avec_reecriture() -> ResultatBoucle:
                 "jugement": JUGEMENT_A_REDIRE,
                 "releve_redaction": None,
                 "releve_correction": None,
+                "tour": 0,  # EXE-175 : ma lettre, jamais réécrite
             },
             {
                 "texte": "Lettre réécrite par le modèle.",
@@ -362,6 +366,7 @@ def _resultat_avec_reecriture() -> ResultatBoucle:
                 "jugement": JUGEMENT_RIEN_A_REDIRE,
                 "releve_redaction": None,
                 "releve_correction": None,
+                "tour": 1,  # EXE-175 : la réécriture retenue, ce tour-ci
             },
         ],
         nb_tours=1,

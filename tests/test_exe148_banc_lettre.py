@@ -178,6 +178,7 @@ _JUGE_RIEN_A_REDIRE = json.dumps(
         "details": "Rien à redire.",
         "reussites": "Rien à redire.",
         "verdict": "Rien à redire.",
+        "decision": "j'appelle",  # EXE-175, critère 1
     }
 )
 
@@ -419,6 +420,7 @@ def test_critere14_annexe_lettres_intermediaires_et_duree_des_noeuds(
                 "details": "trop long",
                 "reussites": "Une accroche correcte.",
                 "verdict": "À revoir.",
+                "decision": "j'appelle",  # EXE-175, critère 1
             }
         ),
         _JUGE_RIEN_A_REDIRE,

@@ -150,6 +150,7 @@ _JUGE_A_REDIRE = json.dumps(
         "details": "Détail du juge.",
         "reussites": "Réussite du juge.",
         "verdict": "Verdict du juge.",
+        "decision": "j'appelle",  # EXE-175, critère 1
     }
 )
 _JUGE_RIEN_A_REDIRE = json.dumps(
@@ -159,6 +160,7 @@ _JUGE_RIEN_A_REDIRE = json.dumps(
         "details": "Rien à redire.",
         "reussites": "Rien à redire.",
         "verdict": "Rien à redire.",
+        "decision": "j'appelle",  # EXE-175, critère 1
     }
 )
 
@@ -322,6 +324,7 @@ def _resultat_sans_reecriture(ma_lettre_texte: str) -> ResultatBoucle:
                 "jugement": JUGEMENT_RIEN_A_REDIRE,
                 "releve_redaction": None,
                 "releve_correction": None,
+                "tour": 0,  # EXE-175 : ma lettre, jamais réécrite
             }
         ],
         nb_tours=0,
@@ -346,6 +349,7 @@ def _resultat_avec_reecriture(
                 "jugement": JUGEMENT_MA_LETTRE,
                 "releve_redaction": None,
                 "releve_correction": None,
+                "tour": 0,  # EXE-175 : ma lettre, jamais réécrite
             },
             {
                 "texte": texte_final,
@@ -354,6 +358,7 @@ def _resultat_avec_reecriture(
                 "jugement": JUGEMENT_FINAL,
                 "releve_redaction": None,
                 "releve_correction": None,
+                "tour": nb_tours,  # EXE-175 : la réécriture retenue, ce tour-ci
             },
         ],
         nb_tours=nb_tours,
@@ -563,6 +568,7 @@ class TestCritere9JugementSurMaLettreEnregistreSurMaVersion:
             "details": "Rien à redire.",
             "reussites": "Rien à redire.",
             "verdict": "Rien à redire.",
+            "decision": "j'appelle",  # EXE-175, critère 1
         }
         assert ma_version["modele_juge"] == lettre_service.MODELE_JUGE
 

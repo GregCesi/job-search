@@ -250,6 +250,7 @@ def _juge_json(
     details="Détails neutres.",
     reussites="Réussites neutres.",
     verdict="Verdict neutre.",
+    decision="j'appelle",  # EXE-175, critère 1
 ) -> str:
     return json.dumps(
         {
@@ -258,6 +259,7 @@ def _juge_json(
             "details": details,
             "reussites": reussites,
             "verdict": verdict,
+            "decision": decision,
         }
     )
 

@@ -52,6 +52,9 @@ BOUCLE_JUGE_CWD = Path.home() / ".cache" / "job-search" / "boucle_juge_cwd"
 BOUCLE_VERIFICATEUR_CWD = (
     Path.home() / ".cache" / "job-search" / "boucle_verificateur_cwd"
 )
+# Nœud de l'interprète (EXE-175, banc seulement) : même raison qu'au-dessus — jamais
+# la session de la rédaction ou du juge.
+BOUCLE_INTERPRETE_CWD = Path.home() / ".cache" / "job-search" / "boucle_interprete_cwd"
 # Rapports du banc de la lettre (EXE-148) : hors git, posés à part comme les autres
 # fichiers de data/lettre/.
 LETTRE_BANC_REPORTS_DIR = REPO_ROOT / "data" / "lettre" / "banc"

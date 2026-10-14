@@ -288,6 +288,7 @@ class TestCritere6VersionGardeLeJugement:
             "details": "Rien à signaler.",
             "reussites": "L'accroche tient.",
             "verdict": "À envoyer.",
+            "decision": "j'appelle",  # EXE-175, critère 1
         }
         assert version["nb_tours"] == 2
         assert version["raison_fin"] == RAISON_PLAFOND

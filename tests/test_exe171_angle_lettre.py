@@ -173,6 +173,7 @@ _JUGE_RIEN_A_REDIRE = json.dumps(
         "details": "Rien à redire.",
         "reussites": "Rien à redire.",
         "verdict": "Rien à redire.",
+        "decision": "j'appelle",  # EXE-175, critère 1
     }
 )
 
@@ -558,4 +559,5 @@ class TestCritere12ModeleJugeEtJugementMarchentAvecUnAngle:
             "details": "Détails.",
             "reussites": "Réussites.",
             "verdict": "Verdict.",
+            "decision": "j'appelle",  # EXE-175, critère 1
         }

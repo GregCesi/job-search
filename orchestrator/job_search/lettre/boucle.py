@@ -49,6 +49,7 @@ from orchestrator.job_search.lettre.repertoire import (
     valider_juge_et_redaction,
 )
 from orchestrator.job_search.paths import (
+    BOUCLE_INTERPRETE_CWD,
     BOUCLE_JUGE_CWD,
     BOUCLE_REDACTION_CWD,
     BOUCLE_TAMIS_CWD,
@@ -60,6 +61,14 @@ from orchestrator.job_search.paths import (
 
 MAX_TOURS = 3  # H1 du ticket : plafond de trois lettres
 GENERIQUE_ID = "generique"
+
+# EXE-175, critère 1 : les trois décisions possibles du juge, de la plus forte à
+# la plus faible — l'ordre sert au classement de la lettre la mieux jugée
+# (critère 4).
+DECISION_J_APPELLE = "j'appelle"
+DECISION_J_HESITE = "j'hésite"
+DECISION_JE_PASSE = "je passe"
+ORDRE_DECISIONS = (DECISION_J_APPELLE, DECISION_J_HESITE, DECISION_JE_PASSE)
 
 # H5/H6 du ticket : alias Claude Agent SDK vs modèle local Ollama.
 MODELES_CLAUDE = {"sonnet", "opus"}
@@ -73,6 +82,7 @@ _CWD_PAR_NOEUD = {
     "redaction": BOUCLE_REDACTION_CWD,
     "juge": BOUCLE_JUGE_CWD,
     "verificateur": BOUCLE_VERIFICATEUR_CWD,
+    "interprete": BOUCLE_INTERPRETE_CWD,
 }
 _FORBIDDEN_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebSearch", "WebFetch"]
 
@@ -105,8 +115,27 @@ _SCHEMA_JUGE = {
         "details": {"type": "string"},
         "reussites": {"type": "string"},
         "verdict": {"type": "string"},
+        # EXE-175, critère 1 : la décision du juge, en plus de ses quatre
+        # rubriques et de « rien à redire ».
+        "decision": {"type": "string", "enum": list(ORDRE_DECISIONS)},
     },
-    "required": ["rien_a_redire", "ressenti", "details", "reussites", "verdict"],
+    "required": [
+        "rien_a_redire",
+        "ressenti",
+        "details",
+        "reussites",
+        "verdict",
+        "decision",
+    ],
+}
+
+_SCHEMA_INTERPRETE = {
+    "type": "object",
+    "properties": {
+        "ce_que_je_veux_lire": {"type": "string"},
+        "lettre": {"type": "string"},
+    },
+    "required": ["ce_que_je_veux_lire", "lettre"],
 }
 
 # EXE-160, critère 5 : le vérificateur relève les lieux et les affirmations par un
@@ -146,6 +175,12 @@ def raison_reponse_illisible(noeud: str) -> str:
     return f"Le {noeud} a rendu une réponse que le code ne sait pas lire"
 
 
+def raison_plafond_avec_tour(tour_retenu: int) -> str:
+    """EXE-175, critère 6 : la raison de fin, quand la lettre retenue au plafond
+    n'est pas celle du dernier tour, nomme le numéro du tour retenu."""
+    return f"{RAISON_PLAFOND} — lettre du tour {tour_retenu} retenue"
+
+
 def raison_appel_echoue(noeud: str, detail: str) -> str:
     return f"L'appel au modèle du nœud « {noeud} » a échoué : {detail}"
 
@@ -167,13 +202,18 @@ class ReponseModele:
 @dataclass
 class Jugement:
     """Les quatre rubriques rendues par le juge (critère 5 du ticket EXE-158),
-    pour la lettre qu'il vient de juger."""
+    pour la lettre qu'il vient de juger, et sa décision (EXE-175, critère 1).
+    `decision` porte un défaut (jamais lu sur un jugement déjà enregistré sans
+    ce champ — critère 3 : ces jugements-là sont lus en JSON brut, jamais
+    reconstruits en `Jugement`) pour que les constructions directes de ce
+    dataclass dans les tests d'avant ce ticket restent valides."""
 
     rien_a_redire: bool
     ressenti: str
     details: str
     reussites: str
     verdict: str
+    decision: str = DECISION_J_APPELLE
 
 
 @dataclass
@@ -182,7 +222,7 @@ class Appel:
     (EXE-174, critère 1) — le numéro de tour est celui signalé par `_signaler`
     au même nœud, jamais recalculé ailleurs."""
 
-    noeud: Literal["tamis", "redaction", "juge", "verificateur"]
+    noeud: Literal["tamis", "redaction", "juge", "verificateur", "interprete"]
     modele: str
     duree_s: float
     cout_usd: float | None
@@ -200,6 +240,9 @@ class ConfigBoucle:
     # EXE-160, critère 15 : absent (None), le vérificateur tourne sur le modèle de
     # la rédaction — jamais un troisième modèle en dur.
     modele_verificateur: str | None = None
+    # EXE-175, critères 9, 10 : absent (None), la boucle tourne comme avant ce
+    # ticket, au banc comme dans l'app — l'app ne nomme jamais ce rôle.
+    modele_interprete: str | None = None
 
     def modele_verificateur_effectif(self) -> str:
         return self.modele_verificateur or self.modele_redaction
@@ -220,6 +263,19 @@ class ResultatBoucle:
     # ma lettre avant toute reprise — None hors mode « repartie de ma lettre »,
     # ou si cet appel a échoué.
     jugement_ma_lettre: Jugement | None = None
+    # EXE-175, critères 4, 5 : la lettre la mieux jugée (rien à redire, ou au
+    # plafond la décision la plus forte, la plus récente à égalité) — celle
+    # que l'app et le banc affichent comme lettre finale. None si la boucle
+    # s'est arrêtée en erreur ou sans aucune lettre.
+    lettre_retenue: dict | None = None
+
+    def __post_init__(self) -> None:
+        # Repli sur la dernière lettre pour toute construction qui ne pose pas
+        # ce champ (tests d'avant ce ticket qui construisent `ResultatBoucle`
+        # à la main) — `_invoquer_graphe` le pose toujours lui-même quand il y
+        # a une lettre à retenir, ce repli n'a alors aucun effet.
+        if self.lettre_retenue is None and self.lettres:
+            self.lettre_retenue = self.lettres[-1]
 
 
 class EtatBoucle(TypedDict):
@@ -331,12 +387,12 @@ def _appeler_ollama(
 
 
 def appeler_modele(
-    noeud: Literal["tamis", "redaction", "juge", "verificateur"],
+    noeud: Literal["tamis", "redaction", "juge", "verificateur", "interprete"],
     modele: str,
     prompt_text: str,
     schema: dict | None = None,
 ) -> ReponseModele:
-    """Point d'appel unique des trois nœuds — c'est lui que les tests doublent."""
+    """Point d'appel unique des nœuds — c'est lui que les tests doublent."""
     if modele in MODELES_CLAUDE:
         return _appeler_claude(modele, prompt_text, _CWD_PAR_NOEUD[noeud], schema)
     return _appeler_ollama(modele, prompt_text, schema)
@@ -814,6 +870,7 @@ def noeud_redaction(state: EtatBoucle) -> dict:
         "texte_corrige": None,
         "releve_correction": None,
         "jugement": None,
+        "tour": tour,  # EXE-175, critères 4-8 : numéro de tour de cette lettre
     }
     nouveau_tour = tour
     _signaler(state.get("on_etape"), ETAPE_REDACTION, nouveau_tour)
@@ -989,18 +1046,27 @@ def _prompt_juge(state: EtatBoucle) -> str:
         f"**Texte de l'offre** :\n{strip_html(state['texte_offre'])}\n\n"
         f"**Lettre à juger** :\n{derniere['texte']}\n\n"
         'Rends un JSON {"ressenti": <texte>, "details": <texte>, '
-        '"reussites": <texte>, "verdict": <texte>, "rien_a_redire": <bool>}.'
+        '"reussites": <texte>, "verdict": <texte>, "rien_a_redire": <bool>, '
+        '"decision": <"j\'appelle"|"j\'hésite"|"je passe">}.'
     )
 
 
 def _parser_juge(texte: str) -> Jugement:
-    """EXE-158, critère 6 : la réponse à qui manque l'une des quatre rubriques
-    (ou son indicateur rien_a_redire) est une réponse illisible — même raison
-    que pour les autres nœuds."""
+    """EXE-158, critère 6 ; EXE-175, critère 2 : la réponse à qui manque l'une
+    des quatre rubriques, l'indicateur rien_a_redire, ou la décision (ou dont
+    la décision n'est pas l'une des trois valeurs attendues) est une réponse
+    illisible — même raison que pour les autres nœuds."""
     data = json.loads(texte)
     if not isinstance(data, dict):
         raise ValueError("réponse du juge : pas un objet JSON")
-    for champ in ("rien_a_redire", "ressenti", "details", "reussites", "verdict"):
+    for champ in (
+        "rien_a_redire",
+        "ressenti",
+        "details",
+        "reussites",
+        "verdict",
+        "decision",
+    ):
         if champ not in data:
             raise ValueError(f"réponse du juge : {champ} manquant")
     rien_a_redire = data["rien_a_redire"]
@@ -1009,12 +1075,16 @@ def _parser_juge(texte: str) -> Jugement:
     for champ in ("ressenti", "details", "reussites", "verdict"):
         if not isinstance(data[champ], str):
             raise ValueError(f"réponse du juge : {champ} n'est pas un texte")
+    decision = data["decision"]
+    if decision not in ORDRE_DECISIONS:
+        raise ValueError("réponse du juge : decision n'est pas une valeur attendue")
     return Jugement(
         rien_a_redire=rien_a_redire,
         ressenti=data["ressenti"],
         details=data["details"],
         reussites=data["reussites"],
         verdict=data["verdict"],
+        decision=decision,
     )
 
 
@@ -1081,6 +1151,122 @@ def noeud_juge(state: EtatBoucle) -> dict:
     return {"appels": state["appels"] + [appel], "lettres": lettres, "fin": False}
 
 
+def _prompt_interprete(state: EtatBoucle) -> str:
+    """EXE-175, critère 12 : l'interprète reçoit les mêmes blocs communs que la
+    rédaction (offre, posture, forme, sujets interdits, ce qui est vrai sur
+    moi, fait retenu ou angle, texte type, CV), la lettre que le juge vient de
+    juger avec ses quatre rubriques et sa décision — jamais un jugement d'un
+    tour antérieur — et la consigne de l'interprète de mon répertoire, jamais
+    celle de reprise de la rédaction."""
+    repertoire = state["repertoire"]
+    derniere = state["lettres"][-1]
+    jugement = derniere["jugement"]
+    return (
+        "Tu réécris la lettre de motivation ci-dessous à partir du ressenti du "
+        "recruteur qui vient de la juger, en suivant la forme et la posture "
+        "ci-dessous. Rends le texte complet réécrit, pas seulement les "
+        "passages changés.\n\n"
+        f"{_blocs_communs_redaction(state)}\n\n"
+        "**Lettre jugée** :\n"
+        f"{derniere['texte']}\n\n"
+        "**Ce que le juge a ressenti à la lecture** :\n"
+        f"{jugement.ressenti}\n\n"
+        "**Détails relevés par le juge** :\n"
+        f"{jugement.details}\n\n"
+        "**Ce que la lettre réussit, selon le juge** :\n"
+        f"{jugement.reussites}\n\n"
+        "**Verdict du juge** :\n"
+        f"{jugement.verdict}\n\n"
+        "**Décision du juge** :\n"
+        f"{jugement.decision}\n\n"
+        "**Consigne de l'interprète** :\n"
+        f"{repertoire.interprete.consigne}\n\n"
+        'Rends un JSON {"ce_que_je_veux_lire": <texte>, "lettre": <texte>}.'
+    )
+
+
+def _parser_interprete(texte: str) -> tuple[str, str]:
+    """EXE-175, critère 13 : une réponse sans l'une des deux rubriques est une
+    réponse illisible de l'interprète — même forme de raison que pour les
+    autres nœuds."""
+    data = json.loads(texte)
+    if not isinstance(data, dict):
+        raise ValueError("réponse de l'interprète : pas un objet JSON")
+    ce_que_je_veux_lire = data.get("ce_que_je_veux_lire")
+    lettre = data.get("lettre")
+    if not isinstance(ce_que_je_veux_lire, str) or not ce_que_je_veux_lire.strip():
+        raise ValueError("réponse de l'interprète : ce_que_je_veux_lire manquant")
+    if not isinstance(lettre, str) or not lettre.strip():
+        raise ValueError("réponse de l'interprète : lettre manquante")
+    return ce_que_je_veux_lire, lettre
+
+
+def noeud_interprete(state: EtatBoucle) -> dict:
+    """EXE-175, critères 10, 11, 16 : écrit la lettre du tour suivant à partir
+    du jugement qui vient de tomber, à la place de la reprise de la
+    rédaction ; la lettre qui en sort retraverse le vérificateur puis, au
+    besoin, la correction de la rédaction, puis le juge — dans le même ordre
+    qu'une lettre de la rédaction."""
+    prompt = _prompt_interprete(state)
+    try:
+        reponse = appeler_modele(
+            "interprete",
+            state["config"].modele_interprete,
+            prompt,
+            schema=_SCHEMA_INTERPRETE,
+        )
+    except AppelModeleError as exc:
+        return {
+            "erreur": {
+                "noeud": "interprete",
+                "raison": raison_appel_echoue("interprete", str(exc)),
+                "type": "appel_echoue",
+            }
+        }
+
+    try:
+        ce_que_je_veux_lire, texte = _parser_interprete(reponse.texte)
+    except (ValueError, json.JSONDecodeError):
+        return {
+            "erreur": {
+                "noeud": "interprete",
+                "raison": raison_reponse_illisible("interprete"),
+                "type": "reponse_illisible",
+            }
+        }
+
+    tour = state["tour"] + 1
+    appel = Appel(
+        noeud="interprete",
+        modele=state["config"].modele_interprete,
+        duree_s=reponse.duree_s,
+        cout_usd=reponse.cout_usd,
+        demande=prompt,
+        reponse=reponse.texte,
+        tour=tour,
+        nb_jetons=reponse.nb_jetons,
+    )
+    lettre = {
+        "texte": texte,
+        "texte_redige": texte,
+        "nb_mots": count_words(texte),
+        "tournures_signalees": None,
+        "releve_redaction": None,
+        "texte_corrige": None,
+        "releve_correction": None,
+        "jugement": None,
+        "tour": tour,
+        # EXE-175, critère 19 : montré par le banc au-dessus de la lettre.
+        "ce_que_je_veux_lire": ce_que_je_veux_lire,
+    }
+    _signaler(state.get("on_etape"), ETAPE_REDACTION, tour)
+    return {
+        "appels": state["appels"] + [appel],
+        "lettres": state["lettres"] + [lettre],
+        "tour": tour,
+    }
+
+
 def _route_entree(state: EtatBoucle) -> str:
     """EXE-171, critères 1, 6 : mon angle, quand il est rempli, remplace le choix
     du tamis — celui-ci n'est jamais appelé dans ce cas. EXE-173, critère 3 :
@@ -1114,9 +1300,18 @@ def _route_apres_verificateur(state: EtatBoucle) -> str:
 
 
 def _route_apres_juge(state: EtatBoucle) -> str:
+    """EXE-175, critère 10 : avec un interprète nommé, c'est lui qui écrit la
+    lettre du tour suivant après un jugement qui ne termine pas la boucle — à
+    la place de la reprise de la rédaction. Sans ce rôle (None), inchangé."""
     if state.get("erreur") or state.get("fin"):
         return END
+    if state["config"].modele_interprete:
+        return "interprete"
     return "redaction"
+
+
+def _route_apres_interprete(state: EtatBoucle) -> str:
+    return END if state.get("erreur") else "verificateur"
 
 
 def _construire_graphe():
@@ -1125,6 +1320,9 @@ def _construire_graphe():
     graphe.add_node("redaction", noeud_redaction)
     graphe.add_node("verificateur", noeud_verificateur)
     graphe.add_node("juge", noeud_juge)
+    # EXE-175, critères 9, 10 : nœud du banc seulement — sans ce rôle nommé par
+    # la configuration, `_route_apres_juge` ne l'atteint jamais.
+    graphe.add_node("interprete", noeud_interprete)
     graphe.set_conditional_entry_point(
         _route_entree, {"tamis": "tamis", "redaction": "redaction", "juge": "juge"}
     )
@@ -1142,7 +1340,14 @@ def _construire_graphe():
         {"redaction": "redaction", "juge": "juge", END: END},
     )
     graphe.add_conditional_edges(
-        "juge", _route_apres_juge, {"redaction": "redaction", END: END}
+        "juge",
+        _route_apres_juge,
+        {"redaction": "redaction", "interprete": "interprete", END: END},
+    )
+    graphe.add_conditional_edges(
+        "interprete",
+        _route_apres_interprete,
+        {"verificateur": "verificateur", END: END},
     )
     return graphe.compile()
 
@@ -1155,6 +1360,24 @@ def dessiner_graphe() -> str:
     le retour du vérificateur vers la rédaction (correction) et celui du juge vers
     la rédaction (reprise)."""
     return _GRAPHE.get_graph().draw_mermaid()
+
+
+def _rang_decision(decision: str) -> int:
+    return ORDRE_DECISIONS.index(decision)
+
+
+def _index_lettre_retenue(lettres: list[dict]) -> int:
+    """EXE-175, critères 4, 5 : la décision la plus forte l'emporte ; à égalité,
+    la plus récente — `<=` écrase l'index gardé sur une égalité de rang, donc
+    la dernière lettre d'un rang donné reste celle retenue."""
+    meilleur_rang: int | None = None
+    meilleur_index = 0
+    for i, lettre in enumerate(lettres):
+        rang = _rang_decision(lettre["jugement"].decision)
+        if meilleur_rang is None or rang <= meilleur_rang:
+            meilleur_rang = rang
+            meilleur_index = i
+    return meilleur_index
 
 
 def _invoquer_graphe(etat_initial: EtatBoucle) -> ResultatBoucle:
@@ -1177,6 +1400,21 @@ def _invoquer_graphe(etat_initial: EtatBoucle) -> ResultatBoucle:
         else None
     )
 
+    # EXE-175, critères 4, 5 : au plafond, la lettre la mieux jugée ; sur
+    # « rien à redire » (ou une erreur), la dernière reste la bonne — c'est
+    # celle que le juge vient de juger, ou la seule disponible.
+    lettre_retenue = None
+    if erreur is None and lettres:
+        index_dernier = len(lettres) - 1
+        index_retenu = (
+            _index_lettre_retenue(lettres)
+            if raison == RAISON_PLAFOND
+            else index_dernier
+        )
+        lettre_retenue = lettres[index_retenu]
+        if raison == RAISON_PLAFOND and index_retenu != index_dernier:
+            raison = raison_plafond_avec_tour(lettre_retenue["tour"])
+
     return ResultatBoucle(
         fait_retenu=fait if fait is not None else GENERIQUE_ID,
         texte_type_id=texte_type.id if texte_type is not None else GENERIQUE_ID,
@@ -1186,6 +1424,7 @@ def _invoquer_graphe(etat_initial: EtatBoucle) -> ResultatBoucle:
         appels=etat_final["appels"],
         erreur_type=erreur_type,
         jugement_ma_lettre=jugement_ma_lettre,
+        lettre_retenue=lettre_retenue,
     )
 
 
@@ -1236,6 +1475,7 @@ def generer_lettre_depuis_donnees(
                 "texte_corrige": None,
                 "releve_correction": None,
                 "jugement": None,
+                "tour": 0,  # EXE-175, critère 7 : ma lettre est le tour 0
             }
         ]
         if ma_lettre is not None

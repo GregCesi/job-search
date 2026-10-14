@@ -117,6 +117,9 @@ class _GenerationBoucle:
     # EXE-173, critère 9 : le jugement du tout premier appel du juge sur ma
     # lettre — None hors reprise depuis ma lettre.
     jugement_ma_lettre: dict | None = None
+    # EXE-175, critère 7 : le tour de la lettre retenue (0 = ma lettre elle-même,
+    # jamais réécrite) — distinct de `nb_tours`, le nombre de tours exécutés.
+    tour_retenu: int = 0
 
 
 def _now() -> str:
@@ -329,10 +332,13 @@ async def _generate_via_boucle(
         **kwargs_etape,
     )
 
-    if resultat.raison_fin not in (RAISON_RIEN_A_REDIRE, RAISON_PLAFOND):
+    if (
+        resultat.raison_fin != RAISON_RIEN_A_REDIRE
+        and not resultat.raison_fin.startswith(RAISON_PLAFOND)
+    ):
         raise RuntimeError(resultat.raison_fin)
 
-    derniere = resultat.lettres[-1]
+    derniere = resultat.lettre_retenue
     texte = derniere["texte"]
     nb_mots = derniere["nb_mots"]
     signalees = derniere.get("tournures_signalees") or []
@@ -360,6 +366,7 @@ async def _generate_via_boucle(
         appels=[asdict(a) for a in resultat.appels],
         angle_utilise=angle,
         jugement_ma_lettre=jugement_ma_lettre,
+        tour_retenu=derniere.get("tour", 0),
     )
 
 
@@ -655,7 +662,10 @@ async def run_lettre_regenerate_depuis_ma_lettre(
             gen = await _generate_via_boucle(
                 conn, offer_id, modele, on_etape, ma_lettre=ma_lettre
             )
-            if gen.nb_tours > 0:
+            # EXE-175, critère 7 : la lettre retenue peut être ma propre lettre
+            # (tour 0) même après des reprises au plafond — même traitement
+            # que « rien à redire », aucune version n'est créée.
+            if gen.tour_retenu > 0:
                 # Critère 3 : une nouvelle version naît — ses appels et sa
                 # trace vont sur elle, pas sur ma version ; seul le jugement
                 # (déjà posé par le juge sur ma lettre) y est répété.
@@ -666,7 +676,8 @@ async def run_lettre_regenerate_depuis_ma_lettre(
                     conn, offer_id, gen, modele, repartie_de_ma_lettre=True
                 )
             else:
-                # Critère 3/4 : rien à redire sur ma lettre — elle reste la
+                # Critère 3/4/7 : rien à redire sur ma lettre, ou la lettre
+                # retenue au plafond est ma lettre elle-même — elle reste la
                 # lettre courante, aucune version n'est créée. L'appel unique
                 # du juge et sa trace sont gardés sur ma version.
                 trace_id = _tracer(gen, offer_id, modele, "depuis_ma_lettre")
