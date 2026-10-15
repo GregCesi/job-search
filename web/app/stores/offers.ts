@@ -235,6 +235,9 @@ export interface Pieces {
 export interface MailCandidature {
   objet: string
   corps: string
+  origine: 'modele' | 'moi' | null
+  modele: string | null
+  created_at: string | null
 }
 
 // Avancement d'une pièce (EXE-127) — distinct de PieceStatut : dit si la

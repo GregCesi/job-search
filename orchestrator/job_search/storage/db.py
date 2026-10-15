@@ -184,6 +184,18 @@ def init_db(conn: sqlite3.Connection) -> None:
             trace_id                  TEXT   -- EXE-174 : identifiant de la trace MLflow ; NULL si MLflow n'a pas pu écrire ou si appels_json est NULL
         );
 
+        CREATE TABLE IF NOT EXISTS mails (
+            id          INTEGER PRIMARY KEY,
+            offer_id    INTEGER NOT NULL REFERENCES offers(id),
+            objet       TEXT NOT NULL,
+            corps       TEXT NOT NULL,
+            origine     TEXT NOT NULL, -- modele|moi (EXE-176)
+            modele      TEXT,          -- modèle qui a généré ce mail ; NULL si origine='moi'
+            appel_json  TEXT,          -- trace de l'appel (modele, duree_s, cout_usd, demande, reponse) ; NULL si origine='moi'
+            created_at  TEXT NOT NULL,
+            UNIQUE(offer_id)
+        );
+
         CREATE TABLE IF NOT EXISTS ajouts (
             id               INTEGER PRIMARY KEY,
             url              TEXT,  -- NULL : texte collé sans URL (EXE-82)

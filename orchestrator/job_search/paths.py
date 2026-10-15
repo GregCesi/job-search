@@ -37,6 +37,13 @@ COORDONNEES_PATH = REPO_ROOT / "data" / "lettre" / "coordonnees.txt"
 # Gabarit du mail de candidature (EXE-103, H3) : hors git, posé à part comme les
 # autres fichiers de data/lettre/.
 MAIL_CANDIDATURE_PATH = REPO_ROOT / "data" / "lettre" / "mail_candidature.md"
+# Consigne de génération du mail depuis la lettre (EXE-176, H1) : hors git, posée
+# à part comme les autres fichiers de data/lettre/. Lue, jamais écrite ni
+# complétée par le code.
+MAIL_CONSIGNE_PATH = REPO_ROOT / "data" / "lettre" / "mail_consigne.md"
+# cwd dédié à la génération du mail (EXE-176) : même raison que les autres cwd
+# par type d'appel — jamais mêlé à une session de la fiche, du CV ou de la lettre.
+MAIL_CWD = Path.home() / ".cache" / "job-search" / "mail_cwd"
 # Répertoire de la lettre (EXE-146, H5) : textes types, posture, sujets interdits —
 # hors git, posé à part comme les autres fichiers de data/lettre/.
 REPERTOIRE_LETTRE_PATH = REPO_ROOT / "data" / "lettre" / "repertoire.yaml"

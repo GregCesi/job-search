@@ -52,7 +52,10 @@ from orchestrator.job_search.pdf.coordonnees import (
     CoordonneesManquantesError,
     load_coordonnees,
 )
-from orchestrator.job_search.pdf.filename import resolve_piece_filename
+from orchestrator.job_search.pdf.filename import (
+    resolve_entreprise,
+    resolve_piece_filename,
+)
 from orchestrator.job_search.pdf.lettre_html import build_lettre_html
 from orchestrator.job_search.pdf.render import html_to_pdf
 from orchestrator.job_search.pieces_state import mark_changed
@@ -565,10 +568,15 @@ def remettre_fait(offer_id: int, body: FaitEcarteIn) -> dict:
     return _row_to_lettre(row, offer_id)
 
 
-def _lettre_page_ingredients(conn, offer_id: int) -> tuple[Coordonnees, str, str]:
-    """Coordonnées, intitulé et texte nécessaires à la page de la lettre — gabarit
-    partagé par le PDF et son aperçu HTML (EXE-129) : mêmes refus, même phrase,
-    même ordre pour les deux."""
+def _lettre_page_ingredients(
+    conn, offer_id: int
+) -> tuple[Coordonnees, str, str, str | None, str | None]:
+    """Coordonnées, intitulé, texte, entreprise et ville nécessaires à la page de
+    la lettre — gabarit partagé par le PDF et son aperçu HTML (EXE-129) : mêmes
+    refus, même phrase, même ordre pour les deux.
+
+    EXE-176 : l'entreprise est résolue comme pour le nom de fichier (critère 13),
+    sans son repli sur l'intitulé — `None` si non résolue (critère 15)."""
     v = conn.execute(
         "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
     ).fetchone()
@@ -590,10 +598,19 @@ def _lettre_page_ingredients(conn, offer_id: int) -> tuple[Coordonnees, str, str
     except CoordonneesManquantesError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     offer = conn.execute(
-        "SELECT title FROM offers WHERE id = ?", (offer_id,)
+        "SELECT title, company, location FROM offers WHERE id = ?", (offer_id,)
+    ).fetchone()
+    fiche = conn.execute(
+        "SELECT employeur_nom FROM fiches_entreprise WHERE offer_id = ?",
+        (offer_id,),
     ).fetchone()
     intitule = offer["title"] if offer else ""
-    return coordonnees, intitule, row["texte"]
+    entreprise = resolve_entreprise(
+        offer["company"] if offer else None,
+        fiche["employeur_nom"] if fiche else None,
+    )
+    location = offer["location"] if offer else None
+    return coordonnees, intitule, row["texte"], entreprise, location
 
 
 @router.get("/{offer_id}/lettre/pdf")
@@ -601,9 +618,11 @@ def get_lettre_pdf(offer_id: int) -> Response:
     """PDF téléchargeable de la lettre d'une offre retenue (EXE-102) — mise en
     page du texte stocké tel quel, jamais corrigé ; aucun appel modèle (critère 17)."""
     with get_conn() as conn:
-        coordonnees, intitule, texte = _lettre_page_ingredients(conn, offer_id)
+        coordonnees, intitule, texte, entreprise, location = _lettre_page_ingredients(
+            conn, offer_id
+        )
         filename = resolve_piece_filename(conn, offer_id, "Lettre", coordonnees)
-    html = build_lettre_html(coordonnees, intitule, texte)
+    html = build_lettre_html(coordonnees, intitule, texte, entreprise, location)
     pdf_bytes = html_to_pdf(html)
     return Response(
         content=pdf_bytes,
@@ -618,8 +637,10 @@ def get_lettre_mise_en_page(offer_id: int) -> Response:
     (EXE-129) : c'est la page dont le PDF est tiré, servie telle quelle plutôt
     que convertie. Mêmes refus que le PDF, même phrase (critères 1 à 4)."""
     with get_conn() as conn:
-        coordonnees, intitule, texte = _lettre_page_ingredients(conn, offer_id)
-    html = build_lettre_html(coordonnees, intitule, texte)
+        coordonnees, intitule, texte, entreprise, location = _lettre_page_ingredients(
+            conn, offer_id
+        )
+    html = build_lettre_html(coordonnees, intitule, texte, entreprise, location)
     return Response(content=html, media_type="text/html")
 
 

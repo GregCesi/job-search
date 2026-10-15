@@ -864,6 +864,16 @@
             {{ mailError }}
           </div>
           <template v-else-if="mail">
+            <div class="space-y-1">
+              <button
+                @click="genererMail"
+                :disabled="mailBusy || !lettrePrete"
+                class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >{{ mailBusy ? 'Génération…' : (mail.origine === 'moi' ? 'Remplacer par un mail généré depuis la lettre' : 'Générer depuis la lettre') }}</button>
+              <p v-if="!lettrePrete" class="text-xs text-gray-400 italic">Écris ou génère la lettre d'abord</p>
+              <p v-if="mailActionError" class="text-xs text-red-600">{{ mailActionError }}</p>
+            </div>
+
             <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
               <div class="flex items-center justify-between">
                 <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Objet</h3>
@@ -872,7 +882,10 @@
                   class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                 >{{ mailObjetCopied ? 'Copié !' : 'Copier' }}</button>
               </div>
-              <p class="text-sm text-gray-800">{{ mail.objet }}</p>
+              <input
+                v-model="mailObjetEdit"
+                class="w-full rounded-lg border border-gray-200 p-2 text-sm text-gray-800"
+              />
             </section>
             <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
               <div class="flex items-center justify-between">
@@ -882,8 +895,16 @@
                   class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                 >{{ mailCorpsCopied ? 'Copié !' : 'Copier' }}</button>
               </div>
-              <p class="text-sm text-gray-800 whitespace-pre-wrap">{{ mail.corps }}</p>
+              <textarea
+                v-model="mailCorpsEdit"
+                rows="8"
+                class="w-full rounded-lg border border-gray-200 p-3 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap"
+              />
             </section>
+            <button
+              @click="sauvegarderMail"
+              class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+            >Enregistrer</button>
           </template>
           <div v-else class="rounded-lg border border-gray-200 bg-white p-6 flex items-center justify-center text-sm text-gray-400">
             Chargement…
@@ -1547,35 +1568,70 @@ async function annulerEnvoyee() {
   }
 }
 
-// ── Mail de candidature — EXE-103 ───────────────────────────────────────────
+// ── Mail de candidature — EXE-103, EXE-176 ──────────────────────────────────
 const mail = ref<MailCandidature | null>(null)
 const mailError = ref<string | null>(null)
 const mailObjetCopied = ref(false)
 const mailCorpsCopied = ref(false)
 let mailObjetTimer: ReturnType<typeof setTimeout> | null = null
 let mailCorpsTimer: ReturnType<typeof setTimeout> | null = null
+const mailObjetEdit = ref('')
+const mailCorpsEdit = ref('')
+const mailBusy = ref(false)
+const mailActionError = ref<string | null>(null)
+const lettrePrete = computed(() => lettre.value?.statut === 'done')
+
+function mailUrl(): string {
+  return `${config.public.apiBase}/offers/${id.value}/mail`
+}
 
 async function chargerMail() {
   mail.value = null
   mailError.value = null
   try {
-    mail.value = await $fetch<MailCandidature>(`${config.public.apiBase}/offers/${id.value}/mail`)
+    mail.value = await $fetch<MailCandidature>(mailUrl())
+    mailObjetEdit.value = mail.value.objet
+    mailCorpsEdit.value = mail.value.corps
   } catch (e) {
     mailError.value = await errorDetail(e)
   }
 }
 
+async function genererMail() {
+  mailActionError.value = null
+  mailBusy.value = true
+  try {
+    mail.value = await $fetch<MailCandidature>(`${mailUrl()}/generer`, { method: 'POST' })
+    mailObjetEdit.value = mail.value.objet
+    mailCorpsEdit.value = mail.value.corps
+  } catch (e) {
+    mailActionError.value = messageErreurLettre(e)
+  } finally {
+    mailBusy.value = false
+  }
+}
+
+async function sauvegarderMail() {
+  mailActionError.value = null
+  try {
+    mail.value = await $fetch<MailCandidature>(mailUrl(), {
+      method: 'PUT',
+      body: { objet: mailObjetEdit.value, corps: mailCorpsEdit.value },
+    })
+  } catch (e) {
+    mailActionError.value = messageErreurLettre(e)
+  }
+}
+
 async function copierMailObjet() {
-  if (!mail.value) return
-  await navigator.clipboard.writeText(mail.value.objet)
+  await navigator.clipboard.writeText(mailObjetEdit.value)
   mailObjetCopied.value = true
   if (mailObjetTimer) clearTimeout(mailObjetTimer)
   mailObjetTimer = setTimeout(() => { mailObjetCopied.value = false }, 1500)
 }
 
 async function copierMailCorps() {
-  if (!mail.value) return
-  await navigator.clipboard.writeText(mail.value.corps)
+  await navigator.clipboard.writeText(mailCorpsEdit.value)
   mailCorpsCopied.value = true
   if (mailCorpsTimer) clearTimeout(mailCorpsTimer)
   mailCorpsTimer = setTimeout(() => { mailCorpsCopied.value = false }, 1500)
