@@ -74,6 +74,9 @@ class OfferDetail(OfferRow):
     employer_url: str | None = None  # EXE-76
     last_checked_at: str | None = None  # EXE-76
     expiration_checks: list[ExpirationCheckSchema] = []  # EXE-76
+    # langue détectée de l'annonce (fr|en|nl|other), sans modèle — EXE-183 : la
+    # vue d'offre s'en sert pour afficher le CV anglais par défaut quand il existe.
+    ad_language: str | None = None
 
 
 class EmployerUrlIn(BaseModel):

@@ -24,6 +24,7 @@ from orchestrator.job_search.cv.service import (
     CvNotReadyError,
     apply_correction,
     clear_titre_defaut,
+    generate_cv_en,
     get_titre_defaut,
     reset_pending,
     run_cv,
@@ -95,6 +96,8 @@ def _row_to_cv(row) -> dict:
         "cost_usd": row["cost_usd"],
         "error_message": row["error_message"],
         "created_at": row["created_at"],
+        "en_html": row["en_html"],
+        "en_error_message": row["en_error_message"],
     }
 
 
@@ -207,6 +210,23 @@ def put_cv_titre(offer_id: int, body: CvTitreIn) -> dict:
     return _row_to_cv(row)
 
 
+@router.post("/{offer_id}/cv/en")
+def create_cv_en(offer_id: int) -> dict:
+    """Produit la version anglaise d'un CV français déjà terminé (critère 3,
+    EXE-183) : bouton « Générer la version anglaise », action explicite sur une
+    offre dont le CV n'a pas encore cette version."""
+    with get_conn() as conn:
+        try:
+            generate_cv_en(conn, offer_id)
+        except CvNotReadyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        row = conn.execute(
+            "SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+    mark_changed(offer_id)
+    return _row_to_cv(row)
+
+
 @titre_defaut_router.get("/cv/titre-defaut")
 def get_cv_titre_defaut() -> dict:
     with get_conn() as conn:
@@ -231,9 +251,13 @@ def delete_cv_titre_defaut() -> dict:
 
 
 @router.get("/{offer_id}/cv/pdf")
-def get_cv_pdf(offer_id: int) -> Response:
+def get_cv_pdf(offer_id: int, lang: Literal["fr", "en"] = "fr") -> Response:
     """PDF téléchargeable du CV d'une offre retenue (EXE-102) — le CV généré tel
-    quel, jamais recorrigé ; aucun appel modèle (critère 17)."""
+    quel, jamais recorrigé ; aucun appel modèle (critère 17).
+
+    `lang=en` rend le PDF de la version anglaise (EXE-183, critère 11) : même
+    nom de fichier que le français, avec `_EN` juste avant `.pdf`.
+    """
     with get_conn() as conn:
         v = conn.execute(
             "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
@@ -243,20 +267,28 @@ def get_cv_pdf(offer_id: int) -> Response:
                 status_code=409,
                 detail="Le PDF n'est produit que pour une offre retenue",
             )
-        row = conn.execute(
-            "SELECT html FROM cvs WHERE offer_id = ? AND statut = 'done'",
-            (offer_id,),
-        ).fetchone()
-        if row is None:
-            raise HTTPException(
-                status_code=409, detail="Le CV n'est pas généré pour cette offre"
-            )
+        if lang == "en":
+            row = conn.execute(
+                "SELECT en_html AS pdf_html FROM cvs WHERE offer_id = ? AND statut = 'done'",
+                (offer_id,),
+            ).fetchone()
+            missing_detail = "Le CV anglais n'est pas généré pour cette offre"
+        else:
+            row = conn.execute(
+                "SELECT html AS pdf_html FROM cvs WHERE offer_id = ? AND statut = 'done'",
+                (offer_id,),
+            ).fetchone()
+            missing_detail = "Le CV n'est pas généré pour cette offre"
+        if row is None or row["pdf_html"] is None:
+            raise HTTPException(status_code=409, detail=missing_detail)
         try:
             coordonnees = load_coordonnees()
         except CoordonneesManquantesError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         filename = resolve_piece_filename(conn, offer_id, "CV", coordonnees)
-    pdf_bytes = html_to_pdf(row["html"])
+        if lang == "en":
+            filename = filename[:-4] + "_EN.pdf"
+    pdf_bytes = html_to_pdf(row["pdf_html"])
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

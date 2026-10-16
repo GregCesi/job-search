@@ -113,6 +113,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             error_message            TEXT,
             created_at               TEXT NOT NULL,
             marque_pret_at           TEXT,  -- EXE-101 : date/heure de ma marque « Prête », NULL sinon
+            en_html                  TEXT,  -- EXE-183 : CV anglais, traduction pure, NULL si absent
+            en_error_message         TEXT,  -- EXE-183 : message si le CV anglais de référence manque (critère 23)
             UNIQUE(offer_id)
         );
 
@@ -269,7 +271,13 @@ def migrate_verdicts_schema(conn: sqlite3.Connection) -> None:
 def migrate_cvs_schema(conn: sqlite3.Connection) -> None:
     """Colonnes ajoutées après la première livraison (EXE-58, EXE-101) — idempotent."""
     existing = {row[1] for row in conn.execute("PRAGMA table_info(cvs)").fetchall()}
-    for col in ("groupes_json", "notions_json", "marque_pret_at"):
+    for col in (
+        "groupes_json",
+        "notions_json",
+        "marque_pret_at",
+        "en_html",
+        "en_error_message",
+    ):
         if col not in existing:
             conn.execute(f"ALTER TABLE cvs ADD COLUMN {col} TEXT")
     conn.commit()

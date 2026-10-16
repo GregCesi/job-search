@@ -221,7 +221,7 @@
                   :style="{ width: `${miniatureLargeur}px`, height: `${miniatureHauteur}px` }"
                 >
                   <iframe
-                    :srcdoc="cv?.html ?? ''"
+                    :srcdoc="cvHtmlAffiche ?? ''"
                     class="absolute top-0 left-0 origin-top-left border-0 pointer-events-none"
                     :style="{ width: '794px', height: '1123px', transform: `scale(${miniatureEchelle})` }"
                     tabindex="-1"
@@ -346,6 +346,10 @@
             :disabled="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
             @toggle="apercuCard === 'CV' ? toggleCvPret() : toggleLettrePret()"
           />
+          <div v-if="apercuCard === 'CV' && cv?.en_html" class="flex items-center gap-0.5 rounded-lg border border-gray-200 p-0.5 text-xs font-medium">
+            <button @click="cvLangue = 'fr'" :class="cvLangue === 'fr' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">FR</button>
+            <button @click="cvLangue = 'en'" :class="cvLangue === 'en' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">EN</button>
+          </div>
         </div>
         <div class="flex items-center gap-4">
           <button @click="modifierDepuisApercu" class="text-sm text-indigo-600 hover:underline">Modifier</button>
@@ -368,9 +372,9 @@
         <div class="flex-shrink-0 h-full overflow-y-auto p-3 bg-gray-50">
           <p v-if="apercuCard === 'Lettre de motivation' && lettreMiseEnPageError" class="text-sm text-red-600" style="width: 210mm">{{ lettreMiseEnPageError }}</p>
           <iframe
-            v-if="apercuCard === 'CV' && cv?.html"
+            v-if="apercuCard === 'CV' && cvHtmlAffiche"
             ref="cvFrame"
-            :srcdoc="cv.html"
+            :srcdoc="cvHtmlAffiche"
             class="border-0 bg-white"
             style="width: 210mm"
             title="Aperçu du CV"
@@ -404,6 +408,10 @@
             :disabled="(activeCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
             @toggle="activeCard === 'CV' ? toggleCvPret() : toggleLettrePret()"
           />
+          <div v-if="activeCard === 'CV' && cv?.en_html" class="flex items-center gap-0.5 rounded-lg border border-gray-200 p-0.5 text-xs font-medium">
+            <button @click="cvLangue = 'fr'" :class="cvLangue === 'fr' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">FR</button>
+            <button @click="cvLangue = 'en'" :class="cvLangue === 'en' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">EN</button>
+          </div>
         </div>
         <div class="flex items-center gap-4">
           <button @click="activeCard = null" class="text-gray-400 hover:text-gray-600">
@@ -766,12 +774,30 @@
                     rel="noopener noreferrer"
                     class="text-indigo-600 hover:underline font-medium text-sm"
                   >Ouvrir le CV ↗</a>
+                  <template v-if="cv.en_html">
+                    <button
+                      @click="telechargerCvPdf('fr')"
+                      class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                    >PDF FR</button>
+                    <button
+                      @click="telechargerCvPdf('en')"
+                      class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                    >PDF EN</button>
+                  </template>
                   <button
-                    @click="telechargerCvPdf"
+                    v-else
+                    @click="telechargerCvPdf('fr')"
                     class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                   >Télécharger le PDF</button>
+                  <button
+                    v-if="!cv.en_html"
+                    @click="genererCvEn"
+                    :disabled="cvEnBusy"
+                    class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                  >{{ cvEnBusy ? 'Génération…' : 'Générer la version anglaise' }}</button>
                 </div>
               </div>
+              <p v-if="cv.en_error_message" class="text-xs text-red-600">{{ cv.en_error_message }}</p>
 
               <div class="flex items-center gap-2">
                 <input
@@ -1097,6 +1123,7 @@ onMounted(async () => {
   await chargerFiche()
   if (fiche.value?.statut === 'pending') startPolling()
   await chargerCv()
+  cvLangue.value = cvLangueParDefaut()
   if (cv.value?.statut === 'pending') startCvPolling()
   await chargerCvTitreDefaut()
   await chargerLettre()
@@ -1500,10 +1527,10 @@ function declencherTelechargement(blob: Blob, contentDisposition: string | null)
   return null
 }
 
-async function telechargerCvPdf() {
+async function telechargerCvPdf(lang: 'fr' | 'en' = 'fr') {
   cvPdfError.value = null
   try {
-    const res = await $fetch.raw(cvUrl() + '/pdf', { responseType: 'blob' })
+    const res = await $fetch.raw(cvUrl() + '/pdf', { query: { lang }, responseType: 'blob' })
     cvPdfError.value = declencherTelechargement(res._data as Blob, res.headers.get('content-disposition'))
   } catch (e) {
     cvPdfError.value = await errorDetail(e)
@@ -1672,7 +1699,20 @@ const EMPTY_CV: Cv = {
   cost_usd: null,
   error_message: null,
   created_at: '',
+  en_html: null,
+  en_error_message: null,
 }
+
+// ── Version affichée du CV (EXE-183) : FR par défaut, EN si l'annonce est en
+// anglais et que la version anglaise existe déjà (critère 17) ────────────────
+const cvLangue = ref<'fr' | 'en'>('fr')
+const cvEnBusy = ref(false)
+
+function cvLangueParDefaut(): 'fr' | 'en' {
+  return offer.value?.ad_language === 'en' && cv.value?.en_html ? 'en' : 'fr'
+}
+
+const cvHtmlAffiche = computed(() => (cvLangue.value === 'en' ? cv.value?.en_html ?? null : cv.value?.html ?? null))
 
 const cvUrl = () => `${config.public.apiBase}/offers/${id.value}/cv`
 
@@ -1698,6 +1738,7 @@ function startCvPolling() {
     ticks++
     if (cv.value?.statut !== 'pending') {
       stopCvPolling() // done ou error : on s'arrête
+      cvLangue.value = cvLangueParDefaut()
       await chargerPieces()
     } else if (ticks >= POLL_MAX) {
       stopCvPolling()
@@ -1713,6 +1754,7 @@ async function genererCv() {
     if (res.statut === 'done') {
       cv.value = res // déjà terminé : rendu tel quel, aucun rappel du modèle
       cvTitreEdit.value = res.titre ?? ''
+      cvLangue.value = cvLangueParDefaut()
       await chargerPieces()
     } else {
       cv.value = { ...EMPTY_CV, statut: 'pending' }
@@ -1751,6 +1793,19 @@ async function retirerCompetence(competence: string) {
     })
   } catch (e) {
     cvActionError.value = messageErreurCv(e)
+  }
+}
+
+// ── Version anglaise à la demande (EXE-183, critère 3) ──────────────────────
+async function genererCvEn() {
+  cvActionError.value = null
+  cvEnBusy.value = true
+  try {
+    cv.value = await $fetch<Cv>(`${cvUrl()}/en`, { method: 'POST' })
+  } catch (e) {
+    cvActionError.value = messageErreurCv(e)
+  } finally {
+    cvEnBusy.value = false
   }
 }
 
@@ -1795,7 +1850,7 @@ async function effacerCvTitreDefaut() {
   }
 }
 
-watch(() => cv.value?.html, (html) => {
+watch(cvHtmlAffiche, (html) => {
   if (cvBlobUrl) { URL.revokeObjectURL(cvBlobUrl); cvBlobUrl = null }
   if (html) cvBlobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
   cvHtmlUrl.value = cvBlobUrl

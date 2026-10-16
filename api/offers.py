@@ -569,6 +569,7 @@ def get_offer(offer_id: int) -> OfferDetail:
         else False,
         extraction_status=row["extraction_status"],
         extraction_attempts=row["extraction_attempts"] or 0,
+        ad_language=row["ad_language"],
     )
 
 

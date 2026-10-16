@@ -15,6 +15,9 @@ TRACES_PATH = REPO_ROOT / "data" / "traces" / "extract_facts.jsonl"
 # traces d'extraction : le viewer de traces ne lit que des faits extraits.
 IDENTIFICATION_TRACES_PATH = REPO_ROOT / "data" / "traces" / "identify_offer.jsonl"
 CV_REFERENCE_PATH = REPO_ROOT / "data" / "cv" / "cv_reference.html"
+# Version anglaise du CV de référence (EXE-183) : lue, jamais modifiée, posée
+# hors git à côté de la version française comme le reste de data/.
+CV_REFERENCE_EN_PATH = REPO_ROOT / "data" / "cv" / "cv_reference_en.html"
 PROFILE_PATH = REPO_ROOT / "profiles" / "gregoire.yaml"
 VUE_CANDIDAT_PATH = REPO_ROOT / "profiles" / "vue_candidat.yaml"
 ALIAS_PATH = REPO_ROOT / "profiles" / "alias.yaml"

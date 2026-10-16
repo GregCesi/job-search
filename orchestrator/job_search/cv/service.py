@@ -35,10 +35,12 @@ from orchestrator.job_search.cv.skills import (
     generate_cv_html,
     parse_reference_block,
 )
+from orchestrator.job_search.cv.translation_en import build_cv_html_en
 from orchestrator.job_search.matching.profile import load_profile
 from orchestrator.job_search.paths import (
     ALIAS_PATH,
     CV_CWD,
+    CV_REFERENCE_EN_PATH,
     CV_REFERENCE_PATH,
     PROFILE_PATH,
 )
@@ -84,11 +86,25 @@ def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
             au_cv_json=NULL, demande_sans_y_etre_json=NULL, ajouts_permis_json=NULL,
             groupes_json=NULL, notions_json=NULL,
             seuil_utilise=NULL, session_id=NULL, cost_usd=NULL, prompt_text=NULL,
-            error_message=NULL, created_at=excluded.created_at
+            error_message=NULL, en_html=NULL, en_error_message=NULL,
+            created_at=excluded.created_at
         """,
         (offer_id, _now()),
     )
     conn.commit()
+
+
+def _build_en(
+    title: str, location: str, groupes: list[SkillGroup], notions: list[str]
+) -> tuple[str | None, str | None]:
+    """Construit le HTML anglais par traduction pure (table figée, EXE-183 H3) —
+    aucun appel modèle. Rend (None, message qui nomme le fichier) si le CV
+    anglais de référence est absent du disque (critère 23) : le français n'est
+    jamais bloqué par ce cas."""
+    if not CV_REFERENCE_EN_PATH.exists():
+        return None, f"CV anglais de référence manquant : {CV_REFERENCE_EN_PATH}"
+    cv_html_ref_en = CV_REFERENCE_EN_PATH.read_text(encoding="utf-8")
+    return build_cv_html_en(cv_html_ref_en, title, location, groupes, notions), None
 
 
 def _parse_output(result: ResultMessage) -> dict:
@@ -107,10 +123,15 @@ async def run_cv(offer_id: int) -> None:
     conn = get_connection()
     try:
         init_db(conn)
+        existing_cv = conn.execute(
+            "SELECT en_html FROM cvs WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        had_en_before = bool(existing_cv and existing_cv["en_html"])
         reset_pending(conn, offer_id)
         try:
             offer = conn.execute(
-                "SELECT title, location, extracted_facts_json FROM offers WHERE id = ?",
+                "SELECT title, location, extracted_facts_json, ad_language "
+                "FROM offers WHERE id = ?",
                 (offer_id,),
             ).fetchone()
             if offer is None:
@@ -211,13 +232,25 @@ async def run_cv(offer_id: int) -> None:
                 techs_required, alias_table, present
             )
 
+            # Anglais produit d'office si l'annonce est en anglais, ou si l'offre en
+            # avait déjà un avant cette relance (critères 1, 2, 22 du ticket EXE-183) —
+            # traduction pure, jamais un second appel modèle.
+            produce_en = offer["ad_language"] == "en" or had_en_before
+            if produce_en:
+                en_html, en_error_message = _build_en(
+                    title, location, final_groups, ref.notions
+                )
+            else:
+                en_html, en_error_message = None, None
+
             conn.execute(
                 """
                 UPDATE cvs SET
                     statut='done', html=?, titre=?, localisation=?,
                     au_cv_json=?, demande_sans_y_etre_json=?, ajouts_permis_json=?,
                     groupes_json=?, notions_json=?,
-                    seuil_utilise=?, session_id=?, cost_usd=?, prompt_text=?, error_message=NULL
+                    seuil_utilise=?, session_id=?, cost_usd=?, prompt_text=?, error_message=NULL,
+                    en_html=?, en_error_message=?
                 WHERE offer_id=?
                 """,
                 (
@@ -233,6 +266,8 @@ async def run_cv(offer_id: int) -> None:
                     session_id,
                     cost_usd,
                     prompt_text,
+                    en_html,
+                    en_error_message,
                     offer_id,
                 ),
             )
@@ -300,11 +335,21 @@ def apply_correction(
         cv_html_ref, row["titre"], row["localisation"], outcome.groupes, outcome.notions
     )
 
+    # Une correction touche les deux versions si l'anglais existe déjà (critère 19
+    # du ticket EXE-183) ; sinon elle reste absente, comme avant la correction.
+    if row["en_html"]:
+        en_html, en_error_message = _build_en(
+            row["titre"], row["localisation"], outcome.groupes, outcome.notions
+        )
+    else:
+        en_html, en_error_message = None, None
+
     conn.execute(
         """
         UPDATE cvs SET
             html=?, au_cv_json=?, demande_sans_y_etre_json=?,
-            groupes_json=?, notions_json=?, marque_pret_at=NULL
+            groupes_json=?, notions_json=?, marque_pret_at=NULL,
+            en_html=?, en_error_message=?
         WHERE offer_id=?
         """,
         (
@@ -313,6 +358,8 @@ def apply_correction(
             json.dumps(demande_sans_y_etre, ensure_ascii=False),
             _groupes_to_json(outcome.groupes),
             json.dumps(outcome.notions, ensure_ascii=False),
+            en_html,
+            en_error_message,
             offer_id,
         ),
     )
@@ -347,12 +394,53 @@ def set_titre(conn: sqlite3.Connection, offer_id: int, titre: str) -> str:
     cv_html_ref = CV_REFERENCE_PATH.read_text(encoding="utf-8")
     html = generate_cv_html(cv_html_ref, titre, row["localisation"], groupes, notions)
 
+    # Un titre changé vaut pour les deux versions si l'anglais existe déjà
+    # (critère 20 du ticket EXE-183).
+    if row["en_html"]:
+        en_html, en_error_message = _build_en(
+            titre, row["localisation"], groupes, notions
+        )
+    else:
+        en_html, en_error_message = None, None
+
     conn.execute(
-        "UPDATE cvs SET titre=?, html=?, marque_pret_at=NULL WHERE offer_id=?",
-        (titre, html, offer_id),
+        "UPDATE cvs SET titre=?, html=?, marque_pret_at=NULL, en_html=?, "
+        "en_error_message=? WHERE offer_id=?",
+        (titre, html, en_html, en_error_message, offer_id),
     )
     conn.commit()
     return titre
+
+
+def generate_cv_en(conn: sqlite3.Connection, offer_id: int) -> None:
+    """Produit la version anglaise d'un CV français déjà terminé, à la demande
+    (critère 3 du ticket EXE-183) — traduction pure depuis le bloc compétences
+    courant, aucun appel modèle. Si le CV anglais de référence est absent du
+    disque, l'échec se signale par `en_error_message` (critère 23) sans lever :
+    le CV français n'est pas touché. La marque « Prête » (EXE-101) n'est
+    effacée qu'en cas de production effective (critère 21)."""
+    init_db(conn)
+    row = conn.execute("SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)).fetchone()
+    if row is None or row["statut"] != "done":
+        raise CvNotReadyError(f"aucun CV terminé pour l'offre {offer_id}")
+
+    groupes = _groupes_from_json(row["groupes_json"])
+    notions = json.loads(row["notions_json"] or "[]")
+    en_html, en_error_message = _build_en(
+        row["titre"], row["localisation"], groupes, notions
+    )
+    if en_html is not None:
+        conn.execute(
+            "UPDATE cvs SET en_html=?, en_error_message=NULL, marque_pret_at=NULL "
+            "WHERE offer_id=?",
+            (en_html, offer_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE cvs SET en_html=NULL, en_error_message=? WHERE offer_id=?",
+            (en_error_message, offer_id),
+        )
+    conn.commit()
 
 
 def get_titre_defaut(conn: sqlite3.Connection) -> str | None:

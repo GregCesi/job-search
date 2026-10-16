@@ -61,6 +61,7 @@ export interface OfferDetail extends OfferRow {
   employer_url: string | null // EXE-76
   last_checked_at: string | null // EXE-76
   expiration_checks: ExpirationCheck[] // EXE-76
+  ad_language: string | null // EXE-183 : fr | en | nl | other | null
 }
 
 export type FicheTas = 'lettre' | 'entretien' | 'rien'
@@ -120,6 +121,8 @@ export interface Cv {
   cost_usd: number | null
   error_message: string | null
   created_at: string
+  en_html: string | null // EXE-183
+  en_error_message: string | null // EXE-183
 }
 
 export type LettreStatut = 'aucune' | 'pending' | 'done' | 'error'

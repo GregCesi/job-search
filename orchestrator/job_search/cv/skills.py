@@ -262,8 +262,14 @@ def compute_requested_missing(
     return missing
 
 
-def render_skills_html(groupes: list[SkillGroup], notions: list[str]) -> str:
-    lines = ["<h2>Compétences</h2>"]
+def render_skills_html(
+    groupes: list[SkillGroup],
+    notions: list[str],
+    *,
+    header_label: str = "Compétences",
+    notions_label: str = "Notions en :",
+) -> str:
+    lines = [f"<h2>{html_lib.escape(header_label)}</h2>"]
     for grp in groupes:
         label = html_lib.escape(grp.label)
         items_str = " · ".join(html_lib.escape(i) for i in grp.items)
@@ -273,7 +279,9 @@ def render_skills_html(groupes: list[SkillGroup], notions: list[str]) -> str:
         lines.append("  </div>")
     if notions:
         notions_str = ", ".join(html_lib.escape(n) for n in notions)
-        lines.append(f'  <div class="grp-notions">Notions en : {notions_str}</div>')
+        lines.append(
+            f'  <div class="grp-notions">{html_lib.escape(notions_label)} {notions_str}</div>'
+        )
     return "\n".join(lines)
 
 
@@ -286,9 +294,17 @@ def generate_cv_html(
     location: str,
     groupes: list[SkillGroup],
     notions: list[str],
+    *,
+    header_label: str = "Compétences",
+    next_header_label: str = "Formation",
+    notions_label: str = "Notions en :",
 ) -> str:
     """Substitue titre, localisation et bloc compétences ; le reste du CV de référence
     est repris octet pour octet (critère 21).
+
+    `header_label`/`next_header_label`/`notions_label` portent la version anglaise
+    (EXE-183) : mêmes titres `<h2>` que le CV anglais de référence, jamais ceux
+    du français.
     """
     out = re.sub(
         r'(<div class="role">).*?(</div>)',
@@ -312,11 +328,12 @@ def generate_cv_html(
         + out[target.end() :]
     )
 
-    new_block = render_skills_html(groupes, notions)
-    out = re.sub(
-        r"<h2>Compétences</h2>.*?(?=<h2>Formation</h2>)",
-        lambda _m: new_block + "\n\n  ",
-        out,
-        flags=re.DOTALL,
+    new_block = render_skills_html(
+        groupes, notions, header_label=header_label, notions_label=notions_label
     )
+    pattern = (
+        rf"<h2>{re.escape(header_label)}</h2>.*?"
+        rf"(?=<h2>{re.escape(next_header_label)}</h2>)"
+    )
+    out = re.sub(pattern, lambda _m: new_block + "\n\n  ", out, flags=re.DOTALL)
     return out
