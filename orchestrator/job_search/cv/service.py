@@ -23,6 +23,12 @@ from claude_agent_sdk import (
 from orchestrator.job_search.cv import prompt as cv_prompt
 from orchestrator.job_search.cv.config import skill_threshold
 from orchestrator.job_search.cv.corrections import add_skill, remove_skill
+from orchestrator.job_search.cv.profil import (
+    Profil,
+    determine_profile,
+    fiche_cite_claude,
+    resolve_lead_text,
+)
 from orchestrator.job_search.cv.skills import (
     SkillGroup,
     block_canonicals,
@@ -59,6 +65,10 @@ class CvNotReadyError(RuntimeError):
     """Aucun CV `done` pour cette offre : rien à corriger (EXE-59)."""
 
 
+class ProfilFichierManquantError(RuntimeError):
+    """Le fichier du profil Claude demandé est absent (EXE-184, critère 14)."""
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -77,7 +87,12 @@ def _groupes_from_json(raw: str | None) -> list[SkillGroup]:
 
 
 def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
-    """Insère ou remet à zéro la ligne CV de l'offre en `pending` (relance après erreur incluse)."""
+    """Insère ou remet à zéro la ligne CV de l'offre en `pending` (relance après erreur incluse).
+
+    `profil`/`profil_motif` ne sont pas touchés (EXE-184, critère 13) : un choix
+    déjà posé — à la main ou calculé — survit à la relance ; `run_cv` les relit
+    après ce reset pour décider s'il doit recalculer ou les reprendre tels quels.
+    """
     conn.execute(
         """
         INSERT INTO cvs (offer_id, statut, created_at) VALUES (?, 'pending', ?)
@@ -95,16 +110,29 @@ def reset_pending(conn: sqlite3.Connection, offer_id: int) -> None:
 
 
 def _build_en(
-    title: str, location: str, groupes: list[SkillGroup], notions: list[str]
+    title: str,
+    location: str,
+    groupes: list[SkillGroup],
+    notions: list[str],
+    profil: Profil = "base",
 ) -> tuple[str | None, str | None]:
     """Construit le HTML anglais par traduction pure (table figée, EXE-183 H3) —
     aucun appel modèle. Rend (None, message qui nomme le fichier) si le CV
-    anglais de référence est absent du disque (critère 23) : le français n'est
-    jamais bloqué par ce cas."""
+    anglais de référence est absent du disque (critère 23), ou si `profil`
+    vaut `claude` et que son fichier anglais (EXE-184, critère 14) est absent :
+    le français n'est jamais bloqué par l'un ou l'autre cas."""
     if not CV_REFERENCE_EN_PATH.exists():
         return None, f"CV anglais de référence manquant : {CV_REFERENCE_EN_PATH}"
+    lead_en, lead_err = resolve_lead_text("en", profil)
+    if lead_err:
+        return None, lead_err
     cv_html_ref_en = CV_REFERENCE_EN_PATH.read_text(encoding="utf-8")
-    return build_cv_html_en(cv_html_ref_en, title, location, groupes, notions), None
+    return (
+        build_cv_html_en(
+            cv_html_ref_en, title, location, groupes, notions, lead_text=lead_en
+        ),
+        None,
+    )
 
 
 def _parse_output(result: ResultMessage) -> dict:
@@ -137,6 +165,26 @@ async def run_cv(offer_id: int) -> None:
             if offer is None:
                 raise ValueError(f"offre {offer_id} introuvable")
 
+            # EXE-184, critère 13 : un profil choisi à la main survit à la
+            # relance — `reset_pending` ne l'a pas touché, on le reprend tel
+            # quel plutôt que de le recalculer.
+            existing_profil_row = conn.execute(
+                "SELECT profil, profil_motif FROM cvs WHERE offer_id = ?", (offer_id,)
+            ).fetchone()
+            facts_pre = json.loads(offer["extracted_facts_json"] or "{}")
+            if existing_profil_row and existing_profil_row["profil_motif"] == "manuel":
+                cv_profil, cv_profil_motif = (
+                    existing_profil_row["profil"],
+                    "manuel",
+                )
+            else:
+                cv_profil, cv_profil_motif = determine_profile(
+                    conn, offer_id, facts_pre.get("techs_required") or []
+                )
+            lead_fr, lead_fr_err = resolve_lead_text("fr", cv_profil)
+            if lead_fr_err:
+                raise FileNotFoundError(lead_fr_err)
+
             profile, _digest = load_profile(PROFILE_PATH)
             alias_table = load_alias_table(ALIAS_PATH)
             if not CV_REFERENCE_PATH.exists():
@@ -146,8 +194,7 @@ async def run_cv(offer_id: int) -> None:
             cv_html_ref = CV_REFERENCE_PATH.read_text(encoding="utf-8")
 
             ref = parse_reference_block(cv_html_ref)
-            facts = json.loads(offer["extracted_facts_json"] or "{}")
-            techs_required = facts.get("techs_required") or []
+            techs_required = facts_pre.get("techs_required") or []
 
             covered = block_canonicals(ref.groupes, ref.notions, alias_table)
             threshold = skill_threshold()
@@ -223,7 +270,12 @@ async def run_cv(offer_id: int) -> None:
                 cost_usd = result.total_cost_usd
 
             cv_html = generate_cv_html(
-                cv_html_ref, title, location, final_groups, ref.notions
+                cv_html_ref,
+                title,
+                location,
+                final_groups,
+                ref.notions,
+                lead_text=lead_fr,
             )
 
             present = block_canonicals(final_groups, ref.notions, alias_table)
@@ -238,7 +290,7 @@ async def run_cv(offer_id: int) -> None:
             produce_en = offer["ad_language"] == "en" or had_en_before
             if produce_en:
                 en_html, en_error_message = _build_en(
-                    title, location, final_groups, ref.notions
+                    title, location, final_groups, ref.notions, profil=cv_profil
                 )
             else:
                 en_html, en_error_message = None, None
@@ -250,7 +302,7 @@ async def run_cv(offer_id: int) -> None:
                     au_cv_json=?, demande_sans_y_etre_json=?, ajouts_permis_json=?,
                     groupes_json=?, notions_json=?,
                     seuil_utilise=?, session_id=?, cost_usd=?, prompt_text=?, error_message=NULL,
-                    en_html=?, en_error_message=?
+                    en_html=?, en_error_message=?, profil=?, profil_motif=?
                 WHERE offer_id=?
                 """,
                 (
@@ -268,6 +320,8 @@ async def run_cv(offer_id: int) -> None:
                     prompt_text,
                     en_html,
                     en_error_message,
+                    cv_profil,
+                    cv_profil_motif,
                     offer_id,
                 ),
             )
@@ -328,18 +382,34 @@ def apply_correction(
     )
     au_cv = compute_au_cv(outcome.groupes, outcome.notions)
 
+    # EXE-184, critère 13 : une correction ne change ni le profil ni son motif
+    # — elle ne fait que régénérer le HTML dans le profil déjà posé.
+    row_profil: Profil = row["profil"] or "base"
+    lead_fr, lead_fr_err = resolve_lead_text("fr", row_profil)
+    if lead_fr_err:
+        raise ProfilFichierManquantError(lead_fr_err)
+
     if not CV_REFERENCE_PATH.exists():
         raise FileNotFoundError(f"CV de référence manquant : {CV_REFERENCE_PATH}")
     cv_html_ref = CV_REFERENCE_PATH.read_text(encoding="utf-8")
     html = generate_cv_html(
-        cv_html_ref, row["titre"], row["localisation"], outcome.groupes, outcome.notions
+        cv_html_ref,
+        row["titre"],
+        row["localisation"],
+        outcome.groupes,
+        outcome.notions,
+        lead_text=lead_fr,
     )
 
     # Une correction touche les deux versions si l'anglais existe déjà (critère 19
     # du ticket EXE-183) ; sinon elle reste absente, comme avant la correction.
     if row["en_html"]:
         en_html, en_error_message = _build_en(
-            row["titre"], row["localisation"], outcome.groupes, outcome.notions
+            row["titre"],
+            row["localisation"],
+            outcome.groupes,
+            outcome.notions,
+            profil=row_profil,
         )
     else:
         en_html, en_error_message = None, None
@@ -389,16 +459,25 @@ def set_titre(conn: sqlite3.Connection, offer_id: int, titre: str) -> str:
 
     groupes = _groupes_from_json(row["groupes_json"])
     notions = json.loads(row["notions_json"] or "[]")
+
+    # EXE-184, critère 13 : changer le titre ne change ni le profil ni son motif.
+    row_profil: Profil = row["profil"] or "base"
+    lead_fr, lead_fr_err = resolve_lead_text("fr", row_profil)
+    if lead_fr_err:
+        raise ProfilFichierManquantError(lead_fr_err)
+
     if not CV_REFERENCE_PATH.exists():
         raise FileNotFoundError(f"CV de référence manquant : {CV_REFERENCE_PATH}")
     cv_html_ref = CV_REFERENCE_PATH.read_text(encoding="utf-8")
-    html = generate_cv_html(cv_html_ref, titre, row["localisation"], groupes, notions)
+    html = generate_cv_html(
+        cv_html_ref, titre, row["localisation"], groupes, notions, lead_text=lead_fr
+    )
 
     # Un titre changé vaut pour les deux versions si l'anglais existe déjà
     # (critère 20 du ticket EXE-183).
     if row["en_html"]:
         en_html, en_error_message = _build_en(
-            titre, row["localisation"], groupes, notions
+            titre, row["localisation"], groupes, notions, profil=row_profil
         )
     else:
         en_html, en_error_message = None, None
@@ -427,7 +506,11 @@ def generate_cv_en(conn: sqlite3.Connection, offer_id: int) -> None:
     groupes = _groupes_from_json(row["groupes_json"])
     notions = json.loads(row["notions_json"] or "[]")
     en_html, en_error_message = _build_en(
-        row["titre"], row["localisation"], groupes, notions
+        row["titre"],
+        row["localisation"],
+        groupes,
+        notions,
+        profil=row["profil"] or "base",
     )
     if en_html is not None:
         conn.execute(
@@ -480,5 +563,116 @@ def clear_titre_defaut(conn: sqlite3.Connection) -> None:
         INSERT INTO cv_settings (id, titre_defaut) VALUES (1, NULL)
         ON CONFLICT(id) DO UPDATE SET titre_defaut=NULL
         """
+    )
+    conn.commit()
+
+
+def recalc_profile_after_fiche(conn: sqlite3.Connection, offer_id: int) -> None:
+    """Rebascule le CV sur le profil Claude quand la fiche entreprise qui vient
+    de se terminer le cite (EXE-184, critères 7, 8, 9) — calcul 100% Python sur
+    les faits déjà en base, aucun appel modèle. Un profil choisi à la main
+    (critère 13), un CV pas encore terminé, ou une fiche qui ne cite pas Claude
+    (critère 9) laissent le CV intact.
+    """
+    init_db(conn)
+    row = conn.execute("SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)).fetchone()
+    if row is None or row["statut"] != "done" or row["profil_motif"] == "manuel":
+        return
+    if row["profil"] == "claude":
+        return
+
+    fiche = conn.execute(
+        "SELECT statut, presentation, points_json FROM fiches_entreprise WHERE offer_id = ?",
+        (offer_id,),
+    ).fetchone()
+    if (
+        fiche is None
+        or fiche["statut"] != "done"
+        or not fiche_cite_claude(fiche["presentation"], fiche["points_json"])
+    ):
+        return
+
+    groupes = _groupes_from_json(row["groupes_json"])
+    notions = json.loads(row["notions_json"] or "[]")
+    lead_fr, lead_fr_err = resolve_lead_text("fr", "claude")
+    if lead_fr_err:
+        raise ProfilFichierManquantError(lead_fr_err)
+
+    if not CV_REFERENCE_PATH.exists():
+        raise FileNotFoundError(f"CV de référence manquant : {CV_REFERENCE_PATH}")
+    cv_html_ref = CV_REFERENCE_PATH.read_text(encoding="utf-8")
+    html = generate_cv_html(
+        cv_html_ref,
+        row["titre"],
+        row["localisation"],
+        groupes,
+        notions,
+        lead_text=lead_fr,
+    )
+
+    if row["en_html"]:
+        en_html, en_error_message = _build_en(
+            row["titre"], row["localisation"], groupes, notions, profil="claude"
+        )
+    else:
+        en_html, en_error_message = None, None
+
+    conn.execute(
+        """
+        UPDATE cvs SET
+            profil='claude', profil_motif='fiche_entreprise',
+            html=?, marque_pret_at=NULL, en_html=?, en_error_message=?
+        WHERE offer_id=?
+        """,
+        (html, en_html, en_error_message, offer_id),
+    )
+    conn.commit()
+
+
+def set_profile_manual(conn: sqlite3.Connection, offer_id: int, profil: Profil) -> None:
+    """Change le profil du CV à la main (EXE-184, critères 10-13) : les deux
+    versions changent, la marque « Prête » s'efface, le motif devient
+    « choisi à la main ». Calcul 100% Python, aucun appel modèle. Lève si le
+    fichier du profil Claude demandé est absent (critère 14) : rien n'est
+    modifié dans ce cas.
+    """
+    init_db(conn)
+    row = conn.execute("SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)).fetchone()
+    if row is None or row["statut"] != "done":
+        raise CvNotReadyError(f"aucun CV terminé pour l'offre {offer_id}")
+
+    groupes = _groupes_from_json(row["groupes_json"])
+    notions = json.loads(row["notions_json"] or "[]")
+    lead_fr, lead_fr_err = resolve_lead_text("fr", profil)
+    if lead_fr_err:
+        raise ProfilFichierManquantError(lead_fr_err)
+
+    if not CV_REFERENCE_PATH.exists():
+        raise FileNotFoundError(f"CV de référence manquant : {CV_REFERENCE_PATH}")
+    cv_html_ref = CV_REFERENCE_PATH.read_text(encoding="utf-8")
+    html = generate_cv_html(
+        cv_html_ref,
+        row["titre"],
+        row["localisation"],
+        groupes,
+        notions,
+        lead_text=lead_fr,
+    )
+
+    if row["en_html"]:
+        en_html, en_error_message = _build_en(
+            row["titre"], row["localisation"], groupes, notions, profil=profil
+        )
+    else:
+        en_html, en_error_message = None, None
+
+    conn.execute(
+        """
+        UPDATE cvs SET
+            profil=?, profil_motif='manuel',
+            html=?, marque_pret_at=NULL, en_html=?, en_error_message=?
+        WHERE offer_id=?
+        """,
+        (profil, html, en_html, en_error_message, offer_id),
     )
     conn.commit()

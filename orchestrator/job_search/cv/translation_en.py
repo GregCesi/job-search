@@ -68,10 +68,17 @@ def build_cv_html_en(
     location_fr: str,
     groupes: list[SkillGroup],
     notions: list[str],
+    *,
+    lead_text: str | None = None,
 ) -> str:
     """CV anglais : même titre que le français (critère 10), lieu et bloc
     compétences traduits par la table figée, reste du CV anglais de référence
-    repris tel quel (critère 4). Aucun appel modèle."""
+    repris tel quel (critère 4). Aucun appel modèle.
+
+    `lead_text` (EXE-184) : paragraphe de profil écosystème Claude en anglais,
+    substitué tel quel (mot pour mot, critère 6) ; `None` laisse le profil de
+    base du CV anglais de référence intact.
+    """
     return generate_cv_html(
         cv_html_ref_en,
         title,
@@ -81,4 +88,5 @@ def build_cv_html_en(
         header_label=SKILLS_HEADER_EN,
         next_header_label=EDUCATION_HEADER_EN,
         notions_label=NOTIONS_LABEL_EN,
+        lead_text=lead_text,
     )

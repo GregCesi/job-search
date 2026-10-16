@@ -6,7 +6,10 @@ POST /fiche/points/{idx}/explain (reprise de session). PATCH ne touche que la ba
 Retenir une offre lance aussi la fiche (TCK-281, EXE-127) : `launch_fiche` est le
 point d'entrée idempotent partagé entre la route et la cascade de `api/cascade.py`.
 Sa fin enchaîne la lettre (`launch_lettre_if_ready`) sur les points qu'elle désigne
-elle-même — jamais sur un changement de profil ou de verdict ultérieur.
+elle-même — jamais sur un changement de profil ou de verdict ultérieur. Elle
+recalcule aussi le profil du CV (`recalc_profile_after_fiche`, EXE-184) si la
+fiche cite Claude : un calcul Python sur les faits déjà en base, pas un second
+appel de modèle.
 """
 
 import asyncio
@@ -17,6 +20,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from orchestrator.job_search.cv.service import recalc_profile_after_fiche
 from orchestrator.job_search.fiche import intermediaires
 from orchestrator.job_search.fiche.service import reset_pending, run_fiche
 from orchestrator.job_search.lettre.repertoire import sujet_libelle
@@ -111,6 +115,11 @@ async def _generate(offer_id: int) -> None:
     finally:
         _running.discard(offer_id)
     mark_changed(offer_id)
+    # EXE-184 : si la fiche cite Claude, le CV déjà généré bascule sur le
+    # profil écosystème Claude — calcul Python pur sur les faits en base, rien
+    # à voir avec un rescore ni un second appel de modèle.
+    with get_conn() as conn:
+        recalc_profile_after_fiche(conn, offer_id)
     # Enchaînement (TCK-281) : la fiche désigne elle-même les points de la lettre
     # et la lance si elle peut partir — jamais depuis un autre déclencheur.
     await lettre_api.launch_lettre_if_ready(offer_id)

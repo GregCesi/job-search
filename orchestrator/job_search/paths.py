@@ -18,6 +18,10 @@ CV_REFERENCE_PATH = REPO_ROOT / "data" / "cv" / "cv_reference.html"
 # Version anglaise du CV de référence (EXE-183) : lue, jamais modifiée, posée
 # hors git à côté de la version française comme le reste de data/.
 CV_REFERENCE_EN_PATH = REPO_ROOT / "data" / "cv" / "cv_reference_en.html"
+# Paragraphe de profil « écosystème Claude » (EXE-184) : lu, jamais modifié,
+# posé hors git comme le reste de data/cv/ (H4 du ticket).
+CV_PROFIL_CLAUDE_FR_PATH = REPO_ROOT / "data" / "cv" / "profil_claude.fr.txt"
+CV_PROFIL_CLAUDE_EN_PATH = REPO_ROOT / "data" / "cv" / "profil_claude.en.txt"
 PROFILE_PATH = REPO_ROOT / "profiles" / "gregoire.yaml"
 VUE_CANDIDAT_PATH = REPO_ROOT / "profiles" / "vue_candidat.yaml"
 ALIAS_PATH = REPO_ROOT / "profiles" / "alias.yaml"

@@ -115,6 +115,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             marque_pret_at           TEXT,  -- EXE-101 : date/heure de ma marque « Prête », NULL sinon
             en_html                  TEXT,  -- EXE-183 : CV anglais, traduction pure, NULL si absent
             en_error_message         TEXT,  -- EXE-183 : message si le CV anglais de référence manque (critère 23)
+            profil                   TEXT,  -- EXE-184 : base|claude, calculé en Python (critères 1, 3, 5)
+            profil_motif             TEXT,  -- EXE-184 : technos_offre|fiche_entreprise|aucune_mention|manuel
             UNIQUE(offer_id)
         );
 
@@ -277,6 +279,8 @@ def migrate_cvs_schema(conn: sqlite3.Connection) -> None:
         "marque_pret_at",
         "en_html",
         "en_error_message",
+        "profil",
+        "profil_motif",
     ):
         if col not in existing:
             conn.execute(f"ALTER TABLE cvs ADD COLUMN {col} TEXT")

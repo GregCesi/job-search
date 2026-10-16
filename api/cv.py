@@ -20,14 +20,17 @@ from orchestrator.job_search.cv.corrections import (
     SkillNotFoundError,
     UnknownGroupError,
 )
+from orchestrator.job_search.cv.profil import MOTIF_LABELS
 from orchestrator.job_search.cv.service import (
     CvNotReadyError,
+    ProfilFichierManquantError,
     apply_correction,
     clear_titre_defaut,
     generate_cv_en,
     get_titre_defaut,
     reset_pending,
     run_cv,
+    set_profile_manual,
     set_titre,
     set_titre_defaut,
 )
@@ -81,6 +84,12 @@ class TitreDefautIn(BaseModel):
     titre_defaut: str
 
 
+class CvProfilIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profil: Literal["base", "claude"]
+
+
 def _row_to_cv(row) -> dict:
     return {
         "statut": row["statut"],
@@ -98,6 +107,10 @@ def _row_to_cv(row) -> dict:
         "created_at": row["created_at"],
         "en_html": row["en_html"],
         "en_error_message": row["en_error_message"],
+        "profil": row["profil"],
+        "profil_motif_libelle": MOTIF_LABELS.get(
+            row["profil_motif"], row["profil_motif"]
+        ),
     }
 
 
@@ -207,6 +220,23 @@ def put_cv_titre(offer_id: int, body: CvTitreIn) -> dict:
         row = conn.execute(
             "SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)
         ).fetchone()
+    return _row_to_cv(row)
+
+
+@router.put("/{offer_id}/cv/profil")
+def put_cv_profil(offer_id: int, body: CvProfilIn) -> dict:
+    """Change le profil du CV à la main (EXE-184, critères 10-13)."""
+    with get_conn() as conn:
+        try:
+            set_profile_manual(conn, offer_id, body.profil)
+        except CvNotReadyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ProfilFichierManquantError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        row = conn.execute(
+            "SELECT * FROM cvs WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+    mark_changed(offer_id)
     return _row_to_cv(row)
 
 

@@ -288,6 +288,9 @@ def render_skills_html(
 _ROW_RE = re.compile(r'<div class="row"><b>(.*?)</b></div>')
 
 
+_LEAD_RE = re.compile(r'(<p class="lead">).*?(</p>)', re.DOTALL)
+
+
 def generate_cv_html(
     cv_html_ref: str,
     title: str,
@@ -298,6 +301,7 @@ def generate_cv_html(
     header_label: str = "Compétences",
     next_header_label: str = "Formation",
     notions_label: str = "Notions en :",
+    lead_text: str | None = None,
 ) -> str:
     """Substitue titre, localisation et bloc compétences ; le reste du CV de référence
     est repris octet pour octet (critère 21).
@@ -305,6 +309,11 @@ def generate_cv_html(
     `header_label`/`next_header_label`/`notions_label` portent la version anglaise
     (EXE-183) : mêmes titres `<h2>` que le CV anglais de référence, jamais ceux
     du français.
+
+    `lead_text` (EXE-184) substitue le paragraphe de profil (`<p class="lead">`)
+    quand il est fourni — profil écosystème Claude, mot pour mot (critère 6).
+    `None` laisse ce paragraphe intact : c'est le profil de base, celui du CV
+    de référence (H1 du ticket, critère 5), jamais touché ici.
     """
     out = re.sub(
         r'(<div class="role">).*?(</div>)',
@@ -312,6 +321,13 @@ def generate_cv_html(
         cv_html_ref,
         count=1,
     )
+
+    if lead_text is not None:
+        out = _LEAD_RE.sub(
+            lambda m: m.group(1) + html_lib.escape(lead_text) + m.group(2),
+            out,
+            count=1,
+        )
 
     # Localisation : 3ème ligne "row" du bloc Contact du CV de référence — structure
     # connue de data/cv/cv_reference.html (cf. experiment_tck206_cv.py::_generate_cv_html,

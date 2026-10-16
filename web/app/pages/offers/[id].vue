@@ -825,6 +825,27 @@
             </div>
             <p v-if="cvPdfError" class="text-xs text-red-600">{{ cvPdfError }}</p>
 
+            <!-- Profil du CV : base ou écosystème Claude (EXE-184) -->
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
+              <p class="text-xs text-gray-500">
+                <span class="text-gray-400">Profil</span>
+                <span class="font-medium text-gray-700">{{ cv.profil === 'claude' ? 'écosystème Claude' : 'base' }}</span>
+                <span v-if="cv.profil_motif_libelle" class="text-gray-400"> — {{ cv.profil_motif_libelle }}</span>
+              </p>
+              <div class="flex items-center gap-2">
+                <button
+                  @click="changerCvProfil('base')"
+                  :disabled="cvProfilBusy || cv.profil === 'base'"
+                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                >Profil de base</button>
+                <button
+                  @click="changerCvProfil('claude')"
+                  :disabled="cvProfilBusy || cv.profil === 'claude'"
+                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                >Profil écosystème Claude</button>
+              </div>
+            </div>
+
             <!-- Au CV -->
             <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
               <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Au CV</h3>
@@ -1701,6 +1722,8 @@ const EMPTY_CV: Cv = {
   created_at: '',
   en_html: null,
   en_error_message: null,
+  profil: null,
+  profil_motif_libelle: null,
 }
 
 // ── Version affichée du CV (EXE-183) : FR par défaut, EN si l'annonce est en
@@ -1806,6 +1829,22 @@ async function genererCvEn() {
     cvActionError.value = messageErreurCv(e)
   } finally {
     cvEnBusy.value = false
+  }
+}
+
+// ── Profil du CV : base ou écosystème Claude (EXE-184, critères 10-13) ──────
+const cvProfilBusy = ref(false)
+
+async function changerCvProfil(profil: 'base' | 'claude') {
+  cvActionError.value = null
+  cvProfilBusy.value = true
+  try {
+    cv.value = await $fetch<Cv>(`${cvUrl()}/profil`, { method: 'PUT', body: { profil } })
+    await chargerPieces()
+  } catch (e) {
+    cvActionError.value = messageErreurCv(e)
+  } finally {
+    cvProfilBusy.value = false
   }
 }
 

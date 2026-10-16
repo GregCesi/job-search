@@ -123,6 +123,8 @@ export interface Cv {
   created_at: string
   en_html: string | null // EXE-183
   en_error_message: string | null // EXE-183
+  profil: 'base' | 'claude' | null // EXE-184
+  profil_motif_libelle: string | null // EXE-184
 }
 
 export type LettreStatut = 'aucune' | 'pending' | 'done' | 'error'
