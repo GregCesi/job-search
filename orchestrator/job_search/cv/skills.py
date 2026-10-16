@@ -289,6 +289,19 @@ _ROW_RE = re.compile(r'<div class="row"><b>(.*?)</b></div>')
 
 
 _LEAD_RE = re.compile(r'(<p class="lead">).*?(</p>)', re.DOTALL)
+_LEAD_FIND_RE = re.compile(r'<p class="lead">(.*?)</p>', re.DOTALL)
+
+
+def extract_lead_text(html: str | None) -> str | None:
+    """Paragraphe de profil (`<p class="lead">`) effectivement présent dans un
+    CV, texte déséchappé (EXE-185, critère 2) — `None` si `html` est vide ou ne
+    porte pas ce paragraphe."""
+    if not html:
+        return None
+    match = _LEAD_FIND_RE.search(html)
+    if match is None:
+        return None
+    return html_lib.unescape(match.group(1))
 
 
 def generate_cv_html(

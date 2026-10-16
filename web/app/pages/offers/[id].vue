@@ -350,6 +350,20 @@
             <button @click="cvLangue = 'fr'" :class="cvLangue === 'fr' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">FR</button>
             <button @click="cvLangue = 'en'" :class="cvLangue === 'en' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">EN</button>
           </div>
+          <div v-if="apercuCard === 'CV' && cv?.statut === 'done'" class="flex items-center gap-0.5 rounded-lg border border-gray-200 p-0.5 text-xs font-medium">
+            <button
+              @click="changerCvProfil('base')"
+              :disabled="cvProfilBusy || cv.profil_affiche === 'base'"
+              :class="cv.profil_affiche === 'base' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'"
+              class="px-2 py-1 rounded disabled:opacity-50"
+            >Profil base</button>
+            <button
+              @click="changerCvProfil('claude')"
+              :disabled="cvProfilBusy || cv.profil_affiche === 'claude'"
+              :class="cv.profil_affiche === 'claude' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'"
+              class="px-2 py-1 rounded disabled:opacity-50"
+            >Profil Claude</button>
+          </div>
         </div>
         <div class="flex items-center gap-4">
           <button @click="modifierDepuisApercu" class="text-sm text-indigo-600 hover:underline">Modifier</button>
@@ -360,6 +374,7 @@
           </button>
         </div>
       </div>
+      <p v-if="apercuCard === 'CV' && cv?.statut === 'done'" class="px-6 py-1.5 text-xs text-gray-500 border-b border-gray-100 flex-shrink-0">{{ cv.profil_phrase }}</p>
       <div class="flex-1 overflow-hidden flex">
         <div v-if="offer" class="flex-1 min-w-0 h-full overflow-y-auto border-r border-gray-100 p-6">
           <OfferSidePanel
@@ -412,6 +427,20 @@
             <button @click="cvLangue = 'fr'" :class="cvLangue === 'fr' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">FR</button>
             <button @click="cvLangue = 'en'" :class="cvLangue === 'en' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">EN</button>
           </div>
+          <div v-if="activeCard === 'CV' && cv?.statut === 'done'" class="flex items-center gap-0.5 rounded-lg border border-gray-200 p-0.5 text-xs font-medium">
+            <button
+              @click="changerCvProfil('base')"
+              :disabled="cvProfilBusy || cv.profil_affiche === 'base'"
+              :class="cv.profil_affiche === 'base' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'"
+              class="px-2 py-1 rounded disabled:opacity-50"
+            >Profil base</button>
+            <button
+              @click="changerCvProfil('claude')"
+              :disabled="cvProfilBusy || cv.profil_affiche === 'claude'"
+              :class="cv.profil_affiche === 'claude' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'"
+              class="px-2 py-1 rounded disabled:opacity-50"
+            >Profil Claude</button>
+          </div>
         </div>
         <div class="flex items-center gap-4">
           <button @click="activeCard = null" class="text-gray-400 hover:text-gray-600">
@@ -421,6 +450,7 @@
           </button>
         </div>
       </div>
+      <p v-if="activeCard === 'CV' && cv?.statut === 'done'" class="px-6 py-1.5 text-xs text-gray-500 border-b border-gray-100 flex-shrink-0">{{ cv.profil_phrase }}</p>
       <div v-if="activeCard === 'Lettre de motivation'" class="flex-1 overflow-hidden flex">
         <div v-if="offer" class="flex-1 min-w-0 h-full overflow-y-auto border-r border-gray-100 p-6">
           <OfferSidePanel
@@ -824,27 +854,6 @@
               <p v-if="cvTitreDefautError" class="text-xs text-red-600">{{ cvTitreDefautError }}</p>
             </div>
             <p v-if="cvPdfError" class="text-xs text-red-600">{{ cvPdfError }}</p>
-
-            <!-- Profil du CV : base ou écosystème Claude (EXE-184) -->
-            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
-              <p class="text-xs text-gray-500">
-                <span class="text-gray-400">Profil</span>
-                <span class="font-medium text-gray-700">{{ cv.profil === 'claude' ? 'écosystème Claude' : 'base' }}</span>
-                <span v-if="cv.profil_motif_libelle" class="text-gray-400"> — {{ cv.profil_motif_libelle }}</span>
-              </p>
-              <div class="flex items-center gap-2">
-                <button
-                  @click="changerCvProfil('base')"
-                  :disabled="cvProfilBusy || cv.profil === 'base'"
-                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
-                >Profil de base</button>
-                <button
-                  @click="changerCvProfil('claude')"
-                  :disabled="cvProfilBusy || cv.profil === 'claude'"
-                  class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
-                >Profil écosystème Claude</button>
-              </div>
-            </div>
 
             <!-- Au CV -->
             <section class="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
@@ -1724,6 +1733,8 @@ const EMPTY_CV: Cv = {
   en_error_message: null,
   profil: null,
   profil_motif_libelle: null,
+  profil_affiche: null,
+  profil_phrase: '',
 }
 
 // ── Version affichée du CV (EXE-183) : FR par défaut, EN si l'annonce est en

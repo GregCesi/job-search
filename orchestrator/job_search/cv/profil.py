@@ -12,9 +12,12 @@ from __future__ import annotations
 import json
 from typing import Literal
 
+from orchestrator.job_search.cv.skills import extract_lead_text
 from orchestrator.job_search.paths import (
     CV_PROFIL_CLAUDE_EN_PATH,
     CV_PROFIL_CLAUDE_FR_PATH,
+    CV_REFERENCE_EN_PATH,
+    CV_REFERENCE_PATH,
 )
 
 Profil = Literal["base", "claude"]
@@ -25,6 +28,23 @@ MOTIF_LABELS: dict[str, str] = {
     "fiche_entreprise": "Claude dans la fiche entreprise",
     "aucune_mention": "aucune mention de Claude",
     "manuel": "choisi à la main",
+}
+
+# Phrases affichées en tête de carte (EXE-185, critères 4-8) — distinctes de
+# MOTIF_LABELS (panneau de détail, inchangé, EXE-184) : wording propre à ce
+# ticket, jamais partagé.
+PHRASE_SANS_PROFIL = "CV généré avant le choix automatique du profil"
+PHRASE_NON_RECONNU = (
+    "Profil non reconnu : le texte du CV ne correspond à aucun des deux profils"
+)
+PHRASE_FR_EN_DIFFERENT = "Les versions FR et EN n'ont pas le même profil"
+PHRASE_INCOHERENT = "Le texte du CV ne correspond pas au profil enregistré"
+PHRASE_MANUEL = "Choisi par toi"
+
+_PHRASE_AUTOMATIQUE: dict[str, str] = {
+    "technos_offre": "Choisi automatiquement : Claude est cité dans les technos de l'offre",
+    "fiche_entreprise": "Choisi automatiquement : Claude est cité dans la fiche entreprise",
+    "aucune_mention": "Choisi automatiquement : Claude n'est cité ni dans l'offre ni dans la fiche",
 }
 
 
@@ -87,3 +107,56 @@ def resolve_lead_text(
     if not path.exists():
         return None, f"Profil Claude ({label}) manquant : {path}"
     return path.read_text(encoding="utf-8").strip(), None
+
+
+def constate_profil(cv_html: str | None, lang: Literal["fr", "en"]) -> Profil | None:
+    """Profil constaté sur le texte réellement présent dans le CV (EXE-185,
+    critères 2, 6, 8) — jamais le champ enregistré seul. Compare le paragraphe
+    de profil du CV au paragraphe du CV de référence (profil de base, jamais
+    modifié par lui-même) et au fichier du profil Claude de la même langue,
+    mot pour mot. `None` si le texte ne correspond à aucun des deux (critère 6)."""
+    lead = extract_lead_text(cv_html)
+    if lead is None:
+        return None
+    lead = lead.strip()
+
+    ref_path = CV_REFERENCE_PATH if lang == "fr" else CV_REFERENCE_EN_PATH
+    if ref_path.exists():
+        base_lead = extract_lead_text(ref_path.read_text(encoding="utf-8"))
+        if base_lead is not None and lead == base_lead.strip():
+            return "base"
+
+    claude_path = CV_PROFIL_CLAUDE_FR_PATH if lang == "fr" else CV_PROFIL_CLAUDE_EN_PATH
+    if claude_path.exists() and lead == claude_path.read_text(encoding="utf-8").strip():
+        return "claude"
+
+    return None
+
+
+def compute_profil_affichage(
+    html: str | None,
+    en_html: str | None,
+    profil_enregistre: Profil | None,
+    profil_motif: ProfilMotif | None,
+) -> tuple[Profil | None, str]:
+    """Combine le texte réellement présent dans le CV et le profil enregistré
+    pour décider ce que l'écran affiche (EXE-185, critères 2, 4-8). Rend
+    (profil mis en évidence, phrase) : le profil mis en évidence suit toujours
+    le texte constaté du CV français, jamais le champ enregistré seul
+    (critère 8)."""
+    constate_fr = constate_profil(html, "fr")
+    if constate_fr is None:
+        return None, PHRASE_NON_RECONNU
+
+    if en_html is not None:
+        constate_en = constate_profil(en_html, "en")
+        if constate_en is not None and constate_en != constate_fr:
+            return constate_fr, PHRASE_FR_EN_DIFFERENT
+
+    if profil_motif is None:
+        return constate_fr, PHRASE_SANS_PROFIL
+
+    if profil_enregistre != constate_fr:
+        return constate_fr, PHRASE_INCOHERENT
+
+    return constate_fr, _PHRASE_AUTOMATIQUE.get(profil_motif, PHRASE_MANUEL)

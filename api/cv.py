@@ -20,7 +20,7 @@ from orchestrator.job_search.cv.corrections import (
     SkillNotFoundError,
     UnknownGroupError,
 )
-from orchestrator.job_search.cv.profil import MOTIF_LABELS
+from orchestrator.job_search.cv.profil import MOTIF_LABELS, compute_profil_affichage
 from orchestrator.job_search.cv.service import (
     CvNotReadyError,
     ProfilFichierManquantError,
@@ -91,6 +91,9 @@ class CvProfilIn(BaseModel):
 
 
 def _row_to_cv(row) -> dict:
+    profil_affiche, profil_phrase = compute_profil_affichage(
+        row["html"], row["en_html"], row["profil"], row["profil_motif"]
+    )
     return {
         "statut": row["statut"],
         "html": row["html"],
@@ -111,6 +114,8 @@ def _row_to_cv(row) -> dict:
         "profil_motif_libelle": MOTIF_LABELS.get(
             row["profil_motif"], row["profil_motif"]
         ),
+        "profil_affiche": profil_affiche,
+        "profil_phrase": profil_phrase,
     }
 
 

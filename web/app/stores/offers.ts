@@ -125,6 +125,8 @@ export interface Cv {
   en_error_message: string | null // EXE-183
   profil: 'base' | 'claude' | null // EXE-184
   profil_motif_libelle: string | null // EXE-184
+  profil_affiche: 'base' | 'claude' | null // EXE-185 : constaté sur le texte du CV
+  profil_phrase: string // EXE-185
 }
 
 export type LettreStatut = 'aucune' | 'pending' | 'done' | 'error'
