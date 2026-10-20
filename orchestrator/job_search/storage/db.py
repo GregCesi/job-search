@@ -1,4 +1,6 @@
+import shutil
 import sqlite3
+from datetime import datetime, timezone
 
 from orchestrator.job_search.paths import DB_PATH
 
@@ -223,6 +225,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     migrate_lettre_versions_schema(conn)
     migrate_ajouts_schema(conn)
     migrate_verdicts_schema(conn)
+    migrate_suivi_candidatures_schema(conn)
+    run_reprise_candidatures(conn)
 
 
 def migrate_ajouts_schema(conn: sqlite3.Connection) -> None:
@@ -267,6 +271,70 @@ def migrate_verdicts_schema(conn: sqlite3.Connection) -> None:
     }
     if "envoyee_at" not in existing:
         conn.execute("ALTER TABLE verdicts ADD COLUMN envoyee_at TEXT")
+    conn.commit()
+
+
+def migrate_suivi_candidatures_schema(conn: sqlite3.Connection) -> None:
+    """TCK-311/EXE-193 : tables du module d'états du suivi des candidatures —
+    tri, étape, historique des gestes, revue hors périmètre — séparées de
+    `verdicts`, jamais fusionnées (architecture.md). Idempotent."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS etats_offre (
+            offer_id INTEGER PRIMARY KEY REFERENCES offers(id),
+            etat     TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS historique_gestes (
+            id            INTEGER PRIMARY KEY,
+            offer_id      INTEGER NOT NULL REFERENCES offers(id),
+            geste         TEXT NOT NULL,
+            etat_depart   TEXT NOT NULL,
+            etat_arrivee  TEXT NOT NULL,
+            motif         TEXT,
+            effet_at      TEXT NOT NULL,
+            enregistre_at TEXT NOT NULL,
+            annule_at     TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_historique_gestes_offer
+            ON historique_gestes(offer_id);
+
+        CREATE TABLE IF NOT EXISTS revues_hors_perimetre (
+            offer_id   INTEGER PRIMARY KEY REFERENCES offers(id),
+            valeur     TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS reprise_suivi_candidatures (
+            id      INTEGER PRIMARY KEY CHECK (id = 1),
+            done_at TEXT NOT NULL
+        );
+    """)
+    conn.commit()
+
+
+def run_reprise_candidatures(conn: sqlite3.Connection) -> None:
+    """TCK-311/EXE-193, critères 18-26 : migre une base d'avant la fiche
+    (`verdicts`) vers le module d'états, une seule fois (critère 25). Pose une
+    copie de sécurité du fichier avant toute écriture (critère 18)."""
+    done = conn.execute(
+        "SELECT 1 FROM reprise_suivi_candidatures WHERE id = 1"
+    ).fetchone()
+    if done is not None:
+        return
+
+    if DB_PATH.exists():
+        backup_path = DB_PATH.with_name(DB_PATH.stem + ".avant-tck311" + DB_PATH.suffix)
+        shutil.copy2(DB_PATH, backup_path)
+
+    from orchestrator.job_search.suivi import reprise as suivi_reprise
+
+    suivi_reprise.migrer_verdicts(conn)
+
+    conn.execute(
+        "INSERT INTO reprise_suivi_candidatures (id, done_at) VALUES (1, ?)",
+        (datetime.now(timezone.utc).isoformat(),),
+    )
     conn.commit()
 
 

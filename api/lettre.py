@@ -59,6 +59,7 @@ from orchestrator.job_search.pdf.filename import (
 from orchestrator.job_search.pdf.lettre_html import build_lettre_html
 from orchestrator.job_search.pdf.render import html_to_pdf
 from orchestrator.job_search.pieces_state import mark_changed
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
 
@@ -343,10 +344,7 @@ async def create_lettre(
 ) -> dict:
     modele = _modele_choisi(body)
     with get_conn() as conn:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
+        if not suivi_storage.est_retenue(conn, offer_id):
             raise HTTPException(
                 status_code=409,
                 detail="La lettre n'est générée que pour une offre retenue",
@@ -468,10 +466,7 @@ async def regenerer_lettre(
 ) -> dict:
     modele = _modele_choisi(body)
     with get_conn() as conn:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
+        if not suivi_storage.est_retenue(conn, offer_id):
             raise HTTPException(
                 status_code=409,
                 detail="La lettre n'est régénérée que pour une offre retenue",
@@ -502,10 +497,7 @@ async def regenerer_depuis_ma_lettre(
     moi-même (critère 2)."""
     modele = _modele_choisi(body)
     with get_conn() as conn:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
+        if not suivi_storage.est_retenue(conn, offer_id):
             raise HTTPException(
                 status_code=409,
                 detail="La lettre n'est régénérée que pour une offre retenue",
@@ -531,10 +523,7 @@ async def ecarter_fait(
     (critère 17)."""
     modele = _modele_choisi(body)
     with get_conn() as conn:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
+        if not suivi_storage.est_retenue(conn, offer_id):
             raise HTTPException(
                 status_code=409,
                 detail="La lettre n'est régénérée que pour une offre retenue",
@@ -577,10 +566,7 @@ def _lettre_page_ingredients(
 
     EXE-176 : l'entreprise est résolue comme pour le nom de fichier (critère 13),
     sans son repli sur l'intitulé — `None` si non résolue (critère 15)."""
-    v = conn.execute(
-        "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-    ).fetchone()
-    if v is None or v["status"] != "retenu":
+    if not suivi_storage.est_retenue(conn, offer_id):
         raise HTTPException(
             status_code=409,
             detail="Le PDF n'est produit que pour une offre retenue",

@@ -32,6 +32,7 @@ from orchestrator.job_search.pdf.coordonnees import (
     load_coordonnees,
 )
 from orchestrator.job_search.pdf.filename import resolve_entreprise
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
 
@@ -46,10 +47,7 @@ class MailIn(BaseModel):
 
 
 def _check_retenu(conn, offer_id: int) -> None:
-    v = conn.execute(
-        "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-    ).fetchone()
-    if v is None or v["status"] != "retenu":
+    if not suivi_storage.est_retenue(conn, offer_id):
         raise HTTPException(
             status_code=409,
             detail="Le mail n'est préparé que pour une offre retenue",

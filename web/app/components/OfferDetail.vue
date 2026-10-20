@@ -326,10 +326,8 @@ async function handleReview() {
 
 // ── Verdicts ─────────────────────────────────────────────────────────────
 const VERDICTS = [
-  { status: 'retenu',    label: '★ Retenu',     activeClass: 'bg-blue-50 border-blue-300 text-blue-700' },
-  { status: 'candidaté', label: '✓ Candidaté',  activeClass: 'bg-purple-50 border-purple-300 text-purple-700' },
-  { status: 'rejeté',    label: '✗ Rejeté',     activeClass: 'bg-red-50 border-red-300 text-red-700' },
-  { status: 'masqué',    label: '· Masqué',     activeClass: 'bg-gray-100 border-gray-400 text-gray-600' },
+  { status: 'retenu',  label: '★ Retenu',   activeClass: 'bg-blue-50 border-blue-300 text-blue-700' },
+  { status: 'ecartee', label: '✗ Écartée',  activeClass: 'bg-red-50 border-red-300 text-red-700' },
 ]
 
 const HP_VERDICTS = [

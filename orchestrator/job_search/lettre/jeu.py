@@ -2,7 +2,8 @@
 
 Part uniquement d'une commande lancée à la main (`python -m
 orchestrator.job_search.lettre.jeu --nom ... --offres ...`). Lecture seule de
-`offers` et `verdicts` — n'écrit dans aucune table, et ne lit ni n'écrit
+`offers` et du tri (via `orchestrator.job_search.suivi.storage`) — n'écrit
+dans aucune table, et ne lit ni n'écrit
 `fiches_entreprise` : la recherche d'entreprise de chaque offre est rejouée à
 part, par la même fonction que l'application (`fiche.service.rechercher_entreprise`),
 jamais lue depuis la fiche déjà en base.
@@ -31,6 +32,7 @@ from orchestrator.job_search.lettre.redaction import (
     resolve_offer_text,
 )
 from orchestrator.job_search.paths import DB_PATH, LETTRE_BANC_JEUX_DIR
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 RAISON_OFFRE_INTROUVABLE = "aucune offre ne correspond à ce numéro"
 RAISON_NON_RETENUE = "l'offre n'est pas retenue"
@@ -69,11 +71,7 @@ def _resoudre_offre_pour_jeu(
     titre = offer["title"] or ""
     entreprise = offer["company"] or ""
 
-    verdict = conn.execute(
-        "SELECT status FROM verdicts WHERE offer_id = ? ORDER BY id DESC LIMIT 1",
-        (offer_id,),
-    ).fetchone()
-    if verdict is None or verdict["status"] != "retenu":
+    if not suivi_storage.est_retenue(conn, offer_id):
         return OffreJeuResolue(offer_id, RAISON_NON_RETENUE, titre, entreprise)
 
     texte = resolve_offer_text(offer["description_raw"], offer["description"])

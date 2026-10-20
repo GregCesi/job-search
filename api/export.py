@@ -17,6 +17,8 @@ from orchestrator.job_search.calibration.disagreement import (
     disagreement,
 )
 from orchestrator.job_search.storage.reviews import HumanReview
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
 from .offers import _load_scoring_context
@@ -81,9 +83,6 @@ def export_offers(
     if source is not None:
         conditions.append("o.source = ?")
         params.append(source)
-    if verdict is not None:
-        conditions.append("v.status = ?")
-        params.append(verdict)
     if category is not None:
         conditions.append("o.category = ?")
         params.append(category)
@@ -141,6 +140,7 @@ def export_offers(
         order_parts.append(order_parts[-1] if order_parts else "desc")
 
     order_clauses: list[str] = []
+    verdict_sort_dir: str | None = None
     for s, o in zip(sort_parts, order_parts):
         d = o.upper() if o.upper() in ("ASC", "DESC") else "DESC"
         if s == "category":
@@ -166,14 +166,7 @@ def export_offers(
                     ELSE 9
                 END {d}""")
         elif s == "verdict":
-            order_clauses.append(f"""
-                CASE v.status
-                    WHEN 'retenu'                THEN 1
-                    WHEN 'hors_perimetre_faux_pos' THEN 2
-                    WHEN 'hors_perimetre_ok'     THEN 3
-                    WHEN 'rejeté'                THEN 4
-                    ELSE 5
-                END {d}""")
+            verdict_sort_dir = d  # tri python après enrichissement, cf. plus bas
         elif s in _sort_cols:
             order_clauses.append(f"o.{s} {d} NULLS LAST")
         else:
@@ -185,20 +178,50 @@ def export_offers(
                o.category, o.url, o.description, o.source,
                o.extracted_facts_json, o.techs_matched_json, o.techs_missing_json,
                o.categorie_suggeree, o.categorie_corrigee, o.hors_perimetre_reason,
-               o.remarque,
-               v.status AS verdict
+               o.remarque
         FROM offers o
-        LEFT JOIN verdicts v ON v.offer_id = o.id
         {where}
         ORDER BY {order_clause}
     """
     conn = get_conn()
     try:
         rows = conn.execute(sql, params).fetchall()
+        etat_par_offre = suivi_storage.etat_map(conn)
+        revue_par_offre = suivi_storage.revue_hors_perimetre_map(conn)
     finally:
         conn.close()
 
-    return _format_export_md(rows, fields)
+    _VERDICT_ORDER = {
+        "retenu": 1,
+        "hors_perimetre_faux_pos": 2,
+        "hors_perimetre_ok": 3,
+        "ecartee": 4,
+    }
+
+    enriched = []
+    for r in rows:
+        etat = etat_par_offre.get(r["id"], suivi_etats.A_TRIER)
+        revue = revue_par_offre.get(r["id"])
+        label = revue
+        if label is None:
+            t = suivi_etats.tri(etat)
+            if t == suivi_etats.RETENUE:
+                label = "retenu"
+            elif t == suivi_etats.ECARTEE:
+                label = "ecartee"
+        if verdict is not None and label != verdict:
+            continue
+        row = dict(r)
+        row["verdict"] = label
+        enriched.append(row)
+
+    if verdict_sort_dir is not None:
+        enriched.sort(
+            key=lambda row: _VERDICT_ORDER.get(row["verdict"], 5),
+            reverse=(verdict_sort_dir == "DESC"),
+        )
+
+    return _format_export_md(enriched, fields)
 
 
 def _format_export_md(rows: list, fields: set[str]) -> str:

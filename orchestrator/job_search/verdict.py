@@ -1,17 +1,20 @@
 """
-Saisie de verdict humain sur une offre.
+Saisie de verdict humain sur une offre — passe par le module d'états
+(TCK-311, EXE-193) : seuls les gestes Retenir et Écarter.
 
 Usage non-interactif :
-    python -m job_search.verdict --offer-id 3 --status retenu
+    python -m job_search.verdict --offer-id 3 --status retenir
 
-Usage interactif (liste les offres récentes, demande id + statut) :
+Usage interactif (liste les offres récentes, demande id + geste) :
     python -m job_search.verdict
 """
 
 import argparse
-from datetime import datetime, timezone
 
-_VALID_STATUSES = {"retenu", "rejeté", "candidaté"}
+from orchestrator.job_search.suivi import etats
+from orchestrator.job_search.suivi import storage as suivi_storage
+
+_GESTES_PERMIS = {etats.RETENIR, etats.ECARTER}
 
 
 def _list_recent(conn) -> list:
@@ -34,30 +37,22 @@ def _list_recent(conn) -> list:
     ).fetchall()
 
 
-def _record_verdict(conn, offer_id: int, status: str) -> None:
-    # Vérifie que l'offre existe
+def _record_verdict(conn, offer_id: int, geste: str) -> None:
     row = conn.execute(
         "SELECT id, title FROM offers WHERE id = ?", (offer_id,)
     ).fetchone()
     if row is None:
         raise ValueError(f"Offre id={offer_id} introuvable.")
 
-    conn.execute(
-        """
-        INSERT INTO verdicts (offer_id, status, created_at)
-        VALUES (?, ?, ?)
-        """,
-        (offer_id, status, datetime.now(timezone.utc).isoformat()),
-    )
-    conn.commit()
-    print(f"✓ Verdict '{status}' enregistré pour : {row['title']}")
+    nouvel_etat = suivi_storage.appliquer_geste(conn, offer_id, geste)
+    print(f"✓ Geste '{geste}' enregistré pour : {row['title']} → {nouvel_etat}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Enregistrer un verdict sur une offre")
     parser.add_argument("--offer-id", type=int, help="ID SQLite de l'offre")
     parser.add_argument(
-        "--status", choices=list(_VALID_STATUSES), help="retenu | rejeté | candidaté"
+        "--status", choices=list(_GESTES_PERMIS), help="retenir | ecarter"
     )
     args = parser.parse_args()
 
@@ -86,16 +81,16 @@ def main() -> None:
     print()
     try:
         offer_id = int(input("ID de l'offre : ").strip())
-        status = input(f"Statut [{' | '.join(sorted(_VALID_STATUSES))}] : ").strip()
+        geste = input(f"Geste [{' | '.join(sorted(_GESTES_PERMIS))}] : ").strip()
     except (EOFError, KeyboardInterrupt):
         print("\nAnnulé.")
         return
 
-    if status not in _VALID_STATUSES:
-        print(f"Statut invalide : '{status}'. Valeurs acceptées : {_VALID_STATUSES}")
+    if geste not in _GESTES_PERMIS:
+        print(f"Geste invalide : '{geste}'. Valeurs acceptées : {_GESTES_PERMIS}")
         return
 
-    _record_verdict(conn, offer_id, status)
+    _record_verdict(conn, offer_id, geste)
 
 
 if __name__ == "__main__":

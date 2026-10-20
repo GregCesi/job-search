@@ -36,6 +36,8 @@ from orchestrator.job_search.lettre.boucle import (
     generer_lettre_depuis_donnees,
 )
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 from orchestrator.job_search.tracking.lettre_tracing import (
     EXPERIMENT_NAME,
     tracer_generation,
@@ -400,10 +402,13 @@ def _insert_offer(db_path, offer_id, verdict="retenu"):
             "description_raw) VALUES (?, 'test', ?, 'fp', 'Titre', 'ACME', 'Texte.')",
             (offer_id, str(offer_id)),
         )
-        if verdict is not None:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, '2026-10-14')",
-                (offer_id, verdict),
+        if verdict == "retenu":
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.RETENIR, effet_at="2026-10-14"
+            )
+        elif verdict is not None:
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.ECARTER, effet_at="2026-10-14"
             )
         conn.commit()
     finally:

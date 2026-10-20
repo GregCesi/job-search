@@ -14,8 +14,11 @@ class OfferRow(BaseModel):
     contract_type: str | None
     category: str | None = None  # parfait | reve | atteignable | hors
     verdict: str | None
-    # dérivé, offre retenue seulement : retenue | prete_a_l_envoi | candidature_envoyee (EXE-144)
+    # dérivé, offre retenue seulement : retenue | prete_a_l_envoi | candidature_envoyee |
+    # entretien | offre_recue | refusee | sans_suite | abandonnee (EXE-144, TCK-311)
     etape: str | None = None
+    # gestes permis tout de suite, module d'états (TCK-311, EXE-193)
+    gestes_permis: list[str] = []
     hors_perimetre_reason: str | None = None
     perimetre_causes: list[str] = []
     seen_candidat: bool
@@ -94,11 +97,12 @@ class CheckExpirationsIn(BaseModel):
 
 
 class VerdictIn(BaseModel):
+    """TCK-311/EXE-193 : `retenu`/`ecartee` passent par le module d'états.
+    `candidaté`/`masqué` ont disparu — remplacés par les étapes du module."""
+
     status: Literal[
         "retenu",
-        "rejeté",
-        "candidaté",
-        "masqué",
+        "ecartee",
         "hors_perimetre_ok",
         "hors_perimetre_faux_pos",
     ]

@@ -17,6 +17,8 @@ import api.db as api_db
 import api.pieces as api_pieces
 import orchestrator.job_search.storage.db as storage_db
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 
 @pytest.fixture
@@ -48,10 +50,13 @@ def _insert_offer(db_path, offer_id, verdict="retenu"):
             "description_raw) VALUES (?, 'test', ?, 'fp', 'Titre', 'Texte de l offre')",
             (offer_id, str(offer_id)),
         )
-        if verdict is not None:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, ?)",
-                (offer_id, verdict, _now()),
+        if verdict == "retenu":
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.RETENIR, effet_at=_now()
+            )
+        elif verdict is not None:
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.ECARTER, effet_at=_now()
             )
         conn.commit()
     finally:
@@ -116,12 +121,9 @@ class TestCritere2RefusSiPieceNonPrete:
         assert exc_info.value.status_code == 409
         assert "CV" in exc_info.value.detail
 
-        row = (
-            _connect(db_path)
-            .execute("SELECT envoyee_at FROM verdicts WHERE offer_id = ?", (offer_id,))
-            .fetchone()
-        )
-        assert row["envoyee_at"] is None
+        # TCK-311/EXE-193 : la date d'envoi vit dans l'historique du module
+        # d'états, plus dans `verdicts.envoyee_at` (H7 du ticket).
+        assert suivi_storage.date_envoyee(_connect(db_path), offer_id) is None
 
     def test_refuse_si_lettre_non_prete(self, db_path):
         offer_id = 20
@@ -134,12 +136,7 @@ class TestCritere2RefusSiPieceNonPrete:
         assert exc_info.value.status_code == 409
         assert "lettre" in exc_info.value.detail
 
-        row = (
-            _connect(db_path)
-            .execute("SELECT envoyee_at FROM verdicts WHERE offer_id = ?", (offer_id,))
-            .fetchone()
-        )
-        assert row["envoyee_at"] is None
+        assert suivi_storage.date_envoyee(_connect(db_path), offer_id) is None
 
     def test_refuse_si_aucune_piece_prete(self, db_path):
         offer_id = 21

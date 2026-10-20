@@ -566,7 +566,10 @@ class TestCritere11PieceDejaTermineeNonRelancee:
         cv_before = dict(_cv_row(db_path, offer_id))
         lettre_before = dict(_lettre_row(db_path, offer_id))
 
-        asyncio.run(api_offers.upsert_verdict(offer_id, VerdictIn(status="rejeté")))
+        # TCK-311/EXE-193 : une offre retenue ne s'écarte plus directement —
+        # on "retire" la rétention par Annuler (module d'états), équivalent au
+        # retrait d'avant ce ticket pour ce que ce test observe (H7 du ticket).
+        api_offers.delete_verdict(offer_id)
 
         monkeypatch.setattr(
             fiche_service, "query", _make_query(_jamais_appele("fiche"))
@@ -625,7 +628,8 @@ class TestCritere13VerdictAutreQueRetenuNeLanceRien:
         offer_id = 13
         _insert_offer(db_path, offer_id)
 
-        asyncio.run(api_offers.upsert_verdict(offer_id, VerdictIn(status="rejeté")))
+        # TCK-311/EXE-193 : le libellé "rejeté" devient "ecartee" (H7 du ticket).
+        asyncio.run(api_offers.upsert_verdict(offer_id, VerdictIn(status="ecartee")))
 
         assert _fiche_row(db_path, offer_id) is None
         assert _cv_row(db_path, offer_id) is None

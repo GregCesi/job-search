@@ -10,20 +10,23 @@ const props = defineProps<{ verdict: string | null; etape?: string | null }>()
 
 const MAP: Record<string, { cls: string; label: string }> = {
   retenu:                 { cls: 'bg-blue-100 text-blue-800',     label: '★ retenu' },
-  candidaté:              { cls: 'bg-purple-100 text-purple-800', label: '✓ candidaté' },
-  rejeté:                 { cls: 'bg-red-100 text-red-700',       label: '✗ rejeté' },
-  masqué:                 { cls: 'bg-gray-100 text-gray-500',     label: '· masqué' },
+  ecartee:                { cls: 'bg-red-100 text-red-700',       label: '✗ écartée' },
   hors_perimetre_ok:      { cls: 'bg-green-100 text-green-700',   label: '✓ confirmé HP' },
   hors_perimetre_faux_pos:{ cls: 'bg-red-100 text-red-700',       label: '✗ faux positif' },
 }
 
-// Étape de candidature (EXE-144) : remplace le badge générique « retenu »
-// dans les tableaux, l'API la rend déjà calculée (frontend.md — zéro calcul
-// métier côté front).
+// Étape de candidature (EXE-144, TCK-311) : remplace le badge générique
+// « retenu » dans les tableaux, l'API la rend déjà calculée (frontend.md —
+// zéro calcul métier côté front).
 const ETAPE_MAP: Record<string, { cls: string; label: string }> = {
   retenue:             { cls: 'bg-blue-100 text-blue-800',       label: '★ retenue' },
   prete_a_l_envoi:     { cls: 'bg-amber-100 text-amber-800',     label: '➜ prête à l\'envoi' },
   candidature_envoyee: { cls: 'bg-emerald-100 text-emerald-800', label: '✓ candidature envoyée' },
+  entretien:           { cls: 'bg-indigo-100 text-indigo-800',   label: '◆ entretien' },
+  offre_recue:         { cls: 'bg-emerald-100 text-emerald-800', label: '✓ offre reçue' },
+  refusee:             { cls: 'bg-red-100 text-red-700',         label: '✗ refusée' },
+  sans_suite:          { cls: 'bg-gray-100 text-gray-500',       label: '· sans suite' },
+  abandonnee:          { cls: 'bg-gray-100 text-gray-500',       label: '· abandonnée' },
 }
 
 const entry = computed(() => {

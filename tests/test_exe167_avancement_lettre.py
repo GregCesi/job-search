@@ -37,6 +37,8 @@ from orchestrator.job_search.lettre.boucle import (
     generer_lettre_depuis_donnees,
 )
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 CV_HTML = "<html><body><p>Contenu CV de test</p></body></html>"
 TOURNURES_INTERDITES = "je veux\n"
@@ -452,11 +454,10 @@ def _insert_offer(db_path, offer_id):
             "VALUES (?, 'test', ?, 'fp', 'Titre', 'Texte de l offre')",
             (offer_id, str(offer_id)),
         )
-        conn.execute(
-            "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, 'retenu', '2026-10-10')",
-            (offer_id,),
-        )
         conn.commit()
+        suivi_storage.appliquer_geste(
+            conn, offer_id, suivi_etats.RETENIR, effet_at="2026-10-10"
+        )
     finally:
         conn.close()
 

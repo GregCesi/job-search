@@ -18,6 +18,8 @@ import api.db as api_db
 import orchestrator.job_search.cv.service as cv_service
 import orchestrator.job_search.storage.db as storage_db
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 REF_CV_HTML = """<!doctype html>
 <html><body>
@@ -114,10 +116,13 @@ def _insert_offer(db_path, offer_id, techs=None, verdict="retenu"):
             "extracted_facts_json) VALUES (?, 'test', ?, 'fp', 'Titre H/F', 'Strasbourg', ?)",
             (offer_id, str(offer_id), json.dumps({"techs_required": techs or []})),
         )
-        if verdict is not None:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, '2026-09-28')",
-                (offer_id, verdict),
+        if verdict == "retenu":
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.RETENIR, effet_at="2026-09-28"
+            )
+        elif verdict is not None:
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.ECARTER, effet_at="2026-09-28"
             )
         conn.commit()
     finally:

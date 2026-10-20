@@ -132,9 +132,7 @@
       >
         <option value="">Tous</option>
         <option value="retenu">Retenu</option>
-        <option value="candidaté">Candidaté</option>
-        <option value="rejeté">Rejeté</option>
-        <option value="masqué">Masqué</option>
+        <option value="ecartee">Écartée</option>
         <option value="hors_perimetre_ok">Confirmé HP</option>
         <option value="hors_perimetre_faux_pos">Faux positif</option>
       </select>

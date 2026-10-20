@@ -22,6 +22,8 @@ import orchestrator.job_search.cv.service as cv_service
 import orchestrator.job_search.storage.db as storage_db
 from orchestrator.job_search.cv.skills import clean_title, parse_reference_block
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 REF_CV_HTML = """<!doctype html>
 <html><body>
@@ -150,10 +152,13 @@ def _insert_offer(db_path, offer_id, title, techs, verdict="retenu"):
             "extracted_facts_json) VALUES (?, 'test', ?, 'fp', ?, 'Strasbourg', ?)",
             (offer_id, str(offer_id), title, json.dumps({"techs_required": techs})),
         )
-        if verdict is not None:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, '2026-09-28')",
-                (offer_id, verdict),
+        if verdict == "retenu":
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.RETENIR, effet_at="2026-09-28"
+            )
+        elif verdict is not None:
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.ECARTER, effet_at="2026-09-28"
             )
         conn.commit()
     finally:
@@ -307,6 +312,9 @@ class TestCritere7ApiCreeLesTablesAuDemarrage:
             "INSERT INTO offers (id, source, source_id, fingerprint, title, location) "
             "VALUES (1, 'test', '1', 'fp', 'Titre', 'Strasbourg')"
         )
+        # Base d'avant TCK-311 : le module d'états n'existe pas encore, l'écriture
+        # directe simule fidèlement cet état antérieur (même exception que la
+        # migration EXE-139 testée dans test_exe139_candidature_envoyee.py).
         conn.execute(
             "INSERT INTO verdicts (offer_id, status, created_at) VALUES (1, 'retenu', '2026-09-28')"
         )

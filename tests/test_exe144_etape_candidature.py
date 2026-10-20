@@ -20,6 +20,8 @@ import api.db as api_db
 import api.pieces as api_pieces
 import orchestrator.job_search.storage.db as storage_db
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 
 @pytest.fixture
@@ -52,10 +54,13 @@ def _insert_offer(db_path, offer_id, verdict="retenu"):
             "description_raw) VALUES (?, 'test', ?, 'fp', 'Titre', 'Texte de l offre')",
             (offer_id, str(offer_id)),
         )
-        if verdict is not None:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, ?)",
-                (offer_id, verdict, _now()),
+        if verdict == "retenu":
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.RETENIR, effet_at=_now()
+            )
+        elif verdict is not None:
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.ECARTER, effet_at=_now()
             )
         conn.commit()
     finally:
@@ -156,6 +161,8 @@ class TestCritere4RetenueSansPieceOuAvecUneSeulePiecePrete:
 
 class TestCritere5OffreNonRetenueSansEtape:
     def test_offre_candidatee_sans_etape_verdict_inchange(self, client, db_path):
+        # TCK-311/EXE-193 : "candidaté" a disparu, remplacé par "ecartee"
+        # (seule la valeur change, le test garde sa portée — H7 du ticket).
         offer_id = 5
         _insert_offer(db_path, offer_id, verdict="candidaté")
 
@@ -163,7 +170,7 @@ class TestCritere5OffreNonRetenueSansEtape:
 
         offer = _offer(rows, offer_id)
         assert offer["etape"] is None
-        assert offer["verdict"] == "candidaté"
+        assert offer["verdict"] == "ecartee"
 
     def test_offre_sans_verdict_sans_etape(self, client, db_path):
         offer_id = 50

@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 
 import requests
 
+from orchestrator.job_search.suivi import storage as suivi_storage
+
 TIMEOUT_SECONDS = 10
 _CLOSED_CODES = {404, 410}
 
@@ -42,7 +44,7 @@ def run_expiration_check(
     conn: sqlite3.Connection, offer_ids: list[int] | None = None
 ) -> None:
     """Vérifie les URL des offres concernées et persiste l'état recalculé dans
-    `expirations`. Ne touche jamais `offers` ni `verdicts`.
+    `expirations`. Ne touche jamais `offers` ni le tri des offres.
 
     `offer_ids=None` (comportement d'avant EXE-78) : seules les offres
     retenues sont vérifiées. `offer_ids` désigné : exactement ces offres, quel
@@ -62,15 +64,20 @@ def run_expiration_check(
                 offer_ids,
             ).fetchall()
     else:
-        rows = conn.execute(
-            """
-            SELECT o.id AS offer_id, o.url AS offer_url, e.employer_url, e.expired
-            FROM offers o
-            JOIN verdicts v ON v.offer_id = o.id
-            LEFT JOIN expirations e ON e.offer_id = o.id
-            WHERE v.status = 'retenu'
-            """
-        ).fetchall()
+        retenues = suivi_storage.offer_ids_retenues(conn)
+        if not retenues:
+            rows = []
+        else:
+            placeholders = ",".join("?" for _ in retenues)
+            rows = conn.execute(
+                f"""
+                SELECT o.id AS offer_id, o.url AS offer_url, e.employer_url, e.expired
+                FROM offers o
+                LEFT JOIN expirations e ON e.offer_id = o.id
+                WHERE o.id IN ({placeholders})
+                """,
+                retenues,
+            ).fetchall()
 
     for row in rows:
         urls = [u for u in (row["offer_url"], row["employer_url"]) if u]

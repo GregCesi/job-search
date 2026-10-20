@@ -30,6 +30,7 @@ from orchestrator.job_search.mail.candidature import (
 )
 from orchestrator.job_search.pdf.filename import resolve_entreprise
 from orchestrator.job_search.pieces_state import drain_changed
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 from . import cv as cv_api
 from . import fiche as fiche_api
@@ -97,10 +98,7 @@ def _compute_avancement(conn, offer_id: int) -> dict:
 @router.get("/offers/{offer_id}/avancement")
 def get_avancement(offer_id: int) -> dict:
     with get_conn() as conn:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
+        if not suivi_storage.est_retenue(conn, offer_id):
             raise HTTPException(
                 status_code=409,
                 detail="L'avancement n'est disponible que pour une offre retenue",

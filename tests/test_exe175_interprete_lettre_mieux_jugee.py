@@ -42,6 +42,8 @@ from orchestrator.job_search.lettre.repertoire import (
     valider_interprete,
 )
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 CV_HTML = "<html><body><p>Contenu CV de test</p></body></html>"
 TOURNURES_INTERDITES = "je veux\nn'hésitez pas\n"
@@ -698,10 +700,8 @@ def _insert_offer_et_fiche(db_path, offer_id=1):
             "description_raw) VALUES (?, 'test', ?, 'fp', 'Titre', 'Texte')",
             (offer_id, str(offer_id)),
         )
-        conn.execute(
-            "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, "
-            "'retenu', '2026-10-14')",
-            (offer_id,),
+        suivi_storage.appliquer_geste(
+            conn, offer_id, suivi_etats.RETENIR, effet_at="2026-10-14"
         )
         conn.execute(
             "INSERT INTO fiches_entreprise (offer_id, statut, presentation, "

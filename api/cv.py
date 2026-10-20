@@ -41,6 +41,7 @@ from orchestrator.job_search.pdf.coordonnees import (
 from orchestrator.job_search.pdf.filename import resolve_piece_filename
 from orchestrator.job_search.pdf.render import html_to_pdf
 from orchestrator.job_search.pieces_state import mark_changed
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
 
@@ -150,10 +151,7 @@ async def launch_cv(offer_id: int) -> asyncio.Task | None:
 @router.post("/{offer_id}/cv")
 async def create_cv(offer_id: int, response: Response) -> dict:
     with get_conn() as conn:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
+        if not suivi_storage.est_retenue(conn, offer_id):
             raise HTTPException(
                 status_code=409,
                 detail="Le CV n'est généré que pour une offre retenue",
@@ -294,10 +292,7 @@ def get_cv_pdf(offer_id: int, lang: Literal["fr", "en"] = "fr") -> Response:
     nom de fichier que le français, avec `_EN` juste avant `.pdf`.
     """
     with get_conn() as conn:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
+        if not suivi_storage.est_retenue(conn, offer_id):
             raise HTTPException(
                 status_code=409,
                 detail="Le PDF n'est produit que pour une offre retenue",

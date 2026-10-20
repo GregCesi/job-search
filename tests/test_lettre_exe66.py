@@ -27,6 +27,8 @@ from orchestrator.job_search.lettre.boucle import (
     ResultatBoucle,
 )
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 PREFERENCES_TON = "# Préférences de ton\n- Direct, sans emphase\n"
 TOURNURES_INTERDITES = "je veux\nn'hésitez pas\ncordialement\n"
@@ -94,10 +96,13 @@ def _insert_offer(db_path, offer_id, verdict="retenu"):
             "VALUES (?, 'test', ?, 'fp', 'Titre', 'Texte de l offre')",
             (offer_id, str(offer_id)),
         )
-        if verdict is not None:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, '2026-09-28')",
-                (offer_id, verdict),
+        if verdict == "retenu":
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.RETENIR, effet_at="2026-09-28"
+            )
+        elif verdict is not None:
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.ECARTER, effet_at="2026-09-28"
             )
         conn.commit()
     finally:

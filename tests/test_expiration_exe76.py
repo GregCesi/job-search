@@ -19,6 +19,8 @@ import orchestrator.job_search.expiration.service as expiration_service
 import orchestrator.job_search.storage.db as storage_db
 from api.schemas import EmployerUrlIn
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 
 @pytest.fixture
@@ -40,10 +42,13 @@ def _insert_offer(db_path, offer_id, url="https://o.example", verdict="retenu"):
             "VALUES (?, 'test', ?, 'fp', 'Titre', 'Strasbourg', ?)",
             (offer_id, str(offer_id), url),
         )
-        if verdict is not None:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, '2026-09-28')",
-                (offer_id, verdict),
+        if verdict == "retenu":
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.RETENIR, effet_at="2026-09-28"
+            )
+        elif verdict is not None:
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.ECARTER, effet_at="2026-09-28"
             )
         conn.commit()
     finally:

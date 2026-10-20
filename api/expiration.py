@@ -13,6 +13,7 @@ et la persistance de l'URL employeur.
 from fastapi import APIRouter, HTTPException
 
 from orchestrator.job_search.expiration.service import run_expiration_check
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
 from .schemas import CheckExpirationsIn, EmployerUrlIn
@@ -24,10 +25,7 @@ router = APIRouter(prefix="/offers")
 def set_employer_url(offer_id: int, body: EmployerUrlIn) -> None:
     conn = get_conn()
     try:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
+        if not suivi_storage.est_retenue(conn, offer_id):
             raise HTTPException(
                 status_code=409,
                 detail="L'URL employeur n'est enregistrée que pour une offre retenue",

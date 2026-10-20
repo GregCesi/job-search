@@ -20,6 +20,8 @@ import orchestrator.job_search.fiche.service as fiche_service
 import orchestrator.job_search.storage.db as storage_db
 from orchestrator.job_search.fiche.cascade import CascadeResult
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 
 def _make_query(behavior):
@@ -117,11 +119,10 @@ def _insert_offer(db_path, offer_id, description_raw="Texte complet de l'offre."
             "'ACME', 'Strasbourg', ?)",
             (offer_id, str(offer_id), description_raw),
         )
-        conn.execute(
-            "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, 'retenu', '2026-10-01')",
-            (offer_id,),
-        )
         conn.commit()
+        suivi_storage.appliquer_geste(
+            conn, offer_id, suivi_etats.RETENIR, effet_at="2026-10-01"
+        )
     finally:
         conn.close()
 

@@ -28,6 +28,8 @@ from orchestrator.job_search.lettre.boucle import (
     ResultatBoucle,
 )
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 FAIT_0 = {
     "position": "Point 0",
@@ -81,10 +83,13 @@ def _insert_offer(
             "description_raw) VALUES (?, 'test', ?, 'fp', 'Titre', 'ACME', ?)",
             (offer_id, str(offer_id), description_raw),
         )
-        if verdict is not None:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, '2026-10-10')",
-                (offer_id, verdict),
+        if verdict == "retenu":
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.RETENIR, effet_at="2026-10-10"
+            )
+        elif verdict is not None:
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.ECARTER, effet_at="2026-10-10"
             )
         conn.commit()
     finally:

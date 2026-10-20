@@ -394,14 +394,7 @@ export const useOffersStore = defineStore('offers', () => {
       body: { status },
     })
     const idx = offers.value.findIndex(o => o.id === id)
-    if (idx !== -1) {
-      offers.value[idx]!.verdict = status
-      if (status === 'masqué' && activeView.value !== 'tout') {
-        offers.value.splice(idx, 1)
-        openedOffer.value = null
-        return
-      }
-    }
+    if (idx !== -1) offers.value[idx]!.verdict = status
     if (openedOffer.value?.id === id) openedOffer.value.verdict = status
   }
 

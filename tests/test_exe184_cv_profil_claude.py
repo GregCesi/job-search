@@ -23,6 +23,8 @@ import orchestrator.job_search.cv.profil as cv_profil
 import orchestrator.job_search.cv.service as cv_service
 import orchestrator.job_search.storage.db as storage_db
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 REF_CV_HTML_FR = """<!doctype html>
 <html><body>
@@ -169,10 +171,13 @@ def _insert_offer(
                 ad_language,
             ),
         )
-        if verdict is not None:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, '2026-10-16')",
-                (offer_id, verdict),
+        if verdict == "retenu":
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.RETENIR, effet_at="2026-10-16"
+            )
+        elif verdict is not None:
+            suivi_storage.appliquer_geste(
+                conn, offer_id, suivi_etats.ECARTER, effet_at="2026-10-16"
             )
         conn.commit()
     finally:

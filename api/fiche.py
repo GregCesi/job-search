@@ -26,6 +26,7 @@ from orchestrator.job_search.fiche.service import reset_pending, run_fiche
 from orchestrator.job_search.lettre.repertoire import sujet_libelle
 from orchestrator.job_search.paths import FICHE_CWD
 from orchestrator.job_search.pieces_state import mark_changed
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 from . import lettre as lettre_api
 from .db import get_conn
@@ -148,10 +149,7 @@ async def launch_fiche(offer_id: int) -> asyncio.Task | None:
 @router.post("/{offer_id}/fiche", status_code=202)
 async def create_fiche(offer_id: int) -> dict:
     with get_conn() as conn:
-        v = conn.execute(
-            "SELECT status FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        if v is None or v["status"] != "retenu":
+        if not suivi_storage.est_retenue(conn, offer_id):
             raise HTTPException(
                 status_code=409,
                 detail="La fiche n'est produite que pour une offre retenue",

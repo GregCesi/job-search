@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from orchestrator.job_search.pieces import cv_statut, lettre_statut, prete_a_l_envoi
+from orchestrator.job_search.pieces import cv_statut, lettre_statut
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 from . import cascade
 from .db import get_conn
@@ -196,14 +198,7 @@ def _derive_review_fields(row) -> dict:
     }
 
 
-def _derive_etape(row) -> str | None:
-    """Étape de candidature d'une offre retenue — dérivée à la lecture,
-    jamais persistée. Réutilise le calcul de la page de l'offre
-    (`orchestrator.job_search.pieces`), pas une seconde règle (EXE-144)."""
-    if row["verdict"] != "retenu":
-        return None
-    if row["envoyee_at"] is not None:
-        return "candidature_envoyee"
+def _pieces_pretes_depuis_row(row) -> tuple[bool, bool]:
     cv_row = (
         {"marque_pret_at": row["cv_marque_pret_at"]}
         if row["cv_id"] is not None
@@ -217,9 +212,39 @@ def _derive_etape(row) -> str | None:
         if row["lettre_id"] is not None
         else None
     )
-    if prete_a_l_envoi(cv_statut(cv_row), lettre_statut(lettre_row)):
-        return "prete_a_l_envoi"
-    return "retenue"
+    return (
+        cv_statut(cv_row) == "prete",
+        lettre_statut(lettre_row) == "prete",
+    )
+
+
+def _derive_etape(row, etat: str) -> str | None:
+    """Étape de candidature d'une offre retenue — dérivée à la lecture,
+    jamais persistée. Passe par le module d'états (TCK-311, EXE-193) pour la
+    table, par `orchestrator.job_search.pieces` pour le statut des pièces."""
+    cv_pret, lettre_pret = _pieces_pretes_depuis_row(row)
+    return suivi_etats.etape_affichee(etat, cv_pret=cv_pret, lettre_pret=lettre_pret)
+
+
+def _verdict_label(etat: str, revue: str | None) -> str | None:
+    if revue is not None:
+        return revue
+    t = suivi_etats.tri(etat)
+    if t == suivi_etats.RETENUE:
+        return "retenu"
+    if t == suivi_etats.ECARTEE:
+        return "ecartee"
+    return None
+
+
+def _gestes_permis_depuis_row(row, etat: str, hist: list) -> list[str]:
+    cv_pret, lettre_pret = _pieces_pretes_depuis_row(row)
+    return suivi_etats.gestes_permis_effectifs(
+        etat,
+        cv_pret=cv_pret,
+        lettre_pret=lettre_pret,
+        annulable=suivi_etats.permis_annuler(hist),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -283,9 +308,6 @@ def list_offers(
     if source is not None:
         conditions.append("o.source = ?")
         params.append(source)
-    if verdict is not None:
-        conditions.append("v.status = ?")
-        params.append(verdict)
     if seen_candidat is not None:
         conditions.append("o.seen_candidat = ?")
         params.append(1 if seen_candidat else 0)
@@ -366,6 +388,7 @@ def list_offers(
         order_parts.append(order_parts[-1] if order_parts else "desc")
 
     order_clauses: list[str] = []
+    verdict_sort_dir: str | None = None
     for s, o in zip(sort_parts, order_parts):
         d = o.upper() if o.upper() in ("ASC", "DESC") else "DESC"
         if s == "category":
@@ -395,14 +418,7 @@ def list_offers(
                     ELSE 9
                 END {d}""")
         elif s == "verdict":
-            order_clauses.append(f"""
-                CASE v.status
-                    WHEN 'retenu'                THEN 1
-                    WHEN 'hors_perimetre_faux_pos' THEN 2
-                    WHEN 'hors_perimetre_ok'     THEN 3
-                    WHEN 'rejeté'                THEN 4
-                    ELSE 5
-                END {d}""")
+            verdict_sort_dir = d  # tri python après enrichissement, cf. plus bas
         elif s in _SORT_COLS:
             order_clauses.append(f"o.{s} {d} NULLS LAST")
         else:
@@ -414,14 +430,11 @@ def list_offers(
                o.hors_perimetre_reason, o.perimetre_causes,
                o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
                o.rescored_at, o.extraction_status, o.extraction_attempts,
-               v.status AS verdict,
-               v.envoyee_at AS envoyee_at,
                c.id AS cv_id, c.marque_pret_at AS cv_marque_pret_at,
                l.id AS lettre_id, l.statut AS lettre_statut_raw,
                l.marque_pret_at AS lettre_marque_pret_at,
                ex.expired AS expiration_expired
         FROM offers o
-        LEFT JOIN verdicts v ON v.offer_id = o.id
         LEFT JOIN cvs c ON c.offer_id = o.id
         LEFT JOIN lettres l ON l.offer_id = o.id
         LEFT JOIN expirations ex ON ex.offer_id = o.id
@@ -431,37 +444,62 @@ def list_offers(
     conn = get_conn()
     try:
         rows = conn.execute(sql, params).fetchall()
+        etat_par_offre = suivi_storage.etat_map(conn)
+        revue_par_offre = suivi_storage.revue_hors_perimetre_map(conn)
+        hist_par_offre = suivi_storage.historique_map(conn)
     finally:
         conn.close()
 
-    return [
-        OfferRow(
-            id=r["id"],
-            title=r["title"],
-            company=r["company"],
-            location=r["location"],
-            remote=bool(r["remote"]),
-            contract_type=r["contract_type"],
-            category=r["category"],
-            verdict=r["verdict"],
-            etape=_derive_etape(r),
-            hors_perimetre_reason=r["hors_perimetre_reason"],
-            perimetre_causes=json.loads(r["perimetre_causes"])
-            if r["perimetre_causes"]
-            else [],
-            seen_candidat=bool(r["seen_candidat"]),
-            fetched_at=r["fetched_at"] or "",
-            **_derive_review_fields(r),
-            filtered_out=bool(r["filtered_out"]),
-            filter_reason=r["filter_reason"],
-            expired=bool(r["expiration_expired"])
-            if r["expiration_expired"] is not None
-            else False,
-            extraction_status=r["extraction_status"],
-            extraction_attempts=r["extraction_attempts"] or 0,
+    _VERDICT_ORDER = {
+        "retenu": 1,
+        "hors_perimetre_faux_pos": 2,
+        "hors_perimetre_ok": 3,
+        "ecartee": 4,
+    }
+
+    result = []
+    for r in rows:
+        etat = etat_par_offre.get(r["id"], suivi_etats.A_TRIER)
+        revue = revue_par_offre.get(r["id"])
+        verdict_label = _verdict_label(etat, revue)
+        if verdict is not None and verdict_label != verdict:
+            continue
+        hist = hist_par_offre.get(r["id"], [])
+        result.append(
+            OfferRow(
+                id=r["id"],
+                title=r["title"],
+                company=r["company"],
+                location=r["location"],
+                remote=bool(r["remote"]),
+                contract_type=r["contract_type"],
+                category=r["category"],
+                verdict=verdict_label,
+                etape=_derive_etape(r, etat),
+                gestes_permis=_gestes_permis_depuis_row(r, etat, hist),
+                hors_perimetre_reason=r["hors_perimetre_reason"],
+                perimetre_causes=json.loads(r["perimetre_causes"])
+                if r["perimetre_causes"]
+                else [],
+                seen_candidat=bool(r["seen_candidat"]),
+                fetched_at=r["fetched_at"] or "",
+                **_derive_review_fields(r),
+                filtered_out=bool(r["filtered_out"]),
+                filter_reason=r["filter_reason"],
+                expired=bool(r["expiration_expired"])
+                if r["expiration_expired"] is not None
+                else False,
+                extraction_status=r["extraction_status"],
+                extraction_attempts=r["extraction_attempts"] or 0,
+            )
         )
-        for r in rows
-    ]
+
+    if verdict_sort_dir is not None:
+        result.sort(
+            key=lambda row: _VERDICT_ORDER.get(row.verdict, 5),
+            reverse=(verdict_sort_dir == "DESC"),
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -511,13 +549,12 @@ def get_offer(offer_id: int) -> OfferDetail:
     try:
         row = conn.execute(
             """
-            SELECT o.*, v.status AS verdict,
+            SELECT o.*,
                    ex.employer_url AS expiration_employer_url,
                    ex.expired AS expiration_expired,
                    ex.last_checked_at AS expiration_last_checked_at,
                    ex.checks_json AS expiration_checks_json
             FROM offers o
-            LEFT JOIN verdicts v ON v.offer_id = o.id
             LEFT JOIN expirations ex ON ex.offer_id = o.id
             WHERE o.id = ?
             """,
@@ -528,6 +565,10 @@ def get_offer(offer_id: int) -> OfferDetail:
 
         conn.execute("UPDATE offers SET seen_candidat = 1 WHERE id = ?", (offer_id,))
         conn.commit()
+
+        verdict_label = suivi_storage.verdict_label(conn, offer_id)
+        etape = suivi_storage.etape(conn, offer_id)
+        gestes_permis = suivi_storage.gestes_permis(conn, offer_id)
     finally:
         conn.close()
 
@@ -540,7 +581,9 @@ def get_offer(offer_id: int) -> OfferDetail:
         remote=bool(row["remote"]),
         contract_type=row["contract_type"],
         category=row["category"],
-        verdict=row["verdict"],
+        verdict=verdict_label,
+        etape=etape,
+        gestes_permis=gestes_permis,
         hors_perimetre_reason=row["hors_perimetre_reason"],
         perimetre_causes=json.loads(row["perimetre_causes"])
         if row["perimetre_causes"]
@@ -607,6 +650,55 @@ def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:
 
 
 # ---------------------------------------------------------------------------
+# POST /offers/{id}/geste — tout geste de la table du module d'états
+# (TCK-311, EXE-193, critère 13). Seuls Retenir, Écarter et Marquer envoyée
+# sont câblés à un bouton candidat ce tour (via /verdict et /envoyee) ; les
+# étapes suivantes (relancer, entretien, refuser…) arrivent au jet suivant,
+# mais chaque geste de la table s'applique déjà par cette route.
+# ---------------------------------------------------------------------------
+
+
+class GesteIn(BaseModel):
+    geste: str
+    motif: str | None = None
+    effet_at: str | None = None
+
+
+@router.post("/offers/{offer_id}/geste")
+async def appliquer_geste_route(offer_id: int, body: GesteIn) -> dict:
+    conn = get_conn()
+    launch = False
+    try:
+        offer = conn.execute(
+            "SELECT id FROM offers WHERE id = ?", (offer_id,)
+        ).fetchone()
+        if offer is None:
+            raise HTTPException(status_code=404, detail="offer not found")
+        try:
+            if body.geste == suivi_etats.ANNULER:
+                nouvel_etat = suivi_storage.annuler_dernier_geste(conn, offer_id)
+            else:
+                nouvel_etat = suivi_storage.appliquer_geste(
+                    conn,
+                    offer_id,
+                    body.geste,
+                    motif=body.motif,
+                    effet_at=body.effet_at,
+                )
+                launch = body.geste == suivi_etats.RETENIR
+        except (suivi_etats.GesteRefuse, suivi_etats.PiecesNonPretes) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        conn.close()
+
+    if launch:
+        # Geste de retenir = action explicite de lancement (TCK-281) : la fiche
+        # et le CV partent sans autre appel de ma part.
+        await cascade.launch_pieces(offer_id)
+    return {"etat": nouvel_etat}
+
+
+# ---------------------------------------------------------------------------
 # PUT /offers/{id}/verdict  (UPSERT)
 # DELETE /offers/{id}/verdict
 # ---------------------------------------------------------------------------
@@ -615,6 +707,7 @@ def _parse_facts(raw: str | None, offer_id: int) -> ExtractedFactsSchema | None:
 @router.put("/offers/{offer_id}/verdict", status_code=204)
 async def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
     conn = get_conn()
+    launch = False
     try:
         offer = conn.execute(
             "SELECT id FROM offers WHERE id = ?", (offer_id,)
@@ -622,25 +715,34 @@ async def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
         if offer is None:
             raise HTTPException(status_code=404, detail="offer not found")
 
-        existing = conn.execute(
-            "SELECT id FROM verdicts WHERE offer_id = ?", (offer_id,)
-        ).fetchone()
-        now = datetime.now(timezone.utc).isoformat()
-        if existing:
-            conn.execute(
-                "UPDATE verdicts SET status = ?, created_at = ? WHERE offer_id = ?",
-                (body.status, now, offer_id),
-            )
-        else:
-            conn.execute(
-                "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, ?, ?)",
-                (offer_id, body.status, now),
-            )
-        conn.commit()
+        if body.status in ("hors_perimetre_ok", "hors_perimetre_faux_pos"):
+            suivi_storage.marquer_revue_hors_perimetre(conn, offer_id, body.status)
+        elif body.status == "retenu":
+            etat = suivi_storage.etat_stocke(conn, offer_id)
+            if etat == suivi_etats.ECARTEE:
+                suivi_storage.appliquer_geste(
+                    conn, offer_id, suivi_etats.REMETTRE_A_TRIER
+                )
+                etat = suivi_etats.A_TRIER
+            if etat == suivi_etats.A_TRIER:
+                suivi_storage.appliquer_geste(conn, offer_id, suivi_etats.RETENIR)
+                launch = True
+        elif body.status == "ecartee":
+            etat = suivi_storage.etat_stocke(conn, offer_id)
+            if etat == suivi_etats.A_TRIER:
+                suivi_storage.appliquer_geste(conn, offer_id, suivi_etats.ECARTER)
+            elif etat != suivi_etats.ECARTEE:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Une offre retenue ne s'écarte pas directement "
+                        "(Abandonner, puis Remettre à trier)"
+                    ),
+                )
     finally:
         conn.close()
 
-    if body.status == "retenu":
+    if launch:
         # Geste de retenir = action explicite de lancement (TCK-281) : la fiche
         # et le CV partent sans autre appel de ma part.
         await cascade.launch_pieces(offer_id)
@@ -733,7 +835,12 @@ def delete_verdict(offer_id: int) -> None:
         ).fetchone()
         if offer is None:
             raise HTTPException(status_code=404, detail="offer not found")
-        conn.execute("DELETE FROM verdicts WHERE offer_id = ?", (offer_id,))
-        conn.commit()
+        if suivi_storage.revue_hors_perimetre(conn, offer_id) is not None:
+            suivi_storage.effacer_revue_hors_perimetre(conn, offer_id)
+        else:
+            try:
+                suivi_storage.annuler_dernier_geste(conn, offer_id)
+            except suivi_etats.GesteRefuse:
+                pass  # rien à annuler : déjà à trier
     finally:
         conn.close()

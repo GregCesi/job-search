@@ -27,6 +27,8 @@ from orchestrator.job_search.lettre import banc
 from orchestrator.job_search.lettre.boucle import ReponseModele
 from orchestrator.job_search.lettre.redaction import RAISON_TEXTE_MANQUANT
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 CV_HTML = "<html><body><p>Contenu CV de test</p></body></html>"
 TOURNURES_INTERDITES = "je veux\n"
@@ -244,12 +246,11 @@ def _poser_offre(
         "description_raw) VALUES (?, 'test', ?, 'fp', ?, ?, ?)",
         (offer_id, str(offer_id), titre, entreprise, texte),
     )
-    if retenue:
-        conn.execute(
-            "INSERT INTO verdicts (offer_id, status, created_at) VALUES (?, 'retenu', '2026-10-07')",
-            (offer_id,),
-        )
     conn.commit()
+    if retenue:
+        suivi_storage.appliquer_geste(
+            conn, offer_id, suivi_etats.RETENIR, effet_at="2026-10-07"
+        )
 
 
 def _dump_toutes_tables(conn) -> dict:
