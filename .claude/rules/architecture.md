@@ -41,12 +41,36 @@ Le LLM intervient UNE SEULE FOIS par offre, à l'ingestion, pour extraire des **
 Trois tables d'interaction, jamais fusionnées :
 
 - `offers` — score LLM + `criteria_json` (décision IA). Source de vérité du scoring.
-- `verdicts` — statut humain global (favori/rejeté/candidaté).
+- le suivi : tri, étape de candidature et historique des gestes, écrits par le seul module
+  d'états (section « Suivi des candidatures »).
 - `human_reviews` — notation humaine **par-critère** contre l'IA, pour la calibration. Clé `offer_id`. Stocke `ratings_json` (notes/justifs humaines par critère, optionnelles) + `ai_snapshot_json` (copie figée du `criteria_json` à l'instant de la review) + audit global libre.
 
 **Interdit** : écrire dans `offers` (score, criteria_json) depuis un avis humain, ou recalculer le scoring depuis `verdicts` / `human_reviews`. Ce sont des données d'interaction (même statut que `seen`), pas des intrants de recalcul. Leur écart avec le score IA est le signal d'apprentissage — le fusionner le détruit.
 
 Le snapshot dans `human_reviews` rend chaque review auto-portante : la distance de désaccord se calcule contre l'IA _telle qu'elle était_ au moment de l'avis, et survit aux évolutions du scoring (refonte profil, nouveaux critères). Une review n'est jamais invalidée par un changement de grille ultérieur.
+
+## Suivi des candidatures : un seul module d'états (TCK-311)
+
+Le tri d'une offre (à trier, retenue, écartée), l'étape de sa candidature et l'historique
+de mes gestes ne s'écrivent que par le module d'états de candidature. Il tient la table
+des transitions : depuis chaque état, les gestes permis et l'état d'arrivée. Il est le seul
+à répondre aux questions « cette offre est-elle retenue ? » et « ce geste est-il permis ? ».
+
+- Le module est du Python pur : il n'importe ni FastAPI ni sqlite3. Sa lecture et son
+  écriture en base vivent dans un fichier à part.
+- Aucune route, aucun service, aucune commande ne lit ou n'écrit le tri ou l'étape
+  directement en base : ils passent par le module.
+- Chaque geste écrit une ligne datée dans l'historique. Une annulation ne supprime pas la
+  ligne : elle la marque annulée.
+- « Prête à l'envoi » se déduit de l'état des pièces et ne se stocke pas.
+- L'API rend, pour chaque offre, son étape et les gestes permis. Le front affiche ces
+  gestes et ne calcule ni étape ni droit (cf. frontend.md).
+- La revue hors périmètre de la vue opérateur n'est pas un tri : elle vit à part du tri
+  et ne le change pas.
+
+_Écrit le 20 octobre 2026, TCK-311 : la règle « l'offre est retenue » était recopiée
+15 fois dans 10 fichiers, et une offre passée en « candidaté » perdait l'accès à ses
+pièces (TCK-293)._
 
 ## Exceptions encadrées — fiche entreprise, CV, lettre (TCK-224, TCK-225, TCK-226)
 
