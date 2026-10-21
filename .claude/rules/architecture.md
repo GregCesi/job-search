@@ -78,11 +78,13 @@ Trois appels LLM existent hors extraction à l'ingestion. Chacun part **uniqueme
 
 Chacun tourne dans sa propre table d'interaction, jamais mêlée à `offers` : `fiches_entreprise`, `cvs` (avec `cv_corrections`), et la table de la lettre. Les choix humains qu'elles stockent — tas des points, corrections de compétences, points retenus pour la lettre, texte relu — ne recalculent rien.
 
-**Lancement au geste de retenir (TCK-281).** Retenir une offre est aussi une action explicite : ce geste lance la fiche entreprise et le CV de l'offre, puis sa lettre quand la fiche est terminée, sur des points de la fiche désignés par l'appel de la fiche lui-même. Aucun appel de modèle ne s'ajoute aux trois existants. Les routes de chaque pièce restent la voie de relance à la main.
+**Lancement au geste de retenir (TCK-281, modifié par TCK-311).** Retenir une offre est aussi une action explicite : ce geste lance la fiche entreprise et le CV de l'offre. La lettre ne part que de mon geste « Générer la lettre », et attend la fin de la fiche si elle tourne encore. « Ne pas faire de lettre pour cette annonce » ne lance rien. Aucun appel de modèle ne s'ajoute aux trois existants. Les routes de chaque pièce restent la voie de relance à la main.
 
 Ce qui ne change pas : rien ne part d'un changement de `profile.yaml`, d'un rescore, d'un démarrage de l'API ou d'une offre déjà retenue ; les tas des points et la marque « Prête » ne viennent que de Grégoire ; un choix de points fait à la main n'est jamais remplacé par celui du système.
 
 _Écrit le 5 octobre 2026, TCK-281 : une candidature demandait trois lancements à la main, dans l'ordre, pour 30 candidatures visées le 9 octobre._
+
+_Modifié le 20 octobre 2026, TCK-311 : je ne veux pas de lettre pour toutes les annonces, et une candidature doit pouvoir partir avec le CV seul._
 
 ## Exception encadrée — identification d'une offre ajoutée à la main sans titre (TCK-183)
 
