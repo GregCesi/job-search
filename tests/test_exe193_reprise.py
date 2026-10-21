@@ -217,9 +217,13 @@ class TestCritere18CopieAvantToutEcriture:
 
         backup_conn = sqlite3.connect(backup_path)
         backup_conn.row_factory = sqlite3.Row
-        # La copie a été prise avant que la reprise n'écrive ses lignes.
-        rows = backup_conn.execute("SELECT COUNT(*) AS n FROM etats_offre").fetchone()
-        assert rows["n"] == 0
+        # EXE-200, critère 2 : la copie précède la création des tables du
+        # suivi elles-mêmes (pas seulement leurs lignes) — assertion changée
+        # en conséquence (critère 36).
+        table = backup_conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'etats_offre'"
+        ).fetchone()
+        assert table is None
         backup_conn.close()
 
 

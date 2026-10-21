@@ -1,6 +1,6 @@
-import shutil
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 from orchestrator.job_search.paths import DB_PATH
 
@@ -225,7 +225,6 @@ def init_db(conn: sqlite3.Connection) -> None:
     migrate_lettre_versions_schema(conn)
     migrate_ajouts_schema(conn)
     migrate_verdicts_schema(conn)
-    migrate_suivi_candidatures_schema(conn)
     run_reprise_candidatures(conn)
 
 
@@ -274,68 +273,128 @@ def migrate_verdicts_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def migrate_suivi_candidatures_schema(conn: sqlite3.Connection) -> None:
-    """TCK-311/EXE-193 : tables du module d'états du suivi des candidatures —
-    tri, étape, historique des gestes, revue hors périmètre — séparées de
-    `verdicts`, jamais fusionnées (architecture.md). Idempotent."""
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS etats_offre (
-            offer_id INTEGER PRIMARY KEY REFERENCES offers(id),
-            etat     TEXT NOT NULL
-        );
+# Tables du module d'états du suivi des candidatures — tri, étape, historique
+# des gestes, revue hors périmètre — séparées de `verdicts`, jamais fusionnées
+# (architecture.md). Statements individuels (pas `executescript`, qui commite
+# implicitement) : exécutés dans la transaction unique de
+# `run_reprise_candidatures` (EXE-200, critère 6).
+_SUIVI_SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS etats_offre (
+        offer_id INTEGER PRIMARY KEY REFERENCES offers(id),
+        etat     TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS historique_gestes (
+        id            INTEGER PRIMARY KEY,
+        offer_id      INTEGER NOT NULL REFERENCES offers(id),
+        geste         TEXT NOT NULL,
+        etat_depart   TEXT NOT NULL,
+        etat_arrivee  TEXT NOT NULL,
+        motif         TEXT,
+        effet_at      TEXT NOT NULL,
+        enregistre_at TEXT NOT NULL,
+        annule_at     TEXT
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_historique_gestes_offer
+        ON historique_gestes(offer_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS revues_hors_perimetre (
+        offer_id   INTEGER PRIMARY KEY REFERENCES offers(id),
+        valeur     TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS reprise_suivi_candidatures (
+        id      INTEGER PRIMARY KEY CHECK (id = 1),
+        done_at TEXT NOT NULL
+    )
+    """,
+]
 
-        CREATE TABLE IF NOT EXISTS historique_gestes (
-            id            INTEGER PRIMARY KEY,
-            offer_id      INTEGER NOT NULL REFERENCES offers(id),
-            geste         TEXT NOT NULL,
-            etat_depart   TEXT NOT NULL,
-            etat_arrivee  TEXT NOT NULL,
-            motif         TEXT,
-            effet_at      TEXT NOT NULL,
-            enregistre_at TEXT NOT NULL,
-            annule_at     TEXT
-        );
 
-        CREATE INDEX IF NOT EXISTS idx_historique_gestes_offer
-            ON historique_gestes(offer_id);
+def _reprise_deja_faite(conn: sqlite3.Connection) -> bool:
+    table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'reprise_suivi_candidatures'"
+    ).fetchone()
+    if table is None:
+        return False
+    row = conn.execute(
+        "SELECT 1 FROM reprise_suivi_candidatures WHERE id = 1"
+    ).fetchone()
+    return row is not None
 
-        CREATE TABLE IF NOT EXISTS revues_hors_perimetre (
-            offer_id   INTEGER PRIMARY KEY REFERENCES offers(id),
-            valeur     TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        );
 
-        CREATE TABLE IF NOT EXISTS reprise_suivi_candidatures (
-            id      INTEGER PRIMARY KEY CHECK (id = 1),
-            done_at TEXT NOT NULL
-        );
-    """)
-    conn.commit()
+def _fichier_source(conn: sqlite3.Connection) -> Path | None:
+    """Chemin du fichier EFFECTIVEMENT attaché à `conn` comme base « main »,
+    ou `None` pour une base en mémoire (critère 4) — jamais `DB_PATH`, qui peut
+    différer du fichier réellement migré en test (critère 1)."""
+    for _, name, file in conn.execute("PRAGMA database_list"):
+        if name == "main" and file:
+            return Path(file)
+    return None
+
+
+def _poser_copie_securite(conn: sqlite3.Connection) -> None:
+    """Copie de sécurité du fichier migré par `conn`, par la sauvegarde sqlite3
+    intégrée (cohérente même avec une autre connexion ouverte, critère 3 — H6).
+    Aucune copie pour une base sans fichier (critère 4). Passe par une connexion
+    neuve dédiée à la lecture source : `conn.backup()` directement sur `conn`
+    alors qu'il tient le verrou d'écriture de la transaction unique (critère 6,
+    8) bloque indéfiniment (observé) — une connexion à part lit sans conflit."""
+    source = _fichier_source(conn)
+    if source is None:
+        return
+    backup_path = source.with_name(source.stem + ".avant-tck311" + source.suffix)
+    source_conn = sqlite3.connect(source)
+    backup_conn = sqlite3.connect(backup_path)
+    try:
+        source_conn.backup(backup_conn)
+    finally:
+        backup_conn.close()
+        source_conn.close()
 
 
 def run_reprise_candidatures(conn: sqlite3.Connection) -> None:
-    """TCK-311/EXE-193, critères 18-26 : migre une base d'avant la fiche
-    (`verdicts`) vers le module d'états, une seule fois (critère 25). Pose une
-    copie de sécurité du fichier avant toute écriture (critère 18)."""
-    done = conn.execute(
-        "SELECT 1 FROM reprise_suivi_candidatures WHERE id = 1"
-    ).fetchone()
-    if done is not None:
+    """TCK-311/EXE-193, étendu EXE-200 (critères 1-10) : migre une base
+    d'avant la fiche (`verdicts`) vers le module d'états, une seule fois
+    (critère 10). Création des tables, copie de sécurité, validation et
+    écritures de la reprise forment une seule transaction (critère 6) ; sûr
+    entre démarrages concurrents (critère 8) par verrou d'écriture SQLite."""
+    if _reprise_deja_faite(conn):
         return
-
-    if DB_PATH.exists():
-        backup_path = DB_PATH.with_name(DB_PATH.stem + ".avant-tck311" + DB_PATH.suffix)
-        shutil.copy2(DB_PATH, backup_path)
 
     from orchestrator.job_search.suivi import reprise as suivi_reprise
 
-    suivi_reprise.migrer_verdicts(conn)
-
-    conn.execute(
-        "INSERT INTO reprise_suivi_candidatures (id, done_at) VALUES (1, ?)",
-        (datetime.now(timezone.utc).isoformat(),),
-    )
-    conn.commit()
+    original_isolation = conn.isolation_level
+    conn.isolation_level = None  # transaction pilotée à la main ci-dessous
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            if _reprise_deja_faite(conn):
+                conn.rollback()
+                return
+            suivi_reprise.valider_verdicts(conn)  # critère 9, avant toute écriture
+            _poser_copie_securite(conn)  # critères 1-4, avant les tables du suivi
+            for statement in _SUIVI_SCHEMA_STATEMENTS:
+                conn.execute(statement)
+            suivi_reprise.migrer_verdicts(conn)
+            conn.execute(
+                "INSERT INTO reprise_suivi_candidatures (id, done_at) VALUES (1, ?)",
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+    finally:
+        conn.isolation_level = original_isolation
 
 
 def migrate_cvs_schema(conn: sqlite3.Connection) -> None:

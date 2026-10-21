@@ -2,9 +2,10 @@
 critères 18-26 du ticket EXE-193.
 
 Appelée une seule fois par `storage.db.run_reprise_candidatures`, jamais
-directement : c'est elle qui pose la copie de sécurité (critère 18) et le
-marqueur « déjà reprise » (critère 25). Lecture seule de `verdicts`, jamais
-réécrite ni effacée ici.
+directement : c'est lui qui pose la copie de sécurité, valide les lignes et le
+marqueur « déjà reprise », dans une transaction unique (EXE-200, critères
+1-10) — cette fonction n'ouvre ni ne commite aucune transaction elle-même.
+Lecture seule de `verdicts`, jamais réécrite ni effacée ici.
 """
 
 import sqlite3
@@ -20,6 +21,37 @@ _VERS_RETENUE = {"retenu", "candidaté"}
 _VERS_ECARTEE = {"rejeté", "masqué"}
 # Revue hors périmètre : axe à part, hors du tri (critère 23).
 _VALEURS_REVUE = {"hors_perimetre_ok", "hors_perimetre_faux_pos"}
+
+# Toute valeur de `verdicts.status` qu'une reprise sait traiter (EXE-200,
+# critère 9) — une valeur hors de cet ensemble est inutilisable.
+VALEURS_CONNUES = _VERS_RETENUE | _VERS_ECARTEE | _VALEURS_REVUE
+
+
+class VerdictInutilisable(ValueError):
+    """Une ligne de `verdicts` n'a pas de valeur utilisable pour la reprise
+    (critère 9) : nomme l'offre et la valeur fautive. Le démarrage s'arrête
+    avant toute copie et toute écriture (`storage.db.run_reprise_candidatures`)."""
+
+    def __init__(self, offer_id, champ: str, valeur) -> None:
+        self.offer_id = offer_id
+        self.champ = champ
+        self.valeur = valeur
+        super().__init__(
+            f"verdicts : offre {offer_id}, champ {champ!r} inutilisable ({valeur!r})"
+        )
+
+
+def valider_verdicts(conn: sqlite3.Connection) -> None:
+    """Lecture seule (critère 9) : lève `VerdictInutilisable` si une ligne a un
+    statut vide ou inconnu, ou une date de création vide — avant toute écriture
+    de la reprise."""
+    rows = conn.execute("SELECT offer_id, status, created_at FROM verdicts").fetchall()
+    for row in rows:
+        offer_id, status, created_at = row[0], row[1], row[2]
+        if not status or status not in VALEURS_CONNUES:
+            raise VerdictInutilisable(offer_id, "status", status)
+        if not created_at:
+            raise VerdictInutilisable(offer_id, "created_at", created_at)
 
 
 def migrer_verdicts(conn: sqlite3.Connection) -> None:
@@ -78,8 +110,6 @@ def migrer_verdicts(conn: sqlite3.Connection) -> None:
                 now,
             )
             _poser_etat(conn, offer_id, etats.ECARTEE)
-
-    conn.commit()
 
 
 def _ecrire_evenement(
