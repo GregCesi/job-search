@@ -7,7 +7,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
-from orchestrator.job_search.pieces import cv_statut, lettre_statut
+from orchestrator.job_search.pieces import (
+    DECISION_SANS_LETTRE,
+    cv_statut,
+    lettre_statut,
+    libelle_tout_telecharger,
+    pieces_a_envoyer,
+)
 from orchestrator.job_search.suivi import etats as suivi_etats
 from orchestrator.job_search.suivi import storage as suivi_storage
 
@@ -217,7 +223,7 @@ def _derive_review_fields(row) -> dict:
     }
 
 
-def _pieces_pretes_depuis_row(row) -> tuple[bool, bool]:
+def _pieces_pretes_depuis_row(row) -> tuple[bool, bool, bool]:
     cv_row = (
         {"marque_pret_at": row["cv_marque_pret_at"]}
         if row["cv_id"] is not None
@@ -231,9 +237,11 @@ def _pieces_pretes_depuis_row(row) -> tuple[bool, bool]:
         if row["lettre_id"] is not None
         else None
     )
+    lettre_sans = row["lettre_decision_raw"] == DECISION_SANS_LETTRE
     return (
         cv_statut(cv_row) == "prete",
         lettre_statut(lettre_row) == "prete",
+        lettre_sans,
     )
 
 
@@ -241,8 +249,10 @@ def _derive_etape(row, etat: str) -> str | None:
     """Étape de candidature d'une offre retenue — dérivée à la lecture,
     jamais persistée. Passe par le module d'états (TCK-311, EXE-193) pour la
     table, par `orchestrator.job_search.pieces` pour le statut des pièces."""
-    cv_pret, lettre_pret = _pieces_pretes_depuis_row(row)
-    return suivi_etats.etape_affichee(etat, cv_pret=cv_pret, lettre_pret=lettre_pret)
+    cv_pret, lettre_pret, lettre_sans = _pieces_pretes_depuis_row(row)
+    return suivi_etats.etape_affichee(
+        etat, cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+    )
 
 
 def _verdict_label(etat: str, revue: str | None) -> str | None:
@@ -291,11 +301,12 @@ def _message_ecarter_refuse(etat: str) -> str:
 
 
 def _gestes_permis_depuis_row(row, etat: str, hist: list) -> list[str]:
-    cv_pret, lettre_pret = _pieces_pretes_depuis_row(row)
+    cv_pret, lettre_pret, lettre_sans = _pieces_pretes_depuis_row(row)
     return suivi_etats.gestes_permis_effectifs(
         etat,
         cv_pret=cv_pret,
         lettre_pret=lettre_pret,
+        lettre_sans=lettre_sans,
         annulable=suivi_etats.permis_annuler(hist),
     )
 
@@ -303,13 +314,14 @@ def _gestes_permis_depuis_row(row, etat: str, hist: list) -> list[str]:
 def _gestes_avec_etat_depuis_row(row, etat: str, hist: list) -> list[dict]:
     """Chaque geste de la table, permis ou non avec son libellé et sa raison
     (critère 14 ; libellé dynamique de l'annulation — EXE-194, critère 15)."""
-    cv_pret, lettre_pret = _pieces_pretes_depuis_row(row)
+    cv_pret, lettre_pret, lettre_sans = _pieces_pretes_depuis_row(row)
     return [
         {"geste": g.geste, "permis": g.permis, "libelle": g.libelle, "raison": g.raison}
         for g in suivi_etats.gestes_avec_etat(
             etat,
             cv_pret=cv_pret,
             lettre_pret=lettre_pret,
+            lettre_sans=lettre_sans,
             dernier_annulable=suivi_etats.dernier_geste_non_annule(hist),
         )
     ]
@@ -324,12 +336,17 @@ def _ecart_depuis_hist(hist: list) -> tuple[str | None, str | None]:
     return ev.effet_at, ev.motif
 
 
-def _tout_telecharger(cv_pret: bool, lettre_pret: bool) -> tuple[bool, str | None]:
+def _tout_telecharger(
+    cv_pret: bool, lettre_pret: bool, lettre_sans: bool
+) -> tuple[bool, str | None]:
     """Si « Tout télécharger » est possible, et sinon pourquoi, en clair
-    (critère 16)."""
-    if cv_pret and lettre_pret:
+    (critère 16 — EXE-200 ; `lettre_sans` compte comme la lettre prête,
+    EXE-196 critères 1-5)."""
+    if suivi_etats.pieces_pretes_pour_envoi(
+        cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+    ):
         return True, None
-    if not cv_pret and not lettre_pret:
+    if not cv_pret and not (lettre_pret or lettre_sans):
         return False, "Le CV et la lettre ne sont pas encore prêts."
     if not cv_pret:
         return False, "Le CV n'est pas encore prêt."
@@ -564,6 +581,7 @@ def list_offers(
                    c.id AS cv_id, c.marque_pret_at AS cv_marque_pret_at,
                    l.id AS lettre_id, l.statut AS lettre_statut_raw,
                    l.marque_pret_at AS lettre_marque_pret_at,
+                   l.decision AS lettre_decision_raw,
                    ex.expired AS expiration_expired
             FROM offers o
             LEFT JOIN cvs c ON c.offer_id = o.id
@@ -698,12 +716,12 @@ def get_offer(offer_id: int) -> OfferDetail:
         dernier_ecart_evt = suivi_storage.dernier_ecart(conn, offer_id)
         ecartee_le = dernier_ecart_evt.effet_at if dernier_ecart_evt else None
         motif_ecart = dernier_ecart_evt.motif if dernier_ecart_evt else None
-        cv_pret, lettre_pret = suivi_storage.pieces_pretes(conn, offer_id)
+        cv_pret, lettre_pret, lettre_sans = suivi_storage.pieces_pretes(conn, offer_id)
     finally:
         conn.close()
 
     tout_telecharger_possible, tout_telecharger_raison = _tout_telecharger(
-        cv_pret, lettre_pret
+        cv_pret, lettre_pret, lettre_sans
     )
 
     return OfferDetail(
@@ -733,6 +751,8 @@ def get_offer(offer_id: int) -> OfferDetail:
         etapes_acquises=etapes_acquises,
         tout_telecharger_possible=tout_telecharger_possible,
         tout_telecharger_raison=tout_telecharger_raison,
+        tout_telecharger_pieces=pieces_a_envoyer(lettre_sans),
+        tout_telecharger_libelle=libelle_tout_telecharger(lettre_sans),
         ecartee_le=ecartee_le,
         motif_ecart=motif_ecart,
         hors_perimetre_reason=row["hors_perimetre_reason"],

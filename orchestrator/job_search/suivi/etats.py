@@ -170,13 +170,16 @@ class GesteRefuse(Exception):
 
 class PiecesNonPretes(Exception):
     """`marquer_envoyee` depuis `retenue` sans CV et lettre Prêts (critère 7) —
-    même message qu'avant ce ticket (`api/pieces.py`)."""
+    même message qu'avant ce ticket (`api/pieces.py`). Depuis EXE-196,
+    `lettre_sans=True` (décision « Sans lettre ») compte comme la lettre
+    satisfaite : elle ne manque jamais dans le message dans ce cas."""
 
-    def __init__(self, cv_pret: bool, lettre_pret: bool):
+    def __init__(self, cv_pret: bool, lettre_pret: bool, lettre_sans: bool = False):
         self.cv_pret = cv_pret
         self.lettre_pret = lettre_pret
+        self.lettre_sans = lettre_sans
         cv_manque = not cv_pret
-        lettre_manque = not lettre_pret
+        lettre_manque = not (lettre_pret or lettre_sans)
         if cv_manque and lettre_manque:
             quoi = "Le CV et la lettre ne sont pas prêts"
         elif cv_manque:
@@ -192,8 +195,24 @@ def gestes_permis(etat: str) -> list[str]:
     return sorted(TRANSITIONS.get(etat, {}))
 
 
+def pieces_pretes_pour_envoi(
+    *, cv_pret: bool, lettre_pret: bool, lettre_sans: bool
+) -> bool:
+    """Condition unique « prête à l'envoi » (EXE-196, critères 1-5, H4) : CV
+    Prêt, et lettre Prête ou décision « Sans lettre ». Seul endroit qui
+    l'écrit — `gestes_permis_effectifs`, `gestes_avec_etat`, `appliquer`,
+    `etape_affichee` ci-dessous, et `api/offers.py::_tout_telecharger`,
+    `orchestrator/job_search/pieces.py::prete_a_l_envoi` la lisent ici."""
+    return cv_pret and (lettre_pret or lettre_sans)
+
+
 def gestes_permis_effectifs(
-    etat: str, *, cv_pret: bool, lettre_pret: bool, annulable: bool
+    etat: str,
+    *,
+    cv_pret: bool,
+    lettre_pret: bool,
+    annulable: bool,
+    lettre_sans: bool = False,
 ) -> list[str]:
     """Gestes réellement applicables là, tout de suite (critère 12) : exclut
     `marquer_envoyee` si les pièces ne sont pas prêtes, ajoute `annuler` si
@@ -202,7 +221,11 @@ def gestes_permis_effectifs(
         g
         for g in gestes_permis(etat)
         if not (
-            g == MARQUER_ENVOYEE and etat == RETENUE and not (cv_pret and lettre_pret)
+            g == MARQUER_ENVOYEE
+            and etat == RETENUE
+            and not pieces_pretes_pour_envoi(
+                cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+            )
         )
     ]
     if annulable:
@@ -259,6 +282,7 @@ def gestes_avec_etat(
     cv_pret: bool,
     lettre_pret: bool,
     dernier_annulable: "EvenementHistorique | None",
+    lettre_sans: bool = False,
 ) -> list[GesteEtat]:
     """Chaque geste de la table (`annuler` compris), permis ou non, avec son
     libellé et la raison du refus en clair quand il l'est (critère 14) —
@@ -282,11 +306,13 @@ def gestes_avec_etat(
         elif (
             geste == MARQUER_ENVOYEE
             and etat == RETENUE
-            and not (cv_pret and lettre_pret)
+            and not pieces_pretes_pour_envoi(
+                cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+            )
         ):
             permis = False
             libelle = LIBELLES_GESTES[geste]
-            raison = str(PiecesNonPretes(cv_pret, lettre_pret))
+            raison = str(PiecesNonPretes(cv_pret, lettre_pret, lettre_sans))
         else:
             permis = True
             libelle = LIBELLES_GESTES[geste]
@@ -297,16 +323,29 @@ def gestes_avec_etat(
     return resultat
 
 
-def appliquer(etat: str, geste: str, *, cv_pret: bool, lettre_pret: bool) -> str:
+def appliquer(
+    etat: str,
+    geste: str,
+    *,
+    cv_pret: bool,
+    lettre_pret: bool,
+    lettre_sans: bool = False,
+) -> str:
     """Nouvel état stocké, ou lève `GesteRefuse` / `PiecesNonPretes`.
 
-    `cv_pret`/`lettre_pret` ne sont consultés que pour `marquer_envoyee` depuis
-    `retenue` — ignorés pour tout autre geste."""
+    `cv_pret`/`lettre_pret`/`lettre_sans` ne sont consultés que pour
+    `marquer_envoyee` depuis `retenue` — ignorés pour tout autre geste."""
     transitions = TRANSITIONS.get(etat, {})
     if geste not in transitions:
         raise GesteRefuse(etat, geste)
-    if geste == MARQUER_ENVOYEE and etat == RETENUE and not (cv_pret and lettre_pret):
-        raise PiecesNonPretes(cv_pret, lettre_pret)
+    if (
+        geste == MARQUER_ENVOYEE
+        and etat == RETENUE
+        and not pieces_pretes_pour_envoi(
+            cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+        )
+    ):
+        raise PiecesNonPretes(cv_pret, lettre_pret, lettre_sans)
     return transitions[geste]
 
 
@@ -319,12 +358,16 @@ def tri(etat: str) -> str:
     return RETENUE
 
 
-def etape_affichee(etat: str, *, cv_pret: bool, lettre_pret: bool) -> str | None:
+def etape_affichee(
+    etat: str, *, cv_pret: bool, lettre_pret: bool, lettre_sans: bool = False
+) -> str | None:
     """`None` si pas retenue ; sinon l'étape à afficher, avec le survol
     « prête à l'envoi » dérivé (critère 6), jamais stocké."""
     if etat not in ETATS_RETENUS:
         return None
-    if etat == RETENUE and cv_pret and lettre_pret:
+    if etat == RETENUE and pieces_pretes_pour_envoi(
+        cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+    ):
         return PRETE_A_L_ENVOI
     return etat
 
@@ -407,13 +450,16 @@ def etapes_acquises(
     *,
     cv_pret: bool,
     lettre_pret: bool,
+    lettre_sans: bool = False,
 ) -> list[str]:
     """Sous-ensemble de `ETAPES_AFFICHEES` (api/offers.py) réellement acquis
     (critère 22) — jamais « tout acquis par défaut » pour un état hors
     séquence, qui montrait « candidature envoyée » pour une offre abandonnée
     depuis « retenue » sans jamais avoir été envoyée."""
     rang = rang_progression(etat, historique)
-    etape_actuelle = etape_affichee(etat, cv_pret=cv_pret, lettre_pret=lettre_pret)
+    etape_actuelle = etape_affichee(
+        etat, cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+    )
     acquises: list[str] = []
     if rang >= 1:
         acquises.append(RETENUE)

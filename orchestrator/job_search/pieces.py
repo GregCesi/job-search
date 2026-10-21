@@ -8,10 +8,13 @@ marque humaine : jamais déduit de la fin d'une génération (architecture.md).
 La décision de la lettre (EXE-195) est un axe séparé, propre à la carte
 Lettre : à décider (jamais demandée), demandée (demandée au moins une fois —
 qu'elle attende la fiche, tourne, ait fini ou soit en erreur), sans lettre
-(choix explicite de ne pas en faire). Elle ne change rien à `lettre_statut` ni
-à `prete_a_l_envoi` : une lettre « sans lettre » y reste ce qu'elle était
-avant ce ticket.
+(choix explicite de ne pas en faire). Elle ne change rien à `lettre_statut`,
+mais compte comme la lettre satisfaite pour `prete_a_l_envoi` depuis EXE-196 :
+CV Prêt et (lettre Prête ou décision « Sans lettre ») — condition unique,
+écrite dans `orchestrator.job_search.suivi.etats.pieces_pretes_pour_envoi`.
 """
+
+from orchestrator.job_search.suivi.etats import pieces_pretes_pour_envoi
 
 A_FAIRE = "a_faire"
 EN_COURS = "en_cours"
@@ -63,8 +66,23 @@ def lettre_statut(row) -> str:
     return EN_COURS
 
 
-def prete_a_l_envoi(cv: str, lettre: str) -> bool:
-    return cv == PRETE and lettre == PRETE
+def prete_a_l_envoi(cv: str, lettre: str, lettre_sans: bool) -> bool:
+    """Condition unique « prête à l'envoi » (EXE-196, H4) : lue depuis le
+    module d'états, seul endroit qui l'écrit — jamais réécrite ici."""
+    return pieces_pretes_pour_envoi(
+        cv_pret=cv == PRETE, lettre_pret=lettre == PRETE, lettre_sans=lettre_sans
+    )
+
+
+def pieces_a_envoyer(lettre_sans: bool) -> list[str]:
+    """Pièces qui partent avec la candidature (EXE-196, critère 7) : le CV
+    seul si la lettre est « sans lettre », le CV et la lettre sinon."""
+    return ["cv"] if lettre_sans else ["cv", "lettre"]
+
+
+def libelle_tout_telecharger(lettre_sans: bool) -> str:
+    """Libellé du bouton de téléchargement (EXE-196, critères 8, 10)."""
+    return "Télécharger le CV" if lettre_sans else "Tout télécharger"
 
 
 def decision_lettre(row) -> str:

@@ -16,6 +16,7 @@ import mlflow
 import pytest
 
 import api.db as api_db
+import orchestrator.job_search.mail.candidature as mail_candidature
 import orchestrator.job_search.paths as paths
 import orchestrator.job_search.storage.db as storage_db
 import orchestrator.job_search.tracking.mlflow_tracking  # noqa: F401
@@ -40,3 +41,20 @@ def _isolate_db_path(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "DB_PATH", isole)
     monkeypatch.setattr(storage_db, "DB_PATH", isole)
     monkeypatch.setattr(api_db, "DB_PATH", isole)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_mail_gabarit_paths(tmp_path, monkeypatch):
+    """EXE-196, critère 16 : les deux gabarits de mail (avec et sans lettre)
+    pointent hors de `data/` du dépôt pour CHAQUE test, y compris celui qui ne
+    prépare aucun chemin lui-même — même raison et même convention que
+    `_isolate_db_path` (dernier appel gagnant pour un test qui repose son
+    propre fichier)."""
+    avec_lettre = tmp_path / "mail_candidature.md"
+    sans_lettre = tmp_path / "mail_candidature_sans_lettre.md"
+    monkeypatch.setattr(paths, "MAIL_CANDIDATURE_PATH", avec_lettre)
+    monkeypatch.setattr(paths, "MAIL_CANDIDATURE_SANS_LETTRE_PATH", sans_lettre)
+    monkeypatch.setattr(mail_candidature, "MAIL_CANDIDATURE_PATH", avec_lettre)
+    monkeypatch.setattr(
+        mail_candidature, "MAIL_CANDIDATURE_SANS_LETTRE_PATH", sans_lettre
+    )

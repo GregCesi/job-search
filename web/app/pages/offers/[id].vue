@@ -304,7 +304,7 @@
                 :title="telechargerToutLabel ?? undefined"
                 class="w-full px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {{ telechargerToutBusy ? 'Téléchargement…' : 'Tout télécharger' }}
+                {{ telechargerToutBusy ? 'Téléchargement…' : telechargerToutLibelle }}
               </button>
               <p v-if="cvPdfError" class="text-xs text-red-600 text-center">{{ cvPdfError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600 text-center">{{ lettrePdfError }}</p>
@@ -1500,6 +1500,8 @@ async function chargerPieces() {
     const fresh = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
     offer.value.tout_telecharger_possible = fresh.tout_telecharger_possible
     offer.value.tout_telecharger_raison = fresh.tout_telecharger_raison
+    offer.value.tout_telecharger_pieces = fresh.tout_telecharger_pieces
+    offer.value.tout_telecharger_libelle = fresh.tout_telecharger_libelle
   }
 }
 
@@ -1565,12 +1567,19 @@ const lettreCarteBoutonsVisibles = computed(() => lettreCarte.value?.boutons.fil
 // des pièces lui-même (architecture.md, TCK-311).
 const telechargerToutBusy = ref(false)
 const telechargerToutLabel = computed(() => offer.value?.tout_telecharger_raison ?? null)
+// EXE-196, critère 10 : libellé décidé par l'API (« Télécharger le CV » sans
+// lettre), jamais recalculé ici.
+const telechargerToutLibelle = computed(() => offer.value?.tout_telecharger_libelle ?? 'Tout télécharger')
 
 async function telechargerTout() {
   telechargerToutBusy.value = true
   try {
     await telechargerCvPdf()
-    await telechargerLettrePdf()
+    // EXE-196, critère 8 : sans lettre, seul le CV part — la liste des
+    // pièces vient de l'API, jamais recalculée ici.
+    if (offer.value?.tout_telecharger_pieces?.includes('lettre')) {
+      await telechargerLettrePdf()
+    }
   } finally {
     telechargerToutBusy.value = false
   }

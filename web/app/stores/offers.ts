@@ -82,6 +82,10 @@ export interface OfferDetail extends OfferRow {
   etapes_acquises: string[] // sous-ensemble réellement acquis (EXE-194, critère 22)
   tout_telecharger_possible: boolean // critère 16
   tout_telecharger_raison: string | null
+  // EXE-196, critères 7, 8, 10 : pièces qui partent (sans lettre : le CV
+  // seul) et libellé du bouton — décidés par l'API, jamais recalculés ici.
+  tout_telecharger_pieces: string[]
+  tout_telecharger_libelle: string
 }
 
 export type FicheTas = 'lettre' | 'entretien' | 'rien'

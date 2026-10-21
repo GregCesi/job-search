@@ -108,6 +108,10 @@ class OfferDetail(OfferRow):
     # si « Tout télécharger » est possible, et sinon pourquoi (critère 16)
     tout_telecharger_possible: bool = False
     tout_telecharger_raison: str | None = None
+    # pièces qui partent avec la candidature, et libellé du bouton — sans
+    # lettre : le CV seul (EXE-196, critères 7, 8, 10)
+    tout_telecharger_pieces: list[str] = []
+    tout_telecharger_libelle: str = "Tout télécharger"
     # sous-ensemble de `etapes_affichees` réellement acquis (EXE-194, critère 22)
     etapes_acquises: list[str] = []
 

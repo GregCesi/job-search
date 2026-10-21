@@ -16,6 +16,7 @@ from orchestrator.job_search.mail.candidature import (
     GabaritAbsentError,
     RepereInconnuError,
     load_gabarit,
+    load_gabarit_sans_lettre,
     render_mail_candidature,
 )
 from orchestrator.job_search.mail.generation import (
@@ -32,6 +33,7 @@ from orchestrator.job_search.pdf.coordonnees import (
     load_coordonnees,
 )
 from orchestrator.job_search.pdf.filename import resolve_entreprise
+from orchestrator.job_search.pieces import DECISION_SANS_LETTRE, decision_lettre
 from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
@@ -78,8 +80,13 @@ def get_mail_candidature(offer_id: int) -> dict:
         if mail is not None:
             return mail
         entreprise, intitule = _offer_entreprise_intitule(conn, offer_id)
+        lettre_row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+    sans_lettre = decision_lettre(lettre_row) == DECISION_SANS_LETTRE
     try:
-        gabarit_text = load_gabarit()
+        # EXE-196, critère 11 : gabarit distinct sans lettre, mêmes repères.
+        gabarit_text = load_gabarit_sans_lettre() if sans_lettre else load_gabarit()
     except GabaritAbsentError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     try:
@@ -104,10 +111,21 @@ def put_mail_candidature(offer_id: int, body: MailIn) -> dict:
 async def post_mail_generer(offer_id: int) -> dict:
     with get_conn() as conn:
         _check_retenu(conn, offer_id)
-        lettre = conn.execute(
-            "SELECT texte FROM lettres WHERE offer_id = ? AND statut = 'done'",
-            (offer_id,),
+        lettre_row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
         ).fetchone()
+        # EXE-196, critère 12 : refusé avant tout appel de modèle.
+        if decision_lettre(lettre_row) == DECISION_SANS_LETTRE:
+            raise HTTPException(
+                status_code=409,
+                detail="Cette annonce n'a pas de lettre : impossible de "
+                "générer le mail depuis la lettre.",
+            )
+        lettre = (
+            lettre_row
+            if lettre_row is not None and lettre_row["statut"] == "done"
+            else None
+        )
         if lettre is None or not lettre["texte"]:
             raise HTTPException(
                 status_code=409, detail="Écris ou génère la lettre d'abord"

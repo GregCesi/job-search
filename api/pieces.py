@@ -19,7 +19,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from orchestrator.job_search.pieces import (
+    DECISION_SANS_LETTRE,
     cv_statut,
+    decision_lettre,
     lettre_statut,
     prete_a_l_envoi,
 )
@@ -76,13 +78,14 @@ def get_pieces(offer_id: int) -> dict:
         lettre_carte = lettre_api.carte_lettre_for_offer(conn, offer_id, lettre_row)
     cv_s = cv_statut(cv_row)
     lettre_s = lettre_statut(lettre_row)
+    lettre_sans = decision_lettre(lettre_row) == DECISION_SANS_LETTRE
     return {
         "cv": _piece_payload(cv_s, cv_row["marque_pret_at"] if cv_row else None),
         "lettre": _piece_payload(
             lettre_s, lettre_row["marque_pret_at"] if lettre_row else None
         ),
         "lettre_carte": lettre_carte,
-        "prete_a_l_envoi": prete_a_l_envoi(cv_s, lettre_s),
+        "prete_a_l_envoi": prete_a_l_envoi(cv_s, lettre_s, lettre_sans),
         "envoyee_le": envoyee_le,
     }
 

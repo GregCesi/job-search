@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import re
 
-from orchestrator.job_search.paths import MAIL_CANDIDATURE_PATH
+from orchestrator.job_search.paths import (
+    MAIL_CANDIDATURE_PATH,
+    MAIL_CANDIDATURE_SANS_LETTRE_PATH,
+)
 
 _REPERE_PATTERN = re.compile(r"\{(\w+)\}")
 _REPERES_CONNUS = {"intitule", "chez_entreprise"}
@@ -37,6 +40,14 @@ def load_gabarit() -> str:
     if not MAIL_CANDIDATURE_PATH.exists():
         raise GabaritAbsentError(MAIL_CANDIDATURE_PATH)
     return MAIL_CANDIDATURE_PATH.read_text(encoding="utf-8")
+
+
+def load_gabarit_sans_lettre() -> str:
+    """Lit `MAIL_CANDIDATURE_SANS_LETTRE_PATH` (EXE-196, H3) — même convention
+    que `load_gabarit`, gabarit distinct pour une candidature sans lettre."""
+    if not MAIL_CANDIDATURE_SANS_LETTRE_PATH.exists():
+        raise GabaritAbsentError(MAIL_CANDIDATURE_SANS_LETTRE_PATH)
+    return MAIL_CANDIDATURE_SANS_LETTRE_PATH.read_text(encoding="utf-8")
 
 
 def _parse_gabarit(text: str) -> tuple[str, str]:

@@ -8,7 +8,12 @@ autre lecture ou écriture de ces notions passe par les fonctions d'ici.
 import sqlite3
 from datetime import datetime, timezone
 
-from orchestrator.job_search.pieces import PRETE, cv_statut, lettre_statut
+from orchestrator.job_search.pieces import (
+    DECISION_SANS_LETTRE,
+    PRETE,
+    cv_statut,
+    lettre_statut,
+)
 
 from . import etats
 
@@ -19,19 +24,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _pieces_pretes(conn: sqlite3.Connection, offer_id: int) -> tuple[bool, bool]:
+def _pieces_pretes(conn: sqlite3.Connection, offer_id: int) -> tuple[bool, bool, bool]:
     cv_row = conn.execute(
         "SELECT marque_pret_at FROM cvs WHERE offer_id = ?", (offer_id,)
     ).fetchone()
     lettre_row = conn.execute(
-        "SELECT statut, marque_pret_at FROM lettres WHERE offer_id = ?", (offer_id,)
+        "SELECT statut, marque_pret_at, decision FROM lettres WHERE offer_id = ?",
+        (offer_id,),
     ).fetchone()
-    return cv_statut(cv_row) == PRETE, lettre_statut(lettre_row) == PRETE
+    lettre_sans = (
+        lettre_row is not None and lettre_row["decision"] == DECISION_SANS_LETTRE
+    )
+    return cv_statut(cv_row) == PRETE, lettre_statut(lettre_row) == PRETE, lettre_sans
 
 
-def pieces_pretes(conn: sqlite3.Connection, offer_id: int) -> tuple[bool, bool]:
-    """(cv_pret, lettre_pret) — exposé pour les routes qui en ont besoin hors
-    du module (EXE-200, critères 15-16)."""
+def pieces_pretes(conn: sqlite3.Connection, offer_id: int) -> tuple[bool, bool, bool]:
+    """(cv_pret, lettre_pret, lettre_sans) — exposé pour les routes qui en ont
+    besoin hors du module (EXE-200, critères 15-16 ; `lettre_sans` ajouté par
+    EXE-196)."""
     return _pieces_pretes(conn, offer_id)
 
 
@@ -68,8 +78,10 @@ def offer_ids_retenues(conn: sqlite3.Connection) -> list[int]:
 
 def etape(conn: sqlite3.Connection, offer_id: int) -> str | None:
     etat = etat_stocke(conn, offer_id)
-    cv_pret, lettre_pret = _pieces_pretes(conn, offer_id)
-    return etats.etape_affichee(etat, cv_pret=cv_pret, lettre_pret=lettre_pret)
+    cv_pret, lettre_pret, lettre_sans = _pieces_pretes(conn, offer_id)
+    return etats.etape_affichee(
+        etat, cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+    )
 
 
 def historique(
@@ -121,12 +133,13 @@ def historique_map(
 
 def gestes_permis(conn: sqlite3.Connection, offer_id: int) -> list[str]:
     etat = etat_stocke(conn, offer_id)
-    cv_pret, lettre_pret = _pieces_pretes(conn, offer_id)
+    cv_pret, lettre_pret, lettre_sans = _pieces_pretes(conn, offer_id)
     hist = historique(conn, offer_id)
     return etats.gestes_permis_effectifs(
         etat,
         cv_pret=cv_pret,
         lettre_pret=lettre_pret,
+        lettre_sans=lettre_sans,
         annulable=etats.permis_annuler(hist),
     )
 
@@ -136,12 +149,13 @@ def gestes_avec_etat(conn: sqlite3.Connection, offer_id: int) -> list[etats.Gest
     (critère 14 — EXE-200 ; libellé dynamique de l'annulation — EXE-194,
     critère 15)."""
     etat = etat_stocke(conn, offer_id)
-    cv_pret, lettre_pret = _pieces_pretes(conn, offer_id)
+    cv_pret, lettre_pret, lettre_sans = _pieces_pretes(conn, offer_id)
     hist = historique(conn, offer_id)
     return etats.gestes_avec_etat(
         etat,
         cv_pret=cv_pret,
         lettre_pret=lettre_pret,
+        lettre_sans=lettre_sans,
         dernier_annulable=etats.dernier_geste_non_annule(hist),
     )
 
@@ -149,9 +163,11 @@ def gestes_avec_etat(conn: sqlite3.Connection, offer_id: int) -> list[etats.Gest
 def etapes_acquises(conn: sqlite3.Connection, offer_id: int) -> list[str]:
     """Sous-ensemble de la frise réellement acquis (EXE-194, critère 22)."""
     etat = etat_stocke(conn, offer_id)
-    cv_pret, lettre_pret = _pieces_pretes(conn, offer_id)
+    cv_pret, lettre_pret, lettre_sans = _pieces_pretes(conn, offer_id)
     hist = historique(conn, offer_id)
-    return etats.etapes_acquises(etat, hist, cv_pret=cv_pret, lettre_pret=lettre_pret)
+    return etats.etapes_acquises(
+        etat, hist, cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+    )
 
 
 def dernier_ecart(
@@ -172,9 +188,13 @@ def appliquer_geste(
     """Nouvel état stocké, ou lève `etats.GesteRefuse` / `etats.PiecesNonPretes`
     sans rien écrire (critère 2)."""
     etat_avant = etat_stocke(conn, offer_id)
-    cv_pret, lettre_pret = _pieces_pretes(conn, offer_id)
+    cv_pret, lettre_pret, lettre_sans = _pieces_pretes(conn, offer_id)
     nouvel_etat = etats.appliquer(
-        etat_avant, geste, cv_pret=cv_pret, lettre_pret=lettre_pret
+        etat_avant,
+        geste,
+        cv_pret=cv_pret,
+        lettre_pret=lettre_pret,
+        lettre_sans=lettre_sans,
     )
     now = _now()
     effet = effet_at if effet_at is not None else now

@@ -44,6 +44,12 @@ COORDONNEES_PATH = REPO_ROOT / "data" / "lettre" / "coordonnees.txt"
 # Gabarit du mail de candidature (EXE-103, H3) : hors git, posé à part comme les
 # autres fichiers de data/lettre/.
 MAIL_CANDIDATURE_PATH = REPO_ROOT / "data" / "lettre" / "mail_candidature.md"
+# Gabarit du mail de candidature sans lettre (EXE-196, H3) : hors git, posé à
+# part — mêmes repères que MAIL_CANDIDATURE_PATH, texte qui ne parle plus de
+# lettre en pièce jointe.
+MAIL_CANDIDATURE_SANS_LETTRE_PATH = (
+    REPO_ROOT / "data" / "lettre" / "mail_candidature_sans_lettre.md"
+)
 # Consigne de génération du mail depuis la lettre (EXE-176, H1) : hors git, posée
 # à part comme les autres fichiers de data/lettre/. Lue, jamais écrite ni
 # complétée par le code.
