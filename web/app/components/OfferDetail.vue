@@ -143,13 +143,13 @@
                 <button
                   :class="[
                     'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                    offer.verdict === 'retenu'
+                    offer.tri === 'retenue'
                       ? 'bg-blue-50 border-blue-300 text-blue-700'
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
                   ]"
                   @click="handleRetenir()"
                 >
-                  {{ offer.verdict === 'retenu' ? 'Voir la page →' : 'Retenir →' }}
+                  {{ offer.tri === 'retenue' ? 'Voir la page →' : 'Retenir →' }}
                 </button>
               </template>
               <!-- Opérateur : boutons verdict classiques -->
@@ -158,7 +158,7 @@
                   v-for="v in displayedVerdicts" :key="v.status"
                   :class="[
                     'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                    offer.verdict === v.status
+                    isVerdictActive(v.status)
                       ? v.activeClass
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
                   ]"
@@ -167,11 +167,11 @@
                   {{ v.label }}
                 </button>
                 <button
-                  v-if="offer.verdict"
+                  v-if="offer.gestes_permis.includes('annuler') || offer.revue_hors_perimetre"
                   class="px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:bg-gray-50 transition-all"
                   @click="store.clearVerdict(offer.id)"
                 >
-                  Retirer
+                  Annuler le dernier geste
                 </button>
               </template>
             </div>
@@ -335,21 +335,29 @@ const HP_VERDICTS = [
   { status: 'hors_perimetre_faux_pos', label: '✗ Faux positif', activeClass: 'bg-red-50 border-red-300 text-red-700' },
 ]
 
+// Le tri (retenu/écartée) et la revue hors périmètre sont deux axes
+// indépendants (EXE-200, critère 13) : une offre repérée hors périmètre par
+// l'IA garde ses boutons de tri — la revue ne les remplace pas.
 const displayedVerdicts = computed(() => {
   if (props.mode === 'candidat') return VERDICTS.filter(v => v.status === 'retenu')
-  if (props.offer.hors_perimetre_reason) return HP_VERDICTS
-  return VERDICTS
+  return props.offer.hors_perimetre_reason ? [...HP_VERDICTS, ...VERDICTS] : VERDICTS
 })
 
+function isVerdictActive(status: string): boolean {
+  if (status === 'retenu') return props.offer.tri === 'retenue'
+  if (status === 'ecartee') return props.offer.tri === 'ecartee'
+  return props.offer.revue_hors_perimetre === status
+}
+
 async function handleRetenir() {
-  if (props.offer.verdict !== 'retenu') {
+  if (props.offer.tri !== 'retenue') {
     await store.setVerdict(props.offer.id, 'retenu')
   }
   router.push(`/offers/${props.offer.id}`)
 }
 
 function toggleVerdict(status: string) {
-  if (props.offer.verdict === status) {
+  if (isVerdictActive(status)) {
     store.clearVerdict(props.offer.id)
   } else {
     store.setVerdict(props.offer.id, status)

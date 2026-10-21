@@ -30,7 +30,11 @@ const ETAPE_MAP: Record<string, { cls: string; label: string }> = {
 }
 
 const entry = computed(() => {
-  if (props.verdict === 'retenu' && props.etape) {
+  // La présence d'`etape` suffit : elle n'est rendue que pour une offre
+  // retenue (EXE-144), que `verdict` porte par ailleurs « retenu » ou une
+  // revue hors périmètre (EXE-200, critère 12 — le tri ne doit pas se cacher
+  // derrière la revue, y compris dans ce badge).
+  if (props.etape) {
     return ETAPE_MAP[props.etape] ?? MAP.retenu
   }
   return props.verdict ? MAP[props.verdict] : null

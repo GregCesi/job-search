@@ -2,6 +2,12 @@ import { defineStore } from 'pinia'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+export interface GesteEtat {
+  geste: string
+  permis: boolean
+  raison: string | null
+}
+
 export interface OfferRow {
   id: number
   title: string | null
@@ -11,7 +17,13 @@ export interface OfferRow {
   contract_type: string | null
   category: string | null            // parfait | reve | atteignable | hors
   verdict: string | null
+  // EXE-200, critère 11 : tri et revue hors périmètre, deux axes séparés —
+  // ne jamais les recombiner côté front (architecture.md, TCK-311).
+  tri: string                        // a_trier | retenue | ecartee
+  revue_hors_perimetre: string | null
   etape: string | null               // dérivé API, offre retenue seulement (EXE-144)
+  gestes_permis: string[]
+  gestes: GesteEtat[]                // chaque geste de la table, permis ou non + raison (critère 14)
   hors_perimetre_reason: string | null
   perimetre_causes: string[]
   seen_candidat: boolean
@@ -62,6 +74,9 @@ export interface OfferDetail extends OfferRow {
   last_checked_at: string | null // EXE-76
   expiration_checks: ExpirationCheck[] // EXE-76
   ad_language: string | null // EXE-183 : fr | en | nl | other | null
+  etapes_affichees: string[] // séquence fixe en tête d'une offre retenue (critère 15)
+  tout_telecharger_possible: boolean // critère 16
+  tout_telecharger_raison: string | null
 }
 
 export type FicheTas = 'lettre' | 'entretien' | 'rien'
@@ -388,21 +403,35 @@ export const useOffersStore = defineStore('offers', () => {
     }
   }
 
+  // Après un geste, l'étape, le tri et les gestes permis sont recalculés côté
+  // API — une mise à jour optimiste locale (verdict seul) les laissait
+  // périmés (H1). On relit l'offre plutôt que de deviner son nouvel état.
+  async function _resyncOffer(id: number) {
+    const data = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id}`)
+    if (openedOffer.value?.id === id) openedOffer.value = data
+    const idx = offers.value.findIndex(o => o.id === id)
+    if (idx !== -1) {
+      const row = offers.value[idx]!
+      row.verdict = data.verdict
+      row.tri = data.tri
+      row.revue_hors_perimetre = data.revue_hors_perimetre
+      row.etape = data.etape
+      row.gestes_permis = data.gestes_permis
+      row.gestes = data.gestes
+    }
+  }
+
   async function setVerdict(id: number, status: string) {
     await $fetch(`${config.public.apiBase}/offers/${id}/verdict`, {
       method: 'PUT',
       body: { status },
     })
-    const idx = offers.value.findIndex(o => o.id === id)
-    if (idx !== -1) offers.value[idx]!.verdict = status
-    if (openedOffer.value?.id === id) openedOffer.value.verdict = status
+    await _resyncOffer(id)
   }
 
   async function clearVerdict(id: number) {
     await $fetch(`${config.public.apiBase}/offers/${id}/verdict`, { method: 'DELETE' })
-    const idx = offers.value.findIndex(o => o.id === id)
-    if (idx !== -1) offers.value[idx]!.verdict = null
-    if (openedOffer.value?.id === id) openedOffer.value.verdict = null
+    await _resyncOffer(id)
   }
 
   async function checkExpirations(offerIds?: number[]) {

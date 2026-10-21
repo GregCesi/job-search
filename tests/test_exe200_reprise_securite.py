@@ -293,7 +293,10 @@ class TestCritere8DemarragesSimultanesUneSeuleReprise:
 
         def _demarrer():
             try:
-                c = sqlite3.connect(path, timeout=10)
+                # Délai généreux : sous charge machine (suite complète), l'attente
+                # du verrou SQLite peut dépasser le défaut de 5s sans que ce soit
+                # un défaut du produit (observé en jet, flaky à 5-10s).
+                c = sqlite3.connect(path, timeout=30)
                 c.row_factory = sqlite3.Row
                 init_db(c)
                 c.close()

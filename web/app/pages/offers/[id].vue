@@ -41,11 +41,11 @@
             {{ libelleAjoutReference }}
           </button>
           <button
-            v-if="offer"
+            v-if="offer?.gestes_permis.includes('annuler')"
             @click="retirerDesRetenues"
             class="text-sm text-gray-400 hover:text-red-500 transition-colors"
           >
-            Retirer des retenues
+            Annuler le dernier geste
           </button>
           <a
             v-if="offer?.url"
@@ -1134,7 +1134,9 @@ const id = computed(() => Number(route.params.id))
 const offer = ref<OfferDetail | null>(null)
 
 const fiche = ref<FicheEntreprise | null>(null)
-const isRetenue = computed(() => offer.value?.verdict === 'retenu')
+// Le tri est l'axe dédié (EXE-200, critère 11) — `verdict` peut porter la
+// revue hors périmètre à la place, ce qui masquait une offre retenue (H1).
+const isRetenue = computed(() => offer.value?.tri === 'retenue')
 
 // Remplace les étiquettes « Mode »/« Confiance » (EXE-172, critère 9) : une
 // seule ligne quand la confiance est faible ou que la fiche n'a vu que l'offre.
@@ -1440,6 +1442,15 @@ async function chargerPieces() {
     pieces.value = await $fetch<Pieces>(`${config.public.apiBase}/offers/${id.value}/pieces`)
   } catch {
     pieces.value = null // offre non retenue : pas de statut de pièce à afficher
+    return
+  }
+  // « Tout télécharger » est décidé par l'API sur le statut des pièces
+  // (critère 16) : on relit l'offre pour ne pas rester sur une décision
+  // périmée après qu'une pièce devienne prête (architecture.md, TCK-311).
+  if (offer.value) {
+    const fresh = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
+    offer.value.tout_telecharger_possible = fresh.tout_telecharger_possible
+    offer.value.tout_telecharger_raison = fresh.tout_telecharger_raison
   }
 }
 
@@ -1500,15 +1511,10 @@ const lettreRaisonAttente = computed(() => {
 })
 
 // ── Tout télécharger — CV + lettre en PDF, si les deux sont Prêtes (EXE-134) ──
+// Décidé côté API (EXE-200, critère 16) — le front n'évalue plus le statut
+// des pièces lui-même (architecture.md, TCK-311).
 const telechargerToutBusy = ref(false)
-const telechargerToutLabel = computed(() => {
-  const cvPret = pieces.value?.cv.statut === 'prete'
-  const lettrePret = pieces.value?.lettre.statut === 'prete'
-  if (cvPret && lettrePret) return null
-  if (!cvPret && !lettrePret) return 'Le CV et la lettre ne sont pas encore prêts.'
-  if (!cvPret) return 'Le CV n\'est pas encore prêt.'
-  return 'La lettre n\'est pas encore prête.'
-})
+const telechargerToutLabel = computed(() => offer.value?.tout_telecharger_raison ?? null)
 
 async function telechargerTout() {
   telechargerToutBusy.value = true
@@ -1577,25 +1583,35 @@ async function telechargerLettrePdf() {
   }
 }
 
+// La séquence et la position courante sont rendues par l'API (critère 15) —
+// seul le libellé d'affichage reste côté front.
+const ETAPE_CANDIDATURE_LABELS: Record<string, string> = {
+  retenue: 'Retenue',
+  prete_a_l_envoi: 'Prête à l\'envoi',
+  candidature_envoyee: 'Candidature envoyée',
+  entretien: 'Entretien à préparer',
+}
+
 function stepActive(step: string): boolean {
-  if (step === 'Retenue') return true
-  if (step === 'Prête à l\'envoi') return !!pieces.value?.prete_a_l_envoi
-  if (step === 'Candidature envoyée') return !!pieces.value?.envoyee_le
-  return false
+  const sequence = offer.value?.etapes_affichees ?? []
+  const labels = sequence.map(code => ETAPE_CANDIDATURE_LABELS[code] ?? code)
+  const idxStep = labels.indexOf(step)
+  const etape = offer.value?.etape
+  if (idxStep === -1 || !etape) return false
+  const idxEtape = sequence.indexOf(etape)
+  // etape hors séquence (entretien dépassé : refusée, sans suite, abandonnée…) :
+  // la séquence entière reste acquise.
+  if (idxEtape === -1) return true
+  return idxStep <= idxEtape
 }
 
 // ── Candidature envoyée (EXE-139) — marque humaine, distincte du statut
 // retenu/rejeté/candidaté et des statuts de pièce ────────────────────────
 const envoyeeBusy = ref(false)
 const envoyeeError = ref<string | null>(null)
-const envoyeeRaison = computed(() => {
-  const cvPret = pieces.value?.cv.statut === 'prete'
-  const lettrePret = pieces.value?.lettre.statut === 'prete'
-  if (cvPret && lettrePret) return null
-  if (!cvPret && !lettrePret) return 'Le CV et la lettre ne sont pas encore prêts.'
-  if (!cvPret) return 'Le CV n\'est pas encore prêt.'
-  return 'La lettre n\'est pas encore prête.'
-})
+// Même décision serveur que « Tout télécharger » (critère 16) : les deux
+// pièces Prêtes sont la même condition, déjà rendue par l'API.
+const envoyeeRaison = computed(() => offer.value?.tout_telecharger_raison ?? null)
 
 async function marquerEnvoyee() {
   if (!pieces.value) return
@@ -2198,8 +2214,10 @@ async function sauvegarderAngle() {
   }
 }
 
-// ── Frise ────────────────────────────────────────────────────────────────
-const STEPS = ['Retenue', 'Prête à l\'envoi', 'Candidature envoyée', 'Entretien à préparer']
+// ── Frise — séquence rendue par l'API, jamais écrite en dur (critère 15) ──
+const STEPS = computed(() =>
+  (offer.value?.etapes_affichees ?? []).map(code => ETAPE_CANDIDATURE_LABELS[code] ?? code),
+)
 
 // ── Cartes + overlay ──────────────────────────────────────────────────────
 // Miniature CV/lettre sur la carte — page A4 réelle réduite à la largeur de
