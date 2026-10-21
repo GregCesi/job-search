@@ -12,6 +12,7 @@ from orchestrator.job_search.pieces import (
     DECISION_SANS_LETTRE,
     PRETE,
     cv_statut,
+    decision_lettre,
     lettre_statut,
 )
 
@@ -32,9 +33,7 @@ def _pieces_pretes(conn: sqlite3.Connection, offer_id: int) -> tuple[bool, bool,
         "SELECT statut, marque_pret_at, decision FROM lettres WHERE offer_id = ?",
         (offer_id,),
     ).fetchone()
-    lettre_sans = (
-        lettre_row is not None and lettre_row["decision"] == DECISION_SANS_LETTRE
-    )
+    lettre_sans = decision_lettre(lettre_row) == DECISION_SANS_LETTRE
     return cv_statut(cv_row) == PRETE, lettre_statut(lettre_row) == PRETE, lettre_sans
 
 
