@@ -144,6 +144,23 @@ async def _drain() -> None:
         await asyncio.gather(*pending, return_exceptions=True)
 
 
+def _marquer_demandee(db_path, offer_id):
+    """EXE-195 : l'enchaînement automatique n'a plus lieu que si j'ai demandé
+    la lettre — simule mon geste « Générer la lettre » posé avant la fin de
+    la fiche, pour ce scénario hérité d'EXE-169 sur le modèle du juge."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO lettres (offer_id, statut, decision, created_at) "
+            "VALUES (?, 'aucune', 'demandee', '2026-10-21') "
+            "ON CONFLICT(offer_id) DO UPDATE SET decision='demandee'",
+            (offer_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 class TestCritere1JugeOpusParDefaut:
     def test_run_lettre_sans_modele_configure_opus_sur_le_juge_seul(
         self, db_path, monkeypatch
@@ -174,6 +191,7 @@ class TestCritere3EnchainementAutomatiqueSuitJugeOpus:
         offer_id = 3
         _insert_offer(db_path, offer_id)
         _insert_fiche(db_path, offer_id)
+        _marquer_demandee(db_path, offer_id)
         captured = {}
 
         def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):

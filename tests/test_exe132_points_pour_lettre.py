@@ -261,7 +261,7 @@ class TestCritere2Et3LettreEcriteSurLesPointsDesignes:
             lambda *a, **k: _resultat_lettre_ok(),
         )
 
-        asyncio.run(_scenario_launch(offer_id))
+        asyncio.run(_scenario_launch(offer_id, db_path))
 
         row = _lettre_row(db_path, offer_id)
         assert row["statut"] == "done"
@@ -269,7 +269,25 @@ class TestCritere2Et3LettreEcriteSurLesPointsDesignes:
         assert chosen == designes
 
 
-async def _scenario_launch(offer_id):
+def _marquer_demandee(db_path, offer_id):
+    """EXE-195 : la lettre n'enchaîne plus toute seule — ces scénarios (hérités
+    d'EXE-132/162, sur la désignation des points) simulent mon geste
+    « Générer la lettre » posé avant la fin de la fiche."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO lettres (offer_id, statut, decision, created_at) "
+            "VALUES (?, 'aucune', 'demandee', '2026-10-21') "
+            "ON CONFLICT(offer_id) DO UPDATE SET decision='demandee'",
+            (offer_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+async def _scenario_launch(offer_id, db_path):
+    _marquer_demandee(db_path, offer_id)
     task = await lettre_api.launch_lettre_if_ready(offer_id)
     if task is not None:
         await task
@@ -341,7 +359,7 @@ class TestCritere6Et7FicheSansDesignationLettreQuandMeme:
             lambda *a, **k: _resultat_lettre_ok(),
         )
 
-        asyncio.run(_scenario_launch(offer_id))
+        asyncio.run(_scenario_launch(offer_id, db_path))
 
         row = _lettre_row(db_path, offer_id)
         assert row is not None
@@ -369,7 +387,7 @@ class TestCritere8OrigineSysteme:
             lambda *a, **k: _resultat_lettre_ok(),
         )
 
-        asyncio.run(_scenario_launch(offer_id))
+        asyncio.run(_scenario_launch(offer_id, db_path))
 
         assert lettre_api.get_lettre(offer_id)["points_choisis_origine"] == "systeme"
 
@@ -388,7 +406,7 @@ class TestCritere9ChoixDejaFaitNonRemplace:
             lambda *a, **k: _resultat_lettre_ok(),
         )
 
-        asyncio.run(_scenario_launch(offer_id))
+        asyncio.run(_scenario_launch(offer_id, db_path))
 
         row = _lettre_row(db_path, offer_id)
         assert row["points_choisis_origine"] == "moi"

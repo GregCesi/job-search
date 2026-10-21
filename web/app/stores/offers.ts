@@ -252,9 +252,35 @@ export interface PieceInfo {
   marque_pret_le: string | null
 }
 
+// Carte Lettre (EXE-195) : statut affiché et boutons rendus par l'API — le
+// front ne décide jamais lui-même si Générer / Ne pas faire / Revenir est
+// visible, actif ou pourquoi (frontend.md, architecture.md).
+export type LettreCarteStatut =
+  | 'a_decider'
+  | 'demandee'
+  | 'en_generation'
+  | 'generee'
+  | 'prete'
+  | 'sans_lettre'
+
+export interface BoutonLettre {
+  bouton: 'generer' | 'ne_pas_faire' | 'revenir'
+  visible: boolean
+  actif: boolean
+  libelle: string
+  raison: string | null
+}
+
+export interface LettreCarte {
+  statut: LettreCarteStatut
+  message: string | null
+  boutons: BoutonLettre[]
+}
+
 export interface Pieces {
   cv: PieceInfo
   lettre: PieceInfo
+  lettre_carte: LettreCarte
   prete_a_l_envoi: boolean
   envoyee_le: string | null
 }

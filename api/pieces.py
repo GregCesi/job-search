@@ -26,6 +26,7 @@ from orchestrator.job_search.pieces import (
 from orchestrator.job_search.suivi import etats
 from orchestrator.job_search.suivi import storage as suivi_storage
 
+from . import lettre as lettre_api
 from .db import get_conn
 
 router = APIRouter(prefix="/offers")
@@ -67,10 +68,12 @@ def get_pieces(offer_id: int) -> dict:
             "SELECT statut, marque_pret_at FROM cvs WHERE offer_id = ?", (offer_id,)
         ).fetchone()
         lettre_row = conn.execute(
-            "SELECT statut, marque_pret_at FROM lettres WHERE offer_id = ?",
-            (offer_id,),
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
         ).fetchone()
         envoyee_le = suivi_storage.date_envoyee(conn, offer_id)
+        # EXE-195 : statut affiché et boutons de la carte Lettre (à décider /
+        # demandée / en génération / générée / Prête / sans lettre).
+        lettre_carte = lettre_api.carte_lettre_for_offer(conn, offer_id, lettre_row)
     cv_s = cv_statut(cv_row)
     lettre_s = lettre_statut(lettre_row)
     return {
@@ -78,6 +81,7 @@ def get_pieces(offer_id: int) -> dict:
         "lettre": _piece_payload(
             lettre_s, lettre_row["marque_pret_at"] if lettre_row else None
         ),
+        "lettre_carte": lettre_carte,
         "prete_a_l_envoi": prete_a_l_envoi(cv_s, lettre_s),
         "envoyee_le": envoyee_le,
     }

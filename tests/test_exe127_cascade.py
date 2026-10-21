@@ -367,7 +367,11 @@ class TestCritere2LettreEnCoursQuandFicheTermine:
         lancement de la lettre — la fiche terminée et le texte de l'offre
         présent suffisent, même si la fiche ne désigne plus aucun point
         (`pour_lettre` vaut toujours False depuis EXE-161). Inverse l'ancienne
-        attente d'EXE-161 (la lettre restait en attente)."""
+        attente d'EXE-161 (la lettre restait en attente).
+
+        EXE-195, critère 1 : retenir ne lance plus la lettre toute seule —
+        elle attend mon geste « Générer la lettre ». Ce scénario (retenir sans
+        rien demander de plus) n'enchaîne donc plus."""
         offer_id = 2
         _insert_offer(db_path, offer_id)
         appels = {"n": 0}
@@ -384,9 +388,9 @@ class TestCritere2LettreEnCoursQuandFicheTermine:
 
         _retenir(offer_id)
 
-        assert appels["n"] == 1
+        assert appels["n"] == 0
         row = _lettre_row(db_path, offer_id)
-        assert row["statut"] == "done"
+        assert row is None or row["statut"] == "aucune"
 
 
 class TestCritere3PointsChoisisParSysteme:
@@ -452,9 +456,12 @@ class TestCritere5OrigineMoi:
 class TestCritere6FicheSansPointLettreQuandMeme:
     """EXE-162, critère 3 : une fiche terminée sans aucun point ne bloque plus
     la lettre — la boucle part en générique. Inverse l'ancien comportement
-    d'EXE-127 (6), où l'absence de point bloquait."""
+    d'EXE-127 (6), où l'absence de point bloquait.
 
-    def test_fiche_sans_point_la_lettre_part_quand_meme(
+    EXE-195, critère 1 : retenir ne lance plus la lettre toute seule — sans
+    demande, elle reste à décider même une fois la fiche terminée."""
+
+    def test_fiche_sans_point_lettre_reste_a_decider_sans_demande(
         self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
         offer_id = 6
@@ -469,7 +476,7 @@ class TestCritere6FicheSansPointLettreQuandMeme:
 
         assert _fiche_row(db_path, offer_id)["statut"] == "done"
         row = _lettre_row(db_path, offer_id)
-        assert row["statut"] == "done"
+        assert row is None or row["statut"] == "aucune"
 
 
 class TestCritere7FicheEchoueSansLettre:
@@ -513,6 +520,8 @@ class TestCritere9CvEchoueFicheEtLettreTerminent:
     ):
         # EXE-162, critère 3 : la fiche terminée suffit à lancer la lettre, que
         # la fiche désigne ou non des points — le CV en erreur ne l'affecte pas.
+        # EXE-195, critère 1 : sauf que sans ma demande, elle ne part plus du
+        # tout — le CV en erreur n'y change rien non plus.
         offer_id = 9
         _insert_offer(db_path, offer_id)
         monkeypatch.setattr(fiche_service, "query", _make_query(_fiche_ok()))
@@ -526,7 +535,7 @@ class TestCritere9CvEchoueFicheEtLettreTerminent:
         assert _cv_row(db_path, offer_id)["statut"] == "error"
         assert _fiche_row(db_path, offer_id)["statut"] == "done"
         row = _lettre_row(db_path, offer_id)
-        assert row["statut"] == "done"
+        assert row is None or row["statut"] == "aucune"
 
 
 class TestCritere10TexteOffreManquantPasDeLettre:

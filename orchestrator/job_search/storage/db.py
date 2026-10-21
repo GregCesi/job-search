@@ -166,6 +166,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             appels_json               TEXT,  -- EXE-162 : trace demande/réponse de chaque appel de la boucle
             faits_ecartes_json        TEXT NOT NULL DEFAULT '[]', -- EXE-162 : faits écartés (citation+lien)
             angle                     TEXT,  -- EXE-171 : mon angle d'accroche, remplace le choix du tamis
+            decision                  TEXT NOT NULL DEFAULT 'a_decider', -- EXE-195 : a_decider|demandee|sans_lettre
             UNIQUE(offer_id)
         );
 
@@ -448,6 +449,15 @@ def migrate_lettres_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE lettres ADD COLUMN modele_juge TEXT")
     if "angle" not in existing:
         conn.execute("ALTER TABLE lettres ADD COLUMN angle TEXT")
+    if "decision" not in existing:
+        # EXE-195 : une ligne qui existait déjà avant ce ticket porte une
+        # lettre déjà demandée (attente, génération, générée, Prête ou en
+        # erreur) — jamais « à décider » ni « sans lettre », qui n'ont de sens
+        # que pour un choix posé après ce ticket (critères 15, 16).
+        conn.execute(
+            "ALTER TABLE lettres ADD COLUMN decision TEXT NOT NULL DEFAULT 'a_decider'"
+        )
+        conn.execute("UPDATE lettres SET decision = 'demandee'")
     conn.commit()
 
 

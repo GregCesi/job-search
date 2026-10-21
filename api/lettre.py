@@ -21,12 +21,26 @@ réécrit ni tronqué.
 
 Enchaînement (TCK-281, EXE-127) : `launch_lettre_if_ready` est appelé par la fiche
 entreprise (api/fiche.py) dès qu'elle se termine — jamais par un changement de
-profil ni par un rescore.
+profil ni par un rescore. Depuis EXE-195, il ne lance plus qu'après ma demande
+explicite (`decision == 'demandee'`, posée par POST /lettre) : retenir une
+offre ne met plus la lettre en route toute seule (TCK-311, « Lancement au
+geste de retenir »).
 
 Modèle (EXE-166) : POST /lettre, /lettre/regenerer et /lettre/ecarter acceptent un
 corps optionnel `{"modele": "sonnet"|"opus"}` ; absent, sonnet. Un autre modèle est
 refusé (422) avant tout appel — `launch_lettre_if_ready` tourne toujours sur sonnet,
 quel que soit le choix fait ailleurs (critère 4).
+
+Décision de la lettre (EXE-195) : un axe à part (`lettres.decision`), distinct
+du statut de génération. POST /lettre pose `demandee` tout de suite, que la
+fiche soit terminée (elle part aussitôt, critère 3) ou pas (elle attend, et
+`launch_lettre_if_ready` la lance à la fin de la fiche, critère 4) — sauf si le
+texte de l'offre manque, qui reste un refus immédiat (422/409, n'attend pas).
+POST /lettre/ne-pas-faire pose `sans_lettre` (jamais d'appel modèle, efface la
+marque Prête si elle était posée) ; refusé pendant une génération ou une
+régénération en cours. POST /lettre/revenir l'annule : « à décider » si la
+lettre n'a jamais tourné, « demandée » sinon — son texte et ses versions ne
+sont jamais touchés.
 """
 
 import asyncio
@@ -38,8 +52,11 @@ from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, ConfigDict
 
 import orchestrator.job_search.lettre.service as lettre_service
+import orchestrator.job_search.pieces as pieces_mod
 from orchestrator.job_search.avancement import ProgressionLettre
 from orchestrator.job_search.lettre.redaction import (
+    RAISON_FICHE_NON_TERMINEE,
+    RAISON_TEXTE_MANQUANT,
     blocage_lancement_lettre,
     point_text,
     resolve_chosen_indices,
@@ -145,6 +162,61 @@ def _modele_choisi(body: ModeleLettreIn | None) -> str:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _set_decision(
+    conn, offer_id: int, decision: str, *, clear_marque_pret: bool = False
+) -> None:
+    """Pose la décision de la lettre (EXE-195) — ligne créée si elle n'existe
+    pas encore (offre retenue dont la fiche n'a pas terminé), jamais touchée
+    au-delà de `decision` (et `marque_pret_at`, si on efface la marque Prête,
+    critère 10)."""
+    if clear_marque_pret:
+        conn.execute(
+            """
+            INSERT INTO lettres (offer_id, statut, decision, created_at)
+            VALUES (?, 'aucune', ?, ?)
+            ON CONFLICT(offer_id) DO UPDATE SET
+                decision=excluded.decision, marque_pret_at=NULL
+            """,
+            (offer_id, decision, _now()),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO lettres (offer_id, statut, decision, created_at)
+            VALUES (?, 'aucune', ?, ?)
+            ON CONFLICT(offer_id) DO UPDATE SET decision=excluded.decision
+            """,
+            (offer_id, decision, _now()),
+        )
+    conn.commit()
+
+
+def carte_lettre_for_offer(conn, offer_id: int, lettre_row=None) -> dict:
+    """Statut affiché et boutons de la carte Lettre pour une offre (EXE-195) —
+    rassemble les ingrédients (décision, statut de génération, fiche) et
+    délègue le calcul à `orchestrator.job_search.pieces.carte_lettre`."""
+    if lettre_row is None:
+        lettre_row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+    fiche_row = conn.execute(
+        "SELECT statut, error_message FROM fiches_entreprise WHERE offer_id = ?",
+        (offer_id,),
+    ).fetchone()
+    decision = pieces_mod.decision_lettre(lettre_row)
+    generation_en_cours = offer_id in _running or bool(
+        lettre_row["regeneration_en_cours"] if lettre_row is not None else False
+    )
+    return pieces_mod.carte_lettre(
+        decision,
+        lettre_row["statut"] if lettre_row is not None else "aucune",
+        lettre_row["marque_pret_at"] if lettre_row is not None else None,
+        generation_en_cours,
+        fiche_row["statut"] if fiche_row is not None else None,
+        fiche_row["error_message"] if fiche_row is not None else None,
+    )
 
 
 def _fetch_fiche_points(conn, offer_id: int) -> list[dict] | None:
@@ -300,8 +372,9 @@ def _offer_text(conn, offer_id: int) -> str:
 
 
 async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
-    """Enchaîné dès que la fiche entreprise se termine (TCK-281) : lance si les
-    deux gardes (fiche terminée, texte présent — critère 3 d'EXE-162) sont
+    """Enchaîné dès que la fiche entreprise se termine (TCK-281) : lance si ma
+    demande est posée (`decision == 'demandee'`, EXE-195 critères 1, 4) et si
+    les deux gardes (fiche terminée, texte présent — critère 3 d'EXE-162) sont
     satisfaites. La désignation de points ci-dessous est héritée (EXE-132) :
     elle n'est plus lue par la génération depuis EXE-162, mais reste écrite pour
     ne jamais remplacer un choix que j'ai fait (`points_choisis_origine == 'moi'`)."""
@@ -313,6 +386,7 @@ async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
         ).fetchone()
         if row is not None and row["statut"] == "done":
             return None
+        decision = pieces_mod.decision_lettre(row)
 
         if points and (row is None or row["points_choisis_origine"] != "moi"):
             designated = [i for i, p in enumerate(points) if p.get("pour_lettre")]
@@ -329,6 +403,11 @@ async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
             )
             conn.commit()
 
+        if decision != pieces_mod.DECISION_DEMANDEE:
+            # EXE-195, critère 1 : retenir ne lance plus la lettre toute
+            # seule — elle attend mon geste « Générer la lettre ».
+            return None
+
         offer_text = _offer_text(conn, offer_id)
         if blocage_lancement_lettre(fiche_statut, offer_text) is not None:
             return None
@@ -342,6 +421,11 @@ async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
 async def create_lettre(
     offer_id: int, response: Response, body: ModeleLettreIn | None = None
 ) -> dict:
+    """Génère la lettre (EXE-195, critères 3, 4) : ma demande est posée tout de
+    suite (`decision = 'demandee'`), qu'elle parte maintenant (fiche terminée)
+    ou qu'elle attende (`launch_lettre_if_ready` la lancera à la fin de la
+    fiche) — sauf texte de l'offre manquant, qui reste un refus immédiat
+    (rien à attendre, le texte ne va pas apparaître tout seul)."""
     modele = _modele_choisi(body)
     with get_conn() as conn:
         if not suivi_storage.est_retenue(conn, offer_id):
@@ -356,14 +440,80 @@ async def create_lettre(
             response.status_code = 200
             return _row_to_lettre(row, offer_id)
 
+        _set_decision(conn, offer_id, pieces_mod.DECISION_DEMANDEE)
+
         fiche_statut, _points = _fiche_statut_et_points(conn, offer_id)
         offer_text = _offer_text(conn, offer_id)
         blocage = blocage_lancement_lettre(fiche_statut, offer_text)
-        if blocage is not None:
+        if blocage == RAISON_TEXTE_MANQUANT:
             raise HTTPException(status_code=409, detail=blocage)
+        if blocage == RAISON_FICHE_NON_TERMINEE:
+            response.status_code = 202
+            return {"statut": "pending", "attente": blocage}
     await launch_lettre(offer_id, modele)
     response.status_code = 202
     return {"statut": "pending"}
+
+
+@router.post("/{offer_id}/lettre/ne-pas-faire")
+async def ne_pas_faire_lettre(offer_id: int) -> dict:
+    """Ne pas faire de lettre pour cette annonce (EXE-195, critères 7, 10, 11) :
+    bascule la décision sur « sans lettre », efface la marque Prête si elle
+    était posée (critère 10), aucun appel de modèle. Refusée pendant une
+    génération ou une régénération en cours (critère 11)."""
+    with get_conn() as conn:
+        if not suivi_storage.est_retenue(conn, offer_id):
+            raise HTTPException(
+                status_code=409,
+                detail="La lettre n'est générée que pour une offre retenue",
+            )
+        row = conn.execute(
+            "SELECT regeneration_en_cours FROM lettres WHERE offer_id = ?",
+            (offer_id,),
+        ).fetchone()
+        if offer_id in _running or (row is not None and row["regeneration_en_cours"]):
+            raise HTTPException(
+                status_code=409, detail=pieces_mod.RAISON_GENERATION_EN_COURS
+            )
+        _set_decision(
+            conn, offer_id, pieces_mod.DECISION_SANS_LETTRE, clear_marque_pret=True
+        )
+        carte = carte_lettre_for_offer(conn, offer_id)
+    return carte
+
+
+@router.post("/{offer_id}/lettre/revenir")
+async def revenir_sur_choix_lettre(offer_id: int) -> dict:
+    """Revenir sur « Sans lettre » (EXE-195, critères 8, 9) : remet « à
+    décider » si la lettre n'a jamais tourné, « demandée » sinon — une lettre
+    déjà générée, Prête ou en erreur garde son texte et ses versions, jamais
+    touchés par ce geste."""
+    with get_conn() as conn:
+        if not suivi_storage.est_retenue(conn, offer_id):
+            raise HTTPException(
+                status_code=409,
+                detail="La lettre n'est générée que pour une offre retenue",
+            )
+        row = conn.execute(
+            "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
+        ).fetchone()
+        if row is None or row["decision"] != pieces_mod.DECISION_SANS_LETTRE:
+            raise HTTPException(
+                status_code=409,
+                detail="La lettre n'est pas « Sans lettre » : rien à annuler.",
+            )
+        nouvelle_decision = (
+            pieces_mod.DECISION_A_DECIDER
+            if row["statut"] == "aucune"
+            else pieces_mod.DECISION_DEMANDEE
+        )
+        conn.execute(
+            "UPDATE lettres SET decision = ? WHERE offer_id = ?",
+            (nouvelle_decision, offer_id),
+        )
+        conn.commit()
+        carte = carte_lettre_for_offer(conn, offer_id)
+    return carte
 
 
 @router.get("/{offer_id}/lettre")

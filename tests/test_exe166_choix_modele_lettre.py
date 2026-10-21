@@ -128,6 +128,23 @@ async def _drain() -> None:
         await asyncio.gather(*pending, return_exceptions=True)
 
 
+def _marquer_demandee(db_path, offer_id):
+    """EXE-195 : l'enchaînement automatique n'a plus lieu que si j'ai demandé
+    la lettre — simule mon geste « Générer la lettre » posé avant la fin de
+    la fiche, pour ce scénario hérité d'EXE-166 sur le modèle employé."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO lettres (offer_id, statut, decision, created_at) "
+            "VALUES (?, 'aucune', 'demandee', '2026-10-21') "
+            "ON CONFLICT(offer_id) DO UPDATE SET decision='demandee'",
+            (offer_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _jamais(*a, **k):
     raise AssertionError("la boucle a été appelée alors que le modèle est invalide")
 
@@ -372,6 +389,7 @@ class TestCritere4EnchainementAutomatiqueSonnet:
         offer_id = 4
         _insert_offer(db_path, offer_id)
         _insert_fiche(db_path, offer_id)
+        _marquer_demandee(db_path, offer_id)
         captured = {}
 
         def _double(titre, texte_offre, entreprise, points_fiche, config, **_etape):

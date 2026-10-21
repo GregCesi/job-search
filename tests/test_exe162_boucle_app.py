@@ -238,14 +238,17 @@ class TestCritere3RefusReduitsATroisRaisons:
         asyncio.run(api_lettre.create_lettre(offer_id, response))
         assert response.status_code == 202
 
-    def test_refuse_fiche_non_terminee(self, db_path):
+    def test_differe_tant_que_la_fiche_nest_pas_terminee(self, db_path):
+        """EXE-195, critère 4 : remplace l'ancien refus immédiat (409) — la
+        demande est posée et attend la fin de la fiche, au lieu d'être
+        rejetée."""
         offer_id = 30
         _insert_offer(db_path, offer_id)
         _insert_fiche(db_path, offer_id, statut="pending")
-        with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(api_lettre.create_lettre(offer_id, Response()))
-        assert exc_info.value.status_code == 409
-        assert exc_info.value.detail == RAISON_FICHE_NON_TERMINEE
+        response = Response()
+        resultat = asyncio.run(api_lettre.create_lettre(offer_id, response))
+        assert response.status_code == 202
+        assert resultat == {"statut": "pending", "attente": RAISON_FICHE_NON_TERMINEE}
 
     def test_refuse_texte_manquant(self, db_path):
         offer_id = 31

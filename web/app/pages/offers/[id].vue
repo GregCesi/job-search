@@ -475,9 +475,8 @@
           <p v-if="lettrePretError" class="text-xs text-red-600">{{ lettrePretError }}</p>
 
           <!-- Non éligible -->
-          <div v-if="!isRetenue || lettreRaisonAttente" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
-            <p v-if="!isRetenue" class="text-sm text-gray-400 italic">La lettre n'est générée que pour une offre retenue.</p>
-            <p v-else class="text-sm text-gray-400 italic">{{ lettreRaisonAttente }}</p>
+          <div v-if="!isRetenue" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+            <p class="text-sm text-gray-400 italic">La lettre n'est générée que pour une offre retenue.</p>
           </div>
 
           <template v-else>
@@ -507,10 +506,31 @@
               <p v-if="angleError" class="text-xs text-red-600">{{ angleError }}</p>
             </section>
 
-            <!-- Pas de lettre / erreur -->
-            <div v-if="!lettre || lettre.statut === 'error' || lettre.statut === 'aucune'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
-              <p v-if="lettre?.error_message" class="text-sm text-red-600">{{ lettre.error_message }}</p>
-              <div class="flex items-center gap-1 text-xs" role="radiogroup" aria-label="Modèle de la lettre">
+            <!-- Sans lettre (EXE-195, critère 7) : choix explicite, aucun appel
+                 de modèle ; les boutons (visibilité, actif, explication) sont
+                 ceux rendus par l'API, jamais décidés ici (critère 13). -->
+            <div v-if="lettreCarte?.statut === 'sans_lettre'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+              <p class="text-sm text-gray-400 italic">Sans lettre pour cette annonce.</p>
+              <button
+                v-for="bouton in lettreCarteBoutonsVisibles"
+                :key="bouton.bouton"
+                @click="actionLettreCarte(bouton.bouton)"
+                :disabled="!bouton.actif || lettreBusy"
+                :title="bouton.raison ?? undefined"
+                class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >{{ bouton.libelle }}</button>
+              <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
+            </div>
+
+            <!-- À décider ou demandée (pas encore en génération) : les boutons
+                 Générer / Ne pas faire viennent de l'API (critères 1, 2, 13). -->
+            <div
+              v-else-if="lettreCarte?.statut === 'a_decider' || lettreCarte?.statut === 'demandee'"
+              class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3"
+            >
+              <p v-if="lettreCarte.message" class="text-sm text-red-600">{{ lettreCarte.message }}</p>
+              <p v-else-if="lettreCarte.statut === 'demandee'" class="text-sm text-gray-400 italic">La lettre partira dès que la fiche entreprise sera terminée.</p>
+              <div v-if="lettreCarte.statut === 'a_decider'" class="flex items-center gap-1 text-xs" role="radiogroup" aria-label="Modèle de la lettre">
                 <button
                   type="button"
                   @click="modeleLettre = 'sonnet'"
@@ -524,16 +544,21 @@
                   class="px-2 py-1 rounded"
                 >Opus</button>
               </div>
-              <button
-                @click="genererLettre"
-                :disabled="lettreBusy"
-                class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
-              >{{ lettreBusy ? 'Lancement…' : 'Générer la lettre' }}</button>
+              <div class="flex items-center gap-2">
+                <button
+                  v-for="bouton in lettreCarteBoutonsVisibles"
+                  :key="bouton.bouton"
+                  @click="actionLettreCarte(bouton.bouton)"
+                  :disabled="!bouton.actif || lettreBusy"
+                  :title="bouton.raison ?? undefined"
+                  class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                >{{ lettreBusy ? 'Lancement…' : bouton.libelle }}</button>
+              </div>
               <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
             </div>
 
             <!-- En cours : génération ou régénération (EXE-167, critère 8) -->
-            <div v-else-if="lettre.statut === 'pending' || lettre.regeneration_en_cours" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+            <div v-else-if="lettreCarte?.statut === 'en_generation'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
               <svg class="w-8 h-8 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
@@ -543,10 +568,10 @@
                 <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden">
                   <div
                     class="h-1.5 rounded-full bg-indigo-500 transition-all"
-                    :style="{ width: `${lettre.etape?.pourcentage ?? 0}%` }"
+                    :style="{ width: `${lettre?.etape?.pourcentage ?? 0}%` }"
                   />
                 </div>
-                <p class="text-xs text-gray-400 mt-1">{{ lettre.etape?.pourcentage ?? 0 }}%</p>
+                <p class="text-xs text-gray-400 mt-1">{{ lettre?.etape?.pourcentage ?? 0 }}%</p>
               </div>
             </div>
 
@@ -616,6 +641,15 @@
                   @click="telechargerLettrePdf"
                   class="text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                 >Télécharger le PDF</button>
+                <!-- EXE-195, critères 9, 11, 13 : visible/actif/libellé rendus par l'API -->
+                <button
+                  v-for="bouton in lettreCarteBoutonsVisibles.filter(b => b.bouton === 'ne_pas_faire')"
+                  :key="bouton.bouton"
+                  @click="actionLettreCarte(bouton.bouton)"
+                  :disabled="!bouton.actif || lettreBusy"
+                  :title="bouton.raison ?? undefined"
+                  class="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
+                >{{ bouton.libelle }}</button>
               </div>
               <p v-if="lettre.modele" class="text-xs text-gray-400">écrite par {{ nomModele(lettre.modele) }}, jugée par {{ nomModele(lettre.modele_juge) }}</p>
               <p v-if="lettre.regeneration_error" class="text-xs text-red-600">{{ lettre.regeneration_error }}</p>
@@ -1125,7 +1159,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { Avancement, AvancementPiece, AppelTrace, Cv, FicheEntreprise, FicheTas, Lettre, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
+import type { Avancement, AvancementPiece, AppelTrace, BoutonLettre, Cv, FicheEntreprise, FicheTas, Lettre, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -1520,10 +1554,11 @@ function startAvancementPolling() {
   }, 5000)
 }
 
-const lettreRaisonAttente = computed(() => {
-  const av = avancement.value?.lettre
-  return av && av.etat === 'en_attente' ? av.raison : null
-})
+// EXE-195, critères 2, 13 : statut affiché et boutons de la carte Lettre —
+// rendus par l'API (`pieces.lettre_carte`), jamais décidés ici à partir de
+// `lettre.statut` ou de `lettre.regeneration_en_cours` (critère 14).
+const lettreCarte = computed(() => pieces.value?.lettre_carte ?? null)
+const lettreCarteBoutonsVisibles = computed(() => lettreCarte.value?.boutons.filter(b => b.visible) ?? [])
 
 // ── Tout télécharger — CV + lettre en PDF, si les deux sont Prêtes (EXE-134) ──
 // Décidé côté API (EXE-200, critère 16) — le front n'évalue plus le statut
@@ -2093,22 +2128,59 @@ async function genererLettre() {
   lettreActionError.value = null
   lettreBusy.value = true
   try {
-    const res = await $fetch<Lettre>(lettreUrl(), { method: 'POST', body: { modele: modeleLettre.value } })
+    // EXE-195, critères 3, 4 : réponse `{statut, attente?}` — `attente` posé
+    // quand la fiche n'est pas encore terminée (ma demande attend, elle ne
+    // relance aucun sondage local ici ; `chargerAvancement` la détectera).
+    const res = await $fetch<Lettre & { attente?: string }>(
+      lettreUrl(), { method: 'POST', body: { modele: modeleLettre.value } },
+    )
     if (res.statut === 'done') {
       lettre.value = res
       texteEdit.value = res.texte ?? ''
       await chargerLettreVersions()
-      await chargerPieces()
       await syncLettreMiseEnPage()
-    } else {
+    } else if (!res.attente) {
       lettre.value = { ...EMPTY_LETTRE, statut: 'pending' }
       startLettrePolling()
     }
+    await chargerPieces()
   } catch (e) {
     lettreActionError.value = messageErreurLettre(e)
   } finally {
     lettreBusy.value = false
   }
+}
+
+async function nePasFaireLettre() {
+  lettreActionError.value = null
+  lettreBusy.value = true
+  try {
+    await $fetch(`${lettreUrl()}/ne-pas-faire`, { method: 'POST' })
+    await chargerPieces()
+  } catch (e) {
+    lettreActionError.value = messageErreurLettre(e)
+  } finally {
+    lettreBusy.value = false
+  }
+}
+
+async function revenirLettre() {
+  lettreActionError.value = null
+  lettreBusy.value = true
+  try {
+    await $fetch(`${lettreUrl()}/revenir`, { method: 'POST' })
+    await chargerPieces()
+  } catch (e) {
+    lettreActionError.value = messageErreurLettre(e)
+  } finally {
+    lettreBusy.value = false
+  }
+}
+
+function actionLettreCarte(bouton: BoutonLettre['bouton']) {
+  if (bouton === 'generer') return genererLettre()
+  if (bouton === 'ne_pas_faire') return nePasFaireLettre()
+  return revenirLettre()
 }
 
 async function regenererLettre() {
