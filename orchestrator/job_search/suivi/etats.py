@@ -152,7 +152,8 @@ LIBELLES_GESTES = {
     RELANCER: "Relancer",
     ENTRETIEN_GESTE: "Entretien",
     OFFRE_RECUE_GESTE: "Offre reçue",
-    REFUSER: "Refuser",
+    # EXE-198, critère 5 : c'est l'entreprise qui refuse, pas moi.
+    REFUSER: "Refusée",
     SANS_SUITE_GESTE: "Sans suite",
     ABANDONNER: "Abandonner",
     ANNULER: "Annuler le dernier geste",
@@ -198,8 +199,9 @@ class PiecesNonPretes(Exception):
 
 
 class DateEffetFuture(Exception):
-    """`effet_at` de `marquer_envoyee` postérieur au jour de Bruxelles (EXE-197,
-    critère 4) — seul `marquer_envoyee` porte cette règle (H3 du ticket)."""
+    """`effet_at` postérieur au jour de Bruxelles, pour un geste qui refuse une
+    date future (EXE-197, critère 4 ; étendu par EXE-198, H3, critère 7, à
+    tout le bloc de suite sauf `entretien`)."""
 
     def __init__(self, effet_at: str, aujourd_hui: str):
         self.effet_at = effet_at
@@ -278,17 +280,38 @@ def aujourd_hui_bruxelles(maintenant_utc: datetime | None = None) -> str:
     return now.astimezone(FUSEAU_BRUXELLES).date().isoformat()
 
 
-def normaliser_effet_marquer_envoyee(effet_at: str | None) -> str:
-    """Date d'effet de `marquer_envoyee` (EXE-197, H3, critères 2, 4, 5, 7) :
-    absente → maintenant ; une date seule (sans heure, saisie au champ date
-    du navigateur) → midi, heure de Bruxelles, de CE jour calendaire, en ISO
-    UTC (critère 7) ; toute date dont le jour de Bruxelles est postérieur à
-    aujourd'hui, jour de Bruxelles → lève `DateEffetFuture` (critère 4). Ne
-    s'applique qu'à `marquer_envoyee` — les autres gestes gardent leur date
+# Gestes dont la date d'effet est bornée (EXE-197, étendu par EXE-198, H3) :
+# une date seule s'enregistre à midi, heure de Bruxelles. `entretien` y entre
+# pour cette normalisation seule — lui seul accepte une date future (critère 7).
+GESTES_DATE_BLOC = {
+    MARQUER_ENVOYEE,
+    RELANCER,
+    ENTRETIEN_GESTE,
+    OFFRE_RECUE_GESTE,
+    REFUSER,
+    SANS_SUITE_GESTE,
+    ABANDONNER,
+}
+
+# Sous-ensemble qui refuse une date postérieure à aujourd'hui, jour de
+# Bruxelles (critère 7) — `entretien` seul en est exclu.
+GESTES_REFUS_DATE_FUTURE = GESTES_DATE_BLOC - {ENTRETIEN_GESTE}
+
+
+def normaliser_effet_geste(geste: str, effet_at: str | None) -> str:
+    """Date d'effet d'un geste (EXE-197, H3, critères 2, 4, 5, 7 ; étendu par
+    EXE-198, H3, critère 7) : absente → maintenant. Pour un geste du bloc
+    (`GESTES_DATE_BLOC`), une date seule (sans heure, saisie au champ date du
+    navigateur) → midi, heure de Bruxelles, de CE jour calendaire, en ISO UTC ;
+    et, sauf `entretien`, toute date dont le jour de Bruxelles est postérieur
+    à aujourd'hui, jour de Bruxelles → lève `DateEffetFuture`. Les autres
+    gestes (`retenir`, `ecarter`, `remettre_a_trier`) gardent leur date
     d'effet telle qu'elle est reçue (H3)."""
     now = maintenant()
     if effet_at is None:
         return now.isoformat()
+    if geste not in GESTES_DATE_BLOC:
+        return effet_at
     parsed = datetime.fromisoformat(effet_at)
     if parsed.tzinfo is None:
         jour = parsed.date()
@@ -297,9 +320,10 @@ def normaliser_effet_marquer_envoyee(effet_at: str | None) -> str:
         )
     else:
         effectif = parsed
-    aujourdhui = aujourd_hui_bruxelles(now)
-    if effectif.astimezone(FUSEAU_BRUXELLES).date().isoformat() > aujourdhui:
-        raise DateEffetFuture(effet_at, aujourdhui)
+    if geste in GESTES_REFUS_DATE_FUTURE:
+        aujourdhui = aujourd_hui_bruxelles(now)
+        if effectif.astimezone(FUSEAU_BRUXELLES).date().isoformat() > aujourdhui:
+            raise DateEffetFuture(effet_at, aujourdhui)
     return effectif.astimezone(timezone.utc).isoformat()
 
 
@@ -479,6 +503,18 @@ def dernier_geste_non_annule(
     return None
 
 
+def historique_affiche(
+    historique: list[EvenementHistorique],
+) -> list[EvenementHistorique]:
+    """Lignes non annulées, du plus récent au plus ancien par date d'effet ;
+    à date d'effet égale, la plus récemment enregistrée en premier (EXE-198,
+    critères 14-15). `historique` est fourni trié du plus ancien au plus
+    récent par ordre d'enregistrement — son `id` croît avec cet ordre, d'où
+    le tri par `(effet_at, id)` décroissant."""
+    actifs = [e for e in historique if e.annule_at is None]
+    return sorted(actifs, key=lambda e: (e.effet_at, e.id), reverse=True)
+
+
 def dernier_ecart(
     historique: list[EvenementHistorique],
 ) -> EvenementHistorique | None:
@@ -528,10 +564,12 @@ def etapes_acquises(
     lettre_pret: bool,
     lettre_sans: bool = False,
 ) -> list[str]:
-    """Sous-ensemble de `ETAPES_AFFICHEES` (api/offers.py) réellement acquis
-    (critère 22) — jamais « tout acquis par défaut » pour un état hors
-    séquence, qui montrait « candidature envoyée » pour une offre abandonnée
-    depuis « retenue » sans jamais avoir été envoyée."""
+    """Sous-ensemble de `etapes_affichees` réellement acquis (EXE-194, critère
+    22 ; étendu par EXE-198, critère 18) — jamais « tout acquis par défaut »
+    pour un état hors séquence, qui montrait « candidature envoyée » pour une
+    offre abandonnée depuis « retenue » sans jamais avoir été envoyée. L'état
+    de branche courant (refusée, sans suite, abandonnée) est lui-même acquis :
+    c'est l'étape où la candidature s'est arrêtée."""
     rang = rang_progression(etat, historique)
     etape_actuelle = etape_affichee(
         etat, cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
@@ -545,4 +583,41 @@ def etapes_acquises(
         acquises.append(CANDIDATURE_ENVOYEE)
     if rang >= 3:
         acquises.append(ENTRETIEN)
+    if etat in ETATS_BRANCHE:
+        acquises.append(etat)
     return acquises
+
+
+# Séquence fixe du chemin heureux (EXE-194, critère 15 ; `api/offers.py`
+# n'en porte plus la copie depuis EXE-198).
+ETAPES_AFFICHEES_CHEMIN_HEUREUX = [
+    RETENUE,
+    PRETE_A_L_ENVOI,
+    CANDIDATURE_ENVOYEE,
+    ENTRETIEN,
+]
+
+# Position (index dans la séquence ci-dessus) après laquelle insérer l'étape
+# de fin d'une offre en branche, selon le rang de l'état de départ de son
+# geste de bifurcation (EXE-198, critère 18).
+_RANG_VERS_INDEX_INSERTION = {
+    1: 0,  # bifurcation depuis « retenue » : juste après elle
+    2: 2,  # depuis « candidature envoyée » : juste après elle
+    3: 3,  # depuis « entretien » : juste après lui
+}
+
+
+def etapes_affichees(etat: str, historique: list[EvenementHistorique]) -> list[str]:
+    """Séquence de codes à afficher dans la frise (EXE-194, critère 15 ;
+    étendu par EXE-198, critère 18) : vide si pas retenue ; sinon le chemin
+    heureux fixe, avec, pour une offre en branche, son étape de fin insérée à
+    la place qu'elle occupe réellement — jamais ajoutée en bout de séquence,
+    qui masquerait où la candidature s'est arrêtée."""
+    if etat not in ETATS_RETENUS:
+        return []
+    sequence = list(ETAPES_AFFICHEES_CHEMIN_HEUREUX)
+    if etat in ETATS_BRANCHE:
+        rang = rang_progression(etat, historique)
+        index = _RANG_VERS_INDEX_INSERTION.get(rang, len(sequence) - 1)
+        sequence.insert(index + 1, etat)
+    return sequence

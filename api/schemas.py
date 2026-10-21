@@ -103,6 +103,17 @@ class ExpirationCheckSchema(BaseModel):
     checked_at: str
 
 
+class EvenementHistoriqueSchema(BaseModel):
+    """Une ligne de l'historique affiché (EXE-198, critères 14-15) : geste non
+    annulé, avec sa date d'effet, son libellé et sa note — déjà trié par
+    l'API (du plus récent au plus ancien), sans les lignes annulées."""
+
+    geste: str
+    libelle: str
+    effet_at: str
+    motif: str | None = None
+
+
 class OfferDetail(OfferRow):
     source_id: str
     description: str | None

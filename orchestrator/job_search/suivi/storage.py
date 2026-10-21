@@ -106,6 +106,21 @@ def historique(
     ]
 
 
+def historique_affiche(
+    conn: sqlite3.Connection, offer_id: int
+) -> list[etats.EvenementHistorique]:
+    """Lignes non annulées, du plus récent au plus ancien (EXE-198, critères
+    14-15) — la mise en forme de tri vit dans `etats.historique_affiche`."""
+    return etats.historique_affiche(historique(conn, offer_id))
+
+
+def etapes_affichees(conn: sqlite3.Connection, offer_id: int) -> list[str]:
+    """Séquence de la frise, étape de fin insérée à sa place pour une offre en
+    branche (EXE-198, critère 18)."""
+    etat = etat_stocke(conn, offer_id)
+    return etats.etapes_affichees(etat, historique(conn, offer_id))
+
+
 def historique_map(
     conn: sqlite3.Connection,
 ) -> dict[int, list[etats.EvenementHistorique]]:
@@ -185,8 +200,9 @@ def appliquer_geste(
     motif: str | None = None,
 ) -> str:
     """Nouvel état stocké, ou lève `etats.GesteRefuse` (transition impossible)
-    / `etats.DateEffetFuture` (EXE-197 : `effet_at` de `marquer_envoyee`
-    postérieur au jour de Bruxelles) sans rien écrire (critère 2)."""
+    / `etats.DateEffetFuture` (EXE-197, étendu par EXE-198 H3 : `effet_at`
+    d'un geste du bloc de suite postérieur au jour de Bruxelles) sans rien
+    écrire (critère 2)."""
     etat_avant = etat_stocke(conn, offer_id)
     cv_pret, lettre_pret, lettre_sans = _pieces_pretes(conn, offer_id)
     nouvel_etat = etats.appliquer(
@@ -197,12 +213,7 @@ def appliquer_geste(
         lettre_sans=lettre_sans,
     )
     now = _now()
-    if geste == etats.MARQUER_ENVOYEE:
-        # EXE-197, H3 : seul `marquer_envoyee` porte la règle de date — les
-        # autres gestes gardent leur `effet_at` tel qu'il est reçu.
-        effet = etats.normaliser_effet_marquer_envoyee(effet_at)
-    else:
-        effet = effet_at if effet_at is not None else now
+    effet = etats.normaliser_effet_geste(geste, effet_at)
     conn.execute(
         "INSERT INTO etats_offre (offer_id, etat) VALUES (?, ?) "
         "ON CONFLICT(offer_id) DO UPDATE SET etat = excluded.etat",
