@@ -434,7 +434,7 @@ class TestCritere13RefusRegenerationOffreNonRetenueOuSansLettre:
         self, db_path, lettre_fixture_paths, monkeypatch
     ):
         offer_id = 13
-        _insert_offer(db_path, offer_id, verdict="candidaté")
+        _insert_offer(db_path, offer_id, verdict="ecartee")
 
         def _forbidden(*a, **k):
             raise AssertionError("le modèle a été appelé pour une offre non retenue")

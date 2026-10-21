@@ -258,7 +258,7 @@ class TestCritere3RefusReduitsATroisRaisons:
 
     def test_refuse_offre_non_retenue(self, db_path):
         offer_id = 32
-        _insert_offer(db_path, offer_id, verdict="candidaté")
+        _insert_offer(db_path, offer_id, verdict="ecartee")
         with pytest.raises(HTTPException) as exc_info:
             asyncio.run(api_lettre.create_lettre(offer_id, Response()))
         assert exc_info.value.status_code == 409

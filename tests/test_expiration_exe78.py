@@ -107,7 +107,7 @@ class TestCritere1DesignationNonRetenuesSeulesLeursUrlInterrogees:
     ):
         _insert_offer(db_path, 1, url="https://n1.example", verdict="rejeté")
         _insert_offer(db_path, 2, url="https://n2.example", verdict=None)
-        _insert_offer(db_path, 3, url="https://n3.example", verdict="candidaté")
+        _insert_offer(db_path, 3, url="https://n3.example", verdict="ecartee")
         _insert_offer(db_path, 4, url="https://r4.example", verdict="retenu")
 
         calls: list[str] = []

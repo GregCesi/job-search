@@ -160,11 +160,11 @@ class TestCritere4RetenueSansPieceOuAvecUneSeulePiecePrete:
 
 
 class TestCritere5OffreNonRetenueSansEtape:
-    def test_offre_candidatee_sans_etape_verdict_inchange(self, client, db_path):
-        # TCK-311/EXE-193 : "candidaté" a disparu, remplacé par "ecartee"
-        # (seule la valeur change, le test garde sa portée — H7 du ticket).
+    def test_offre_ecartee_sans_etape_verdict_ecartee(self, client, db_path):
+        # TCK-311/EXE-193 : "candidaté" a disparu, remplacé par "ecartee" —
+        # nom de test aligné sur la valeur réelle (EXE-200, critère 32).
         offer_id = 5
-        _insert_offer(db_path, offer_id, verdict="candidaté")
+        _insert_offer(db_path, offer_id, verdict="ecartee")
 
         rows = client.get("/offers").json()
 

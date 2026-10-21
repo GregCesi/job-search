@@ -181,7 +181,7 @@ class TestCritere1Idempotence:
 class TestCritere2RefusOffreNonRetenue:
     def test_refuse_et_ne_stocke_rien(self, db_path, cv_fixture_paths, monkeypatch):
         offer_id = 2
-        _insert_offer(db_path, offer_id, techs=[], verdict="candidaté")
+        _insert_offer(db_path, offer_id, techs=[], verdict="ecartee")
         called = {"n": 0}
 
         def _spy(_oid):
