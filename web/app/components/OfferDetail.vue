@@ -31,7 +31,7 @@
           <span v-if="props.mode === 'operateur'" :class="etatClass" class="px-2 py-0.5 rounded font-semibold">{{ etatLabel }}</span>
           <span>{{ offer.contract_type ?? '—' }}</span>
           <span>{{ offer.fetched_at?.slice(0, 10) }}</span>
-          <VerdictBadge :verdict="offer.verdict" />
+          <VerdictBadge :tri="offer.tri" :etape="offer.etape" :revue="offer.revue_hors_perimetre" />
           <div class="ml-auto flex items-center gap-3">
             <NuxtLink
               v-if="store.hasTraces(offer.source_id)"
@@ -138,19 +138,61 @@
           <section>
             <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Verdict</h3>
             <div class="flex flex-wrap gap-2">
-              <!-- Candidat : bouton Retenir navigue vers la page offre -->
+              <!-- Candidat : Retenir/Écarter sur une offre à trier, Remettre à
+                   trier sur une écartée, Voir la page sur une retenue -->
               <template v-if="props.mode === 'candidat'">
+                <template v-if="offer.tri === 'a_trier'">
+                  <button
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium border bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all"
+                    @click="handleRetenir()"
+                  >
+                    Retenir →
+                  </button>
+                  <button
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium border bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all"
+                    @click="showEcarterForm = true"
+                  >
+                    Écarter
+                  </button>
+                </template>
                 <button
-                  :class="[
-                    'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                    offer.tri === 'retenue'
-                      ? 'bg-blue-50 border-blue-300 text-blue-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
-                  ]"
+                  v-else-if="offer.tri === 'ecartee'"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium border bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all"
+                  @click="handleRemettreATrier"
+                >
+                  Remettre à trier
+                </button>
+                <button
+                  v-else
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium border bg-blue-50 border-blue-300 text-blue-700 transition-all"
                   @click="handleRetenir()"
                 >
-                  {{ offer.tri === 'retenue' ? 'Voir la page →' : 'Retenir →' }}
+                  Voir la page →
                 </button>
+
+                <!-- Motif facultatif de l'écart (critères 2-4) -->
+                <div v-if="showEcarterForm" class="w-full flex flex-col gap-2 mt-1">
+                  <textarea
+                    v-model="motifEcarter"
+                    placeholder="Motif (facultatif)"
+                    rows="2"
+                    class="w-full rounded border border-gray-200 px-2 py-1.5 text-xs text-gray-600 placeholder-gray-300 focus:outline-none focus:border-indigo-300 resize-none"
+                  />
+                  <div class="flex items-center gap-2">
+                    <button
+                      :disabled="ecarterBusy"
+                      class="px-3 py-1 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                      @click="handleEcarter"
+                    >{{ ecarterBusy ? '…' : 'Confirmer l\'écart' }}</button>
+                    <button
+                      :disabled="ecarterBusy"
+                      class="px-3 py-1 rounded text-xs font-medium text-gray-500 hover:bg-gray-100"
+                      @click="showEcarterForm = false; motifEcarter = ''"
+                    >Annuler</button>
+                  </div>
+                  <p v-if="ecarterError" class="text-xs text-red-600">{{ ecarterError }}</p>
+                </div>
+                <p v-if="remettreError" class="text-xs text-red-600 w-full">{{ remettreError }}</p>
               </template>
               <!-- Opérateur : boutons verdict classiques -->
               <template v-else>
@@ -167,12 +209,20 @@
                   {{ v.label }}
                 </button>
                 <button
-                  v-if="offer.gestes_permis.includes('annuler') || offer.revue_hors_perimetre"
+                  v-if="annulerGeste"
                   class="px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:bg-gray-50 transition-all"
-                  @click="store.clearVerdict(offer.id)"
+                  @click="handleClearVerdict"
                 >
-                  Annuler le dernier geste
+                  {{ annulerGeste.libelle }}
                 </button>
+                <button
+                  v-if="offer.revue_hors_perimetre"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:bg-gray-50 transition-all"
+                  @click="handleRetirerRevue"
+                >
+                  Retirer la revue
+                </button>
+                <p v-if="verdictError" class="text-xs text-red-600 w-full">{{ verdictError }}</p>
               </template>
             </div>
           </section>
@@ -250,7 +300,7 @@ import { useOffersStore } from '~/stores/offers'
 import type { OfferDetail } from '~/stores/offers'
 
 const props = withDefaults(defineProps<{ offer: OfferDetail; mode?: 'candidat' | 'operateur' }>(), { mode: 'candidat' })
-defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: [] }>()
 
 const store = useOffersStore()
 const router = useRouter()
@@ -349,20 +399,99 @@ function isVerdictActive(status: string): boolean {
   return props.offer.revue_hors_perimetre === status
 }
 
+function extractDetail(e: unknown): string {
+  const detail = (e as { data?: { detail?: string } })?.data?.detail
+  return detail ?? 'Action impossible.'
+}
+
+// EXE-194, N1 : le choix entre « Retenir → » et « Voir la page → » lit la
+// décision de l'API (gestes_permis), jamais une comparaison du tri — sinon
+// le front recalcule un droit que l'API a déjà rendu (frontend.md).
+const peutRetenir = computed(() => props.offer.gestes_permis.includes('retenir'))
+
 async function handleRetenir() {
-  if (props.offer.tri !== 'retenue') {
-    await store.setVerdict(props.offer.id, 'retenu')
+  if (peutRetenir.value) {
+    await store.appliquerGeste(props.offer.id, 'retenir')
   }
   router.push(`/offers/${props.offer.id}`)
 }
 
 function toggleVerdict(status: string) {
-  if (isVerdictActive(status)) {
-    store.clearVerdict(props.offer.id)
-  } else {
-    store.setVerdict(props.offer.id, status)
+  verdictError.value = null
+  const action = isVerdictActive(status)
+    ? store.clearVerdict(props.offer.id)
+    : store.setVerdict(props.offer.id, status)
+  action.catch((e) => { verdictError.value = extractDetail(e) })
+}
+
+// Libellé dynamique de l'annulation (critères 14-15) — lu depuis `gestes`,
+// jamais recalculé : `null` si rien à annuler, le bouton disparaît.
+const annulerGeste = computed(
+  () => props.offer.gestes.find(g => g.geste === 'annuler' && g.permis) ?? null,
+)
+const verdictError = ref<string | null>(null)
+
+async function handleClearVerdict() {
+  verdictError.value = null
+  try {
+    await store.clearVerdict(props.offer.id)
+  } catch (e) {
+    verdictError.value = extractDetail(e)
   }
 }
+
+async function handleRetirerRevue() {
+  verdictError.value = null
+  try {
+    await store.retirerRevue(props.offer.id)
+  } catch (e) {
+    verdictError.value = extractDetail(e)
+  }
+}
+
+// ── Écarter (candidat), avec motif facultatif (critères 1-6) ───────────────
+const showEcarterForm = ref(false)
+const motifEcarter = ref('')
+const ecarterBusy = ref(false)
+const ecarterError = ref<string | null>(null)
+
+async function handleEcarter() {
+  ecarterError.value = null
+  ecarterBusy.value = true
+  try {
+    await store.setVerdict(props.offer.id, 'ecartee', motifEcarter.value || null)
+    showEcarterForm.value = false
+    motifEcarter.value = ''
+    await store.fetchOffers()
+    emit('close')
+  } catch (e) {
+    ecarterError.value = extractDetail(e)
+  } finally {
+    ecarterBusy.value = false
+  }
+}
+
+// ── Remettre à trier (candidat, depuis Écartées — critère 10) ──────────────
+const remettreError = ref<string | null>(null)
+
+async function handleRemettreATrier() {
+  remettreError.value = null
+  try {
+    await store.appliquerGeste(props.offer.id, 'remettre_a_trier')
+    await store.fetchOffers()
+    emit('close')
+  } catch (e) {
+    remettreError.value = extractDetail(e)
+  }
+}
+
+watch(() => props.offer.id, () => {
+  showEcarterForm.value = false
+  motifEcarter.value = ''
+  ecarterError.value = null
+  remettreError.value = null
+  verdictError.value = null
+})
 
 // ── Hors-périmètre helpers ───────────────────────────────────
 const hpCauses = computed(() => {

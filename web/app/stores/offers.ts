@@ -5,6 +5,7 @@ import { defineStore } from 'pinia'
 export interface GesteEtat {
   geste: string
   permis: boolean
+  libelle: string
   raison: string | null
 }
 
@@ -26,6 +27,9 @@ export interface OfferRow {
   gestes: GesteEtat[]                // chaque geste de la table, permis ou non + raison (critère 14)
   hors_perimetre_reason: string | null
   perimetre_causes: string[]
+  // dérivés, offre écartée seulement (EXE-194, critères 9, 11)
+  ecartee_le: string | null
+  motif_ecart: string | null
   seen_candidat: boolean
   fetched_at: string
   // review humaine
@@ -75,6 +79,7 @@ export interface OfferDetail extends OfferRow {
   expiration_checks: ExpirationCheck[] // EXE-76
   ad_language: string | null // EXE-183 : fr | en | nl | other | null
   etapes_affichees: string[] // séquence fixe en tête d'une offre retenue (critère 15)
+  etapes_acquises: string[] // sous-ensemble réellement acquis (EXE-194, critère 22)
   tout_telecharger_possible: boolean // critère 16
   tout_telecharger_raison: string | null
 }
@@ -296,7 +301,7 @@ export interface Filters {
 }
 
 // Candidat (page /)
-export type CandidateView = 'cibles' | 'gaps' | 'filet' | 'retenues'
+export type CandidateView = 'cibles' | 'gaps' | 'filet' | 'retenues' | 'ecartees'
 // Opérateur (page /operateur)
 export type OperatorView = 'a_traiter' | 'hors_perimetre' | 'texte_manquant' | 'tout'
 
@@ -304,10 +309,12 @@ export type ActiveView = CandidateView | OperatorView
 
 const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> & { sort: string; order: string }> = {
   // Candidat
-  cibles:      { category: 'parfait',     hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
-  gaps:        { category: 'reve',        hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
-  filet:       { category: 'atteignable', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  cibles:      { category: 'parfait',     verdict: 'a_trier', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  gaps:        { category: 'reve',        verdict: 'a_trier', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  filet:       { category: 'atteignable', verdict: 'a_trier', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
   retenues:    { verdict: 'retenu', hors_perimetre: false, exclude_category: 'hors', exclude_ad_language: 'nl', sort: 'fetched_at', order: 'desc' },
+  // EXE-194, critère 9 : les offres écartées, la plus récemment écartée d'abord.
+  ecartees:    { verdict: 'ecartee', exclude_ad_language: 'nl', sort: 'ecartee_le', order: 'desc' },
   // Opérateur
   a_traiter:      { etat_review: 'non_relue,a_revoir', hors_perimetre: false, sort: 'category',   order: 'desc' },
   hors_perimetre: { hors_perimetre: true,                            sort: 'hors_perimetre_reason', order: 'asc' },
@@ -421,16 +428,34 @@ export const useOffersStore = defineStore('offers', () => {
     }
   }
 
-  async function setVerdict(id: number, status: string) {
+  async function setVerdict(id: number, status: string, motif?: string | null) {
     await $fetch(`${config.public.apiBase}/offers/${id}/verdict`, {
       method: 'PUT',
-      body: { status },
+      body: { status, motif: motif ?? null },
     })
     await _resyncOffer(id)
   }
 
   async function clearVerdict(id: number) {
     await $fetch(`${config.public.apiBase}/offers/${id}/verdict`, { method: 'DELETE' })
+    await _resyncOffer(id)
+  }
+
+  // Retire la revue hors périmètre seule, distinct de l'annulation d'un geste
+  // (EXE-194, critère 17) — ne touche jamais le tri ni l'historique.
+  async function retirerRevue(id: number) {
+    await $fetch(`${config.public.apiBase}/offers/${id}/revue`, { method: 'DELETE' })
+    await _resyncOffer(id)
+  }
+
+  // Tout geste de la table du module d'états (EXE-194, critère 10 : Remettre
+  // à trier depuis une offre écartée) — motif facultatif, ignoré des gestes
+  // qui ne le lisent pas côté API.
+  async function appliquerGeste(id: number, geste: string, motif?: string | null) {
+    await $fetch(`${config.public.apiBase}/offers/${id}/geste`, {
+      method: 'POST',
+      body: { geste, motif: motif ?? null },
+    })
     await _resyncOffer(id)
   }
 
@@ -468,6 +493,8 @@ export const useOffersStore = defineStore('offers', () => {
     submitCategoryReview,
     setVerdict,
     clearVerdict,
+    retirerRevue,
+    appliquerGeste,
     checkExpirations,
     setView,
   }

@@ -1,19 +1,28 @@
 <template>
-  <span v-if="verdict" :class="cls" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium">
-    {{ label }}
+  <span class="inline-flex items-center gap-1">
+    <span v-if="triEntry" :class="triEntry.cls" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium">
+      {{ triEntry.label }}
+    </span>
+    <span v-if="revueEntry" :class="revueEntry.cls" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium">
+      {{ revueEntry.label }}
+    </span>
+    <span v-if="!triEntry && !revueEntry" class="text-gray-300 text-xs">—</span>
   </span>
-  <span v-else class="text-gray-300 text-xs">—</span>
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ verdict: string | null; etape?: string | null }>()
+// EXE-194, critère 21 : tri (ou étape) et revue hors périmètre sont deux axes
+// indépendants, affichés côte à côte, jamais l'un masquant l'autre — l'ancien
+// prop `verdict` fusionnait les deux et faisait disparaître le tri d'une
+// offre écartée ou retenue dès qu'elle portait une revue.
+const props = defineProps<{ tri: string; etape?: string | null; revue?: string | null }>()
 
-const MAP: Record<string, { cls: string; label: string }> = {
-  retenu:                 { cls: 'bg-blue-100 text-blue-800',     label: '★ retenu' },
-  ecartee:                { cls: 'bg-red-100 text-red-700',       label: '✗ écartée' },
-  hors_perimetre_ok:      { cls: 'bg-green-100 text-green-700',   label: '✓ confirmé HP' },
-  hors_perimetre_faux_pos:{ cls: 'bg-red-100 text-red-700',       label: '✗ faux positif' },
+const REVUE_MAP: Record<string, { cls: string; label: string }> = {
+  hors_perimetre_ok:      { cls: 'bg-green-100 text-green-700', label: '✓ confirmé HP' },
+  hors_perimetre_faux_pos:{ cls: 'bg-red-100 text-red-700',     label: '✗ faux positif' },
 }
+
+const ECARTEE_ENTRY = { cls: 'bg-red-100 text-red-700', label: '✗ écartée' }
 
 // Étape de candidature (EXE-144, TCK-311) : remplace le badge générique
 // « retenu » dans les tableaux, l'API la rend déjà calculée (frontend.md —
@@ -29,16 +38,11 @@ const ETAPE_MAP: Record<string, { cls: string; label: string }> = {
   abandonnee:          { cls: 'bg-gray-100 text-gray-500',       label: '· abandonnée' },
 }
 
-const entry = computed(() => {
-  // La présence d'`etape` suffit : elle n'est rendue que pour une offre
-  // retenue (EXE-144), que `verdict` porte par ailleurs « retenu » ou une
-  // revue hors périmètre (EXE-200, critère 12 — le tri ne doit pas se cacher
-  // derrière la revue, y compris dans ce badge).
-  if (props.etape) {
-    return ETAPE_MAP[props.etape] ?? MAP.retenu
-  }
-  return props.verdict ? MAP[props.verdict] : null
+// Une offre à trier n'a pas de badge de tri (critère 21).
+const triEntry = computed(() => {
+  if (props.etape) return ETAPE_MAP[props.etape] ?? null
+  if (props.tri === 'ecartee') return ECARTEE_ENTRY
+  return null
 })
-const cls   = computed(() => entry.value?.cls ?? '')
-const label = computed(() => entry.value?.label ?? '')
+const revueEntry = computed(() => (props.revue ? REVUE_MAP[props.revue] ?? null : null))
 </script>

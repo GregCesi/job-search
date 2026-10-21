@@ -83,7 +83,7 @@ import type { OfferRow, CandidateView } from '~/stores/offers'
 const config = useRuntimeConfig()
 const store = useOffersStore()
 const route = useRoute()
-const CANDIDATE_VIEWS: CandidateView[] = ['cibles', 'gaps', 'filet', 'retenues']
+const CANDIDATE_VIEWS: CandidateView[] = ['cibles', 'gaps', 'filet', 'retenues', 'ecartees']
 onMounted(() => {
   store.viewProfileActive = true
   store.includeRemote = false

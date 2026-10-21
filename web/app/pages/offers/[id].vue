@@ -41,12 +41,13 @@
             {{ libelleAjoutReference }}
           </button>
           <button
-            v-if="offer?.gestes_permis.includes('annuler')"
+            v-if="annulerGeste"
             @click="retirerDesRetenues"
             class="text-sm text-gray-400 hover:text-red-500 transition-colors"
           >
-            Annuler le dernier geste
+            {{ annulerGeste.libelle }}
           </button>
+          <p v-if="annulerError" class="text-xs text-red-600">{{ annulerError }}</p>
           <a
             v-if="offer?.url"
             :href="offer.url"
@@ -1179,9 +1180,23 @@ onBeforeUnmount(() => {
   if (mailCorpsTimer) clearTimeout(mailCorpsTimer)
 })
 
+// EXE-194, critère 14-15 : le libellé vient de l'API (`gestes`), jamais d'un
+// texte fixe côté front.
+const annulerGeste = computed(
+  () => offer.value?.gestes.find(g => g.geste === 'annuler' && g.permis) ?? null,
+)
+const annulerError = ref<string | null>(null)
+
+// EXE-194, critère 18 : l'offre est relue en place après le geste — la page
+// ne quitte plus automatiquement l'offre (défaut nommé par le ticket).
 async function retirerDesRetenues() {
-  await $fetch(`${config.public.apiBase}/offers/${id.value}/verdict`, { method: 'DELETE' })
-  router.back()
+  annulerError.value = null
+  try {
+    await $fetch(`${config.public.apiBase}/offers/${id.value}/verdict`, { method: 'DELETE' })
+    offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
+  } catch (e) {
+    annulerError.value = await errorDetail(e)
+  }
 }
 
 // ── Jeu de référence (EXE-123) ──────────────────────────────────────────────
@@ -1592,17 +1607,17 @@ const ETAPE_CANDIDATURE_LABELS: Record<string, string> = {
   entretien: 'Entretien à préparer',
 }
 
+// EXE-194, critère 22 : l'acquis vient de `etapes_acquises`, rendu par
+// l'API — plus de recalcul depuis `etape` et la séquence, qui rendait TOUT
+// acquis dès qu'une offre bifurquait (abandonnée, refusée, sans suite)
+// avant d'avoir atteint l'étape correspondante.
 function stepActive(step: string): boolean {
   const sequence = offer.value?.etapes_affichees ?? []
+  const acquises = offer.value?.etapes_acquises ?? []
   const labels = sequence.map(code => ETAPE_CANDIDATURE_LABELS[code] ?? code)
   const idxStep = labels.indexOf(step)
-  const etape = offer.value?.etape
-  if (idxStep === -1 || !etape) return false
-  const idxEtape = sequence.indexOf(etape)
-  // etape hors séquence (entretien dépassé : refusée, sans suite, abandonnée…) :
-  // la séquence entière reste acquise.
-  if (idxEtape === -1) return true
-  return idxStep <= idxEtape
+  if (idxStep === -1) return false
+  return acquises.includes(sequence[idxStep]!)
 }
 
 // ── Candidature envoyée (EXE-139) — marque humaine, distincte du statut
@@ -1620,6 +1635,9 @@ async function marquerEnvoyee() {
   try {
     const res = await $fetch<{ envoyee_le: string | null }>(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: true } })
     pieces.value = { ...pieces.value, envoyee_le: res.envoyee_le }
+    // Critère 18 : l'étape, la frise et les gestes sont relus avec l'offre,
+    // pas seulement `envoyee_le`.
+    offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
   } catch (e) {
     envoyeeError.value = await errorDetail(e)
   } finally {
@@ -1634,6 +1652,9 @@ async function annulerEnvoyee() {
   try {
     const res = await $fetch<{ envoyee_le: string | null }>(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: false } })
     pieces.value = { ...pieces.value, envoyee_le: res.envoyee_le }
+    // Critère 18 : l'étape, la frise et les gestes sont relus avec l'offre,
+    // pas seulement `envoyee_le`.
+    offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
   } catch (e) {
     envoyeeError.value = await errorDetail(e)
   } finally {

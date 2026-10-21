@@ -20,6 +20,9 @@
               {{ store.filters.order === 'asc' ? '↑' : '↓' }}
             </span>
           </th>
+          <!-- Écartées (EXE-194, critère 9) : date et motif de l'écart, rendus par l'API -->
+          <th v-if="isEcarteesView" class="px-3 py-3 text-left">Écartée le</th>
+          <th v-if="isEcarteesView" class="px-3 py-3 text-left">Motif</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-50">
@@ -97,7 +100,7 @@
           <!-- Verdict -->
           <td class="px-3 py-3 whitespace-nowrap">
             <div class="flex items-center gap-1.5">
-              <VerdictBadge :verdict="offer.verdict" :etape="offer.etape" />
+              <VerdictBadge :tri="offer.tri" :etape="offer.etape" :revue="offer.revue_hors_perimetre" />
               <span
                 v-if="offer.expired"
                 class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium"
@@ -105,6 +108,14 @@
                 Expiré
               </span>
             </div>
+          </td>
+
+          <!-- Écartées (EXE-194, critère 9) -->
+          <td v-if="isEcarteesView" class="px-3 py-3 whitespace-nowrap text-gray-400 text-xs">
+            {{ offer.ecartee_le?.slice(0, 10) ?? '—' }}
+          </td>
+          <td v-if="isEcarteesView" class="px-3 py-3 max-w-xs truncate text-gray-500 text-xs" :title="offer.motif_ecart ?? ''">
+            {{ offer.motif_ecart ?? '—' }}
           </td>
         </tr>
       </tbody>
@@ -125,6 +136,8 @@ defineEmits<{ select: [offer: OfferRow] }>()
 const props = withDefaults(defineProps<{ selectedId?: number; mode?: 'candidat' | 'operateur' }>(), { mode: 'candidat' })
 
 const store = useOffersStore()
+
+const isEcarteesView = computed(() => store.activeView === 'ecartees')
 
 const COLS = [
   { key: 'title',        label: 'Poste',       sortable: true  },

@@ -70,10 +70,11 @@ import { useNotificationsPanelStore } from '~/stores/notificationsPanel'
 type MenuEntry = { label: string; view: CandidateView } | { label: string; to: string }
 
 const MENU: MenuEntry[] = [
-  { label: 'Cibles',   view: 'cibles'   },
-  { label: 'Gaps',     view: 'gaps'     },
-  { label: 'Filet',    view: 'filet'    },
-  { label: 'Retenues', view: 'retenues' },
+  { label: 'Cibles',    view: 'cibles'   },
+  { label: 'Gaps',      view: 'gaps'     },
+  { label: 'Filet',     view: 'filet'    },
+  { label: 'Retenues',  view: 'retenues' },
+  { label: 'Écartées',  view: 'ecartees' },
 ]
 
 const store = useOffersStore()
