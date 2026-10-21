@@ -5,6 +5,15 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class GesteEtatSchema(BaseModel):
+    """Un geste de la table, permis ou non, avec sa raison en clair quand il
+    ne l'est pas (EXE-200, critère 14)."""
+
+    geste: str
+    permis: bool
+    raison: str | None = None
+
+
 class OfferRow(BaseModel):
     id: int
     title: str | None
@@ -14,11 +23,19 @@ class OfferRow(BaseModel):
     contract_type: str | None
     category: str | None = None  # parfait | reve | atteignable | hors
     verdict: str | None
+    # tri (EXE-200, critère 11) : a_trier | retenue | ecartee — jamais combiné
+    # avec la revue hors périmètre, à l'inverse de `verdict` ci-dessus.
+    tri: str = "a_trier"
+    # revue hors périmètre (EXE-200, critère 11) : axe séparé du tri —
+    # hors_perimetre_ok | hors_perimetre_faux_pos | None.
+    revue_hors_perimetre: str | None = None
     # dérivé, offre retenue seulement : retenue | prete_a_l_envoi | candidature_envoyee |
     # entretien | offre_recue | refusee | sans_suite | abandonnee (EXE-144, TCK-311)
     etape: str | None = None
     # gestes permis tout de suite, module d'états (TCK-311, EXE-193)
     gestes_permis: list[str] = []
+    # chaque geste de la table avec son état et sa raison si refusé (critère 14)
+    gestes: list[GesteEtatSchema] = []
     hors_perimetre_reason: str | None = None
     perimetre_causes: list[str] = []
     seen_candidat: bool
@@ -80,6 +97,11 @@ class OfferDetail(OfferRow):
     # langue détectée de l'annonce (fr|en|nl|other), sans modèle — EXE-183 : la
     # vue d'offre s'en sert pour afficher le CV anglais par défaut quand il existe.
     ad_language: str | None = None
+    # séquence fixe à afficher en tête d'une offre retenue, vide sinon (critère 15)
+    etapes_affichees: list[str] = []
+    # si « Tout télécharger » est possible, et sinon pourquoi (critère 16)
+    tout_telecharger_possible: bool = False
+    tout_telecharger_raison: str | None = None
 
 
 class EmployerUrlIn(BaseModel):

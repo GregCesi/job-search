@@ -83,24 +83,54 @@ def get_pieces(offer_id: int) -> dict:
     }
 
 
+#  États où « marquer envoyée » a déjà été fait avec succès — un second appel
+#  y est idempotent (critère 19, EXE-200). Les autres branches (abandonnée,
+#  refusée, sans suite) n'ont jamais forcément été envoyées : y refaire
+#  l'appel doit refuser, pas réussir silencieusement (H1, api/pieces.py).
+_ETATS_ENVOYEE_DEJA_FAITE = {
+    etats.CANDIDATURE_ENVOYEE,
+    etats.ENTRETIEN,
+    etats.OFFRE_RECUE,
+}
+
+
 @router.put("/{offer_id}/envoyee")
 def set_envoyee(offer_id: int, body: MarqueEnvoyeeIn) -> dict:
     with get_conn() as conn:
         _check_retenue(conn, offer_id)
         if body.envoyee:
+            etat_avant = suivi_storage.etat_stocke(conn, offer_id)
             try:
                 suivi_storage.appliquer_geste(conn, offer_id, etats.MARQUER_ENVOYEE)
             except etats.PiecesNonPretes as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
-            except etats.GesteRefuse:
-                pass  # déjà à l'étape candidature envoyée (ou au-delà) : rien à refaire
-        elif suivi_storage.etat_stocke(conn, offer_id) == etats.CANDIDATURE_ENVOYEE:
+            except etats.GesteRefuse as exc:
+                if etat_avant not in _ETATS_ENVOYEE_DEJA_FAITE:
+                    libelle = etats.LIBELLES_ETATS.get(etat_avant, etat_avant)
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Impossible de marquer « candidature envoyée » : "
+                            f"l'offre est à l'étape « {libelle} »."
+                        ),
+                    ) from exc
+                # déjà à l'étape candidature envoyée (ou au-delà) : rien à refaire
+        else:
             hist = suivi_storage.historique(conn, offer_id)
             dernier = etats.dernier_geste_non_annule(hist)
             if dernier is not None and dernier.geste == etats.MARQUER_ENVOYEE:
                 suivi_storage.annuler_dernier_geste(conn, offer_id)
-            # sinon : la candidature envoyée vient d'ailleurs (reprise, étape
-            # ultérieure défaite) — rien à annuler ici, idempotent.
+            elif any(
+                e.geste == etats.MARQUER_ENVOYEE and e.annule_at is None for e in hist
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Impossible d'annuler « Marquer envoyée » : "
+                        "ce n'est plus le dernier geste."
+                    ),
+                )
+            # sinon : jamais marquée envoyée — rien à annuler, idempotent.
         envoyee_le = suivi_storage.date_envoyee(conn, offer_id)
     return {"envoyee_le": envoyee_le}
 

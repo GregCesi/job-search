@@ -21,7 +21,7 @@ from orchestrator.job_search.suivi import etats as suivi_etats
 from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
-from .offers import _load_scoring_context
+from .offers import _VERDICT_ORDER, _correspond_au_filtre_verdict, _load_scoring_context
 
 router = APIRouter()
 
@@ -139,87 +139,100 @@ def export_offers(
     while len(order_parts) < len(sort_parts):
         order_parts.append(order_parts[-1] if order_parts else "desc")
 
-    order_clauses: list[str] = []
-    verdict_sort_dir: str | None = None
-    for s, o in zip(sort_parts, order_parts):
-        d = o.upper() if o.upper() in ("ASC", "DESC") else "DESC"
-        if s == "category":
-            order_clauses.append(f"""
-                CASE o.category
-                    WHEN 'parfait'     THEN 1
-                    WHEN 'reve'        THEN 2
-                    WHEN 'atteignable' THEN 3
-                    WHEN 'hors'        THEN 4
-                    ELSE 5
-                END {d}""")
-        elif s == "contract_type":
-            order_clauses.append(f"""
-                CASE o.contract_type
-                    WHEN 'CDI'       THEN 1
-                    WHEN 'Permanent' THEN 2
-                    WHEN 'Full-time' THEN 3
-                    WHEN 'Freelance' THEN 4
-                    WHEN 'LIB'       THEN 5
-                    WHEN 'CDD'       THEN 6
-                    WHEN 'MIS'       THEN 7
-                    WHEN 'Part-time' THEN 8
-                    ELSE 9
-                END {d}""")
-        elif s == "verdict":
-            verdict_sort_dir = d  # tri python après enrichissement, cf. plus bas
-        elif s in _sort_cols:
-            order_clauses.append(f"o.{s} {d} NULLS LAST")
-        else:
-            order_clauses.append("o.category DESC")
-    order_clause = ", ".join(order_clauses) if order_clauses else "o.category DESC"
-
-    sql = f"""
-        SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
-               o.category, o.url, o.description, o.source,
-               o.extracted_facts_json, o.techs_matched_json, o.techs_missing_json,
-               o.categorie_suggeree, o.categorie_corrigee, o.hors_perimetre_reason,
-               o.remarque
-        FROM offers o
-        {where}
-        ORDER BY {order_clause}
-    """
     conn = get_conn()
     try:
-        rows = conn.execute(sql, params).fetchall()
         etat_par_offre = suivi_storage.etat_map(conn)
         revue_par_offre = suivi_storage.revue_hors_perimetre_map(conn)
+
+        # Le verdict n'est pas une colonne SQL : un CASE sur o.id lui donne sa
+        # vraie place dans un tri composite (critère 20), jamais un tri Python
+        # après coup qui écrasait l'ordre des colonnes demandé.
+        verdict_case_sql = "5"
+        verdict_case_params: list = []
+        if "verdict" in sort_parts:
+            cases = []
+            for oid, etat in etat_par_offre.items():
+                label = revue_par_offre.get(oid)
+                if label is None:
+                    t = suivi_etats.tri(etat)
+                    if t == suivi_etats.RETENUE:
+                        label = "retenu"
+                    elif t == suivi_etats.ECARTEE:
+                        label = "ecartee"
+                rank = _VERDICT_ORDER.get(label)
+                if rank is not None:
+                    cases.append("WHEN ? THEN ?")
+                    verdict_case_params.extend([oid, rank])
+            if cases:
+                verdict_case_sql = f"CASE o.id {' '.join(cases)} ELSE 5 END"
+
+        order_clauses: list[str] = []
+        order_params: list = []
+        for s, o in zip(sort_parts, order_parts):
+            d = o.upper() if o.upper() in ("ASC", "DESC") else "DESC"
+            if s == "category":
+                order_clauses.append(f"""
+                    CASE o.category
+                        WHEN 'parfait'     THEN 1
+                        WHEN 'reve'        THEN 2
+                        WHEN 'atteignable' THEN 3
+                        WHEN 'hors'        THEN 4
+                        ELSE 5
+                    END {d}""")
+            elif s == "contract_type":
+                order_clauses.append(f"""
+                    CASE o.contract_type
+                        WHEN 'CDI'       THEN 1
+                        WHEN 'Permanent' THEN 2
+                        WHEN 'Full-time' THEN 3
+                        WHEN 'Freelance' THEN 4
+                        WHEN 'LIB'       THEN 5
+                        WHEN 'CDD'       THEN 6
+                        WHEN 'MIS'       THEN 7
+                        WHEN 'Part-time' THEN 8
+                        ELSE 9
+                    END {d}""")
+            elif s == "verdict":
+                order_clauses.append(f"{verdict_case_sql} {d}")
+                order_params.extend(verdict_case_params)
+            elif s in _sort_cols:
+                order_clauses.append(f"o.{s} {d} NULLS LAST")
+            else:
+                order_clauses.append("o.category DESC")
+        order_clause = ", ".join(order_clauses) if order_clauses else "o.category DESC"
+
+        sql = f"""
+            SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
+                   o.category, o.url, o.description, o.source,
+                   o.extracted_facts_json, o.techs_matched_json, o.techs_missing_json,
+                   o.categorie_suggeree, o.categorie_corrigee, o.hors_perimetre_reason,
+                   o.remarque
+            FROM offers o
+            {where}
+            ORDER BY {order_clause}
+        """
+        rows = conn.execute(sql, params + order_params).fetchall()
     finally:
         conn.close()
-
-    _VERDICT_ORDER = {
-        "retenu": 1,
-        "hors_perimetre_faux_pos": 2,
-        "hors_perimetre_ok": 3,
-        "ecartee": 4,
-    }
 
     enriched = []
     for r in rows:
         etat = etat_par_offre.get(r["id"], suivi_etats.A_TRIER)
         revue = revue_par_offre.get(r["id"])
+        tri_val = suivi_etats.tri(etat)
         label = revue
         if label is None:
-            t = suivi_etats.tri(etat)
-            if t == suivi_etats.RETENUE:
+            if tri_val == suivi_etats.RETENUE:
                 label = "retenu"
-            elif t == suivi_etats.ECARTEE:
+            elif tri_val == suivi_etats.ECARTEE:
                 label = "ecartee"
-        if verdict is not None and label != verdict:
+        if not _correspond_au_filtre_verdict(tri_val, revue, verdict):
             continue
         row = dict(r)
         row["verdict"] = label
+        row["tri"] = tri_val
+        row["revue_hors_perimetre"] = revue
         enriched.append(row)
-
-    if verdict_sort_dir is not None:
-        enriched.sort(
-            key=lambda row: _VERDICT_ORDER.get(row["verdict"], 5),
-            reverse=(verdict_sort_dir == "DESC"),
-        )
 
     return _format_export_md(enriched, fields)
 
@@ -275,6 +288,12 @@ def _format_export_md(rows: list, fields: set[str]) -> str:
             lines.append(f"- Contrat : {r['contract_type']}")
         if "verdict" in fields and r["verdict"]:
             lines.append(f"- Verdict : {r['verdict']}")
+        if "verdict" in fields:
+            # Tri et revue hors périmètre : deux champs séparés (critère 11),
+            # jamais combinés comme l'ancien « Verdict » ci-dessus.
+            lines.append(f"- Tri : {r['tri']}")
+            if r.get("revue_hors_perimetre"):
+                lines.append(f"- Revue hors périmètre : {r['revue_hors_perimetre']}")
         if "url" in fields and r["url"]:
             lines.append(f"- URL : {r['url']}")
 

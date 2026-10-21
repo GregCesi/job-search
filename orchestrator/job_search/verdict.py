@@ -44,7 +44,12 @@ def _record_verdict(conn, offer_id: int, geste: str) -> None:
     if row is None:
         raise ValueError(f"Offre id={offer_id} introuvable.")
 
-    nouvel_etat = suivi_storage.appliquer_geste(conn, offer_id, geste)
+    try:
+        nouvel_etat = suivi_storage.appliquer_geste(conn, offer_id, geste)
+    except (etats.GesteRefuse, etats.PiecesNonPretes) as exc:
+        # Message de refus affiché tel quel, sans trace d'erreur (critère 23).
+        print(f"✗ {exc}")
+        return
     print(f"✓ Geste '{geste}' enregistré pour : {row['title']} → {nouvel_etat}")
 
 

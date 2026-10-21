@@ -106,6 +106,52 @@ TRANSITIONS: dict[str, dict[str, str]] = {
     ABANDONNEE: {},
 }
 
+# Tous les gestes de la table, `annuler` compris (EXE-200, critère 14) — ordre
+# d'affichage, pas de signification métier.
+TOUS_GESTES = [
+    RETENIR,
+    ECARTER,
+    REMETTRE_A_TRIER,
+    MARQUER_ENVOYEE,
+    RELANCER,
+    ENTRETIEN_GESTE,
+    OFFRE_RECUE_GESTE,
+    REFUSER,
+    SANS_SUITE_GESTE,
+    ABANDONNER,
+    ANNULER,
+]
+
+# Libellés humains (EXE-200, critère 17) — pour les messages construits par
+# `gestes_avec_etat` et les routes qui refusent un geste. N'affecte jamais le
+# message de `GesteRefuse`/`PiecesNonPretes` elles-mêmes (compatibilité des
+# tests EXE-193 qui en lisent le code interne).
+LIBELLES_ETATS = {
+    A_TRIER: "à trier",
+    ECARTEE: "écartée",
+    RETENUE: "retenue",
+    CANDIDATURE_ENVOYEE: "candidature envoyée",
+    ENTRETIEN: "entretien",
+    OFFRE_RECUE: "offre reçue",
+    REFUSEE: "refusée",
+    SANS_SUITE: "sans suite",
+    ABANDONNEE: "abandonnée",
+}
+
+LIBELLES_GESTES = {
+    RETENIR: "Retenir",
+    ECARTER: "Écarter",
+    REMETTRE_A_TRIER: "Remettre à trier",
+    MARQUER_ENVOYEE: "Marquer envoyée",
+    RELANCER: "Relancer",
+    ENTRETIEN_GESTE: "Entretien",
+    OFFRE_RECUE_GESTE: "Offre reçue",
+    REFUSER: "Refuser",
+    SANS_SUITE_GESTE: "Sans suite",
+    ABANDONNER: "Abandonner",
+    ANNULER: "Annuler le dernier geste",
+}
+
 
 class GesteRefuse(Exception):
     """Le geste n'est pas permis depuis cet état (critère 2) — nomme les deux."""
@@ -158,6 +204,47 @@ def gestes_permis_effectifs(
     if annulable:
         permis.append(ANNULER)
     return permis
+
+
+@dataclass(frozen=True)
+class GesteEtat:
+    """Un geste de la table avec son état permis/refusé et, si refusé, la
+    raison en clair (EXE-200, critère 14)."""
+
+    geste: str
+    permis: bool
+    raison: str | None
+
+
+def gestes_avec_etat(
+    etat: str, *, cv_pret: bool, lettre_pret: bool, annulable: bool
+) -> list[GesteEtat]:
+    """Chaque geste de la table (`annuler` compris), permis ou non, avec la
+    raison du refus en clair quand il l'est (critère 14) — jamais par code
+    interne (critère 17)."""
+    resultat: list[GesteEtat] = []
+    for geste in TOUS_GESTES:
+        if geste == ANNULER:
+            permis = annulable
+            raison = None if permis else "Aucun geste à annuler."
+        elif geste not in TRANSITIONS.get(etat, {}):
+            permis = False
+            raison = (
+                f"« {LIBELLES_GESTES[geste]} » n'est pas possible depuis "
+                f"l'étape « {LIBELLES_ETATS.get(etat, etat)} »."
+            )
+        elif (
+            geste == MARQUER_ENVOYEE
+            and etat == RETENUE
+            and not (cv_pret and lettre_pret)
+        ):
+            permis = False
+            raison = str(PiecesNonPretes(cv_pret, lettre_pret))
+        else:
+            permis = True
+            raison = None
+        resultat.append(GesteEtat(geste=geste, permis=permis, raison=raison))
+    return resultat
 
 
 def appliquer(etat: str, geste: str, *, cv_pret: bool, lettre_pret: bool) -> str:

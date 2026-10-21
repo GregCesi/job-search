@@ -31,7 +31,7 @@ from orchestrator.job_search.lettre.redaction import (
     RAISON_TEXTE_MANQUANT,
     resolve_offer_text,
 )
-from orchestrator.job_search.paths import DB_PATH, LETTRE_BANC_JEUX_DIR
+from orchestrator.job_search.paths import LETTRE_BANC_JEUX_DIR
 from orchestrator.job_search.suivi import storage as suivi_storage
 
 RAISON_OFFRE_INTROUVABLE = "aucune offre ne correspond à ce numéro"
@@ -201,7 +201,7 @@ def main(
     argv: list[str] | None = None,
     *,
     jeux_dir: str | Path = LETTRE_BANC_JEUX_DIR,
-    db_path: str | Path = DB_PATH,
+    db_path: str | Path | None = None,
 ) -> int:
     """python -m orchestrator.job_search.lettre.jeu --nom essai1 --offres
     179,1677 (H2 du ticket)."""
@@ -224,9 +224,21 @@ def main(
         print(f"liste d'offres invalide : « {args.offres} »")
         return 1
 
-    conn = sqlite3.connect(db_path)
+    # `db_path` résolu ici, par import dynamique (pas en valeur par défaut
+    # figée au chargement du module), pour suivre un DB_PATH isolé en test
+    # (critère 5) ; `init_db` pour que la préparation fonctionne sur une base
+    # pas encore reprise, sans erreur de table manquante (critère 22) — H1 :
+    # ce module ouvrait la base sans elle.
+    if db_path is None:
+        from orchestrator.job_search.paths import DB_PATH as chemin
+    else:
+        chemin = db_path
+    conn = sqlite3.connect(chemin)
     conn.row_factory = sqlite3.Row
     try:
+        from orchestrator.job_search.storage.db import init_db
+
+        init_db(conn)
         try:
             resultat = asyncio.run(
                 preparer_jeu(conn, args.nom, offer_ids, jeux_dir=jeux_dir)

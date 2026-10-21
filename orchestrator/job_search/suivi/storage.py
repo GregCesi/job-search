@@ -29,6 +29,12 @@ def _pieces_pretes(conn: sqlite3.Connection, offer_id: int) -> tuple[bool, bool]
     return cv_statut(cv_row) == PRETE, lettre_statut(lettre_row) == PRETE
 
 
+def pieces_pretes(conn: sqlite3.Connection, offer_id: int) -> tuple[bool, bool]:
+    """(cv_pret, lettre_pret) — exposé pour les routes qui en ont besoin hors
+    du module (EXE-200, critères 15-16)."""
+    return _pieces_pretes(conn, offer_id)
+
+
 def etat_stocke(conn: sqlite3.Connection, offer_id: int) -> str:
     row = conn.execute(
         "SELECT etat FROM etats_offre WHERE offer_id = ?", (offer_id,)
@@ -118,6 +124,20 @@ def gestes_permis(conn: sqlite3.Connection, offer_id: int) -> list[str]:
     cv_pret, lettre_pret = _pieces_pretes(conn, offer_id)
     hist = historique(conn, offer_id)
     return etats.gestes_permis_effectifs(
+        etat,
+        cv_pret=cv_pret,
+        lettre_pret=lettre_pret,
+        annulable=etats.permis_annuler(hist),
+    )
+
+
+def gestes_avec_etat(conn: sqlite3.Connection, offer_id: int) -> list[etats.GesteEtat]:
+    """Chaque geste de la table, permis ou non, avec sa raison (critère 14 —
+    EXE-200)."""
+    etat = etat_stocke(conn, offer_id)
+    cv_pret, lettre_pret = _pieces_pretes(conn, offer_id)
+    hist = historique(conn, offer_id)
+    return etats.gestes_avec_etat(
         etat,
         cv_pret=cv_pret,
         lettre_pret=lettre_pret,

@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from orchestrator.job_search.pieces import cv_statut, lettre_statut
 from orchestrator.job_search.suivi import etats as suivi_etats
@@ -154,6 +154,25 @@ _SORT_COLS = {
     "hors_perimetre_reason",
 }
 
+# Rang du verdict combiné (tri ou revue hors périmètre, la revue gagnant —
+# cf. `_verdict_label`) pour le tri composite (critère 20).
+_VERDICT_ORDER = {
+    "retenu": 1,
+    "hors_perimetre_faux_pos": 2,
+    "hors_perimetre_ok": 3,
+    "ecartee": 4,
+}
+
+# Séquence fixe affichée en tête d'une offre retenue (critère 15) — seules les
+# étapes du chemin « heureux » ; une offre qui a bifurqué (refusée, sans
+# suite, abandonnée) n'y figure pas mais `etape` dit où elle est réellement.
+ETAPES_AFFICHEES = [
+    suivi_etats.RETENUE,
+    suivi_etats.PRETE_A_L_ENVOI,
+    suivi_etats.CANDIDATURE_ENVOYEE,
+    suivi_etats.ENTRETIEN,
+]
+
 
 def _derive_review_fields(row) -> dict:
     """Dérive categorie_finale + etat_review + staleness à la volée (jamais persistés)."""
@@ -237,6 +256,38 @@ def _verdict_label(etat: str, revue: str | None) -> str | None:
     return None
 
 
+def _correspond_au_filtre_verdict(
+    tri_val: str, revue_val: str | None, filtre: str | None
+) -> bool:
+    """Critère 12 : le filtre `verdict=retenu`/`ecartee` se décide sur le tri
+    seul — jamais masqué par la revue hors périmètre, qui a son propre axe et
+    son propre filtre (`hors_perimetre_ok`/`hors_perimetre_faux_pos`)."""
+    if filtre is None:
+        return True
+    if filtre == "retenu":
+        return tri_val == suivi_etats.RETENUE
+    if filtre == "ecartee":
+        return tri_val == suivi_etats.ECARTEE
+    if filtre in ("hors_perimetre_ok", "hors_perimetre_faux_pos"):
+        return revue_val == filtre
+    return False
+
+
+def _message_ecarter_refuse(etat: str) -> str:
+    """Critère 18 : dit ce qui est possible depuis cette étape (ses gestes
+    permis), jamais un conseil figé — libellés, jamais de code interne
+    (critère 17)."""
+    permis = suivi_etats.gestes_permis(etat)
+    libelle_etat = suivi_etats.LIBELLES_ETATS.get(etat, etat)
+    if not permis:
+        return f"Une offre « {libelle_etat} » ne s'écarte pas directement : aucun geste n'est possible depuis cette étape."
+    libelles = ", ".join(f"« {suivi_etats.LIBELLES_GESTES.get(g, g)} »" for g in permis)
+    return (
+        f"Une offre « {libelle_etat} » ne s'écarte pas directement : "
+        f"depuis cette étape, c'est possible par {libelles}."
+    )
+
+
 def _gestes_permis_depuis_row(row, etat: str, hist: list) -> list[str]:
     cv_pret, lettre_pret = _pieces_pretes_depuis_row(row)
     return suivi_etats.gestes_permis_effectifs(
@@ -245,6 +296,32 @@ def _gestes_permis_depuis_row(row, etat: str, hist: list) -> list[str]:
         lettre_pret=lettre_pret,
         annulable=suivi_etats.permis_annuler(hist),
     )
+
+
+def _gestes_avec_etat_depuis_row(row, etat: str, hist: list) -> list[dict]:
+    """Chaque geste de la table, permis ou non avec sa raison (critère 14)."""
+    cv_pret, lettre_pret = _pieces_pretes_depuis_row(row)
+    return [
+        {"geste": g.geste, "permis": g.permis, "raison": g.raison}
+        for g in suivi_etats.gestes_avec_etat(
+            etat,
+            cv_pret=cv_pret,
+            lettre_pret=lettre_pret,
+            annulable=suivi_etats.permis_annuler(hist),
+        )
+    ]
+
+
+def _tout_telecharger(cv_pret: bool, lettre_pret: bool) -> tuple[bool, str | None]:
+    """Si « Tout télécharger » est possible, et sinon pourquoi, en clair
+    (critère 16)."""
+    if cv_pret and lettre_pret:
+        return True, None
+    if not cv_pret and not lettre_pret:
+        return False, "Le CV et la lettre ne sont pas encore prêts."
+    if not cv_pret:
+        return False, "Le CV n'est pas encore prêt."
+    return False, "La lettre n'est pas encore prête."
 
 
 # ---------------------------------------------------------------------------
@@ -387,82 +464,95 @@ def list_offers(
     while len(order_parts) < len(sort_parts):
         order_parts.append(order_parts[-1] if order_parts else "desc")
 
-    order_clauses: list[str] = []
-    verdict_sort_dir: str | None = None
-    for s, o in zip(sort_parts, order_parts):
-        d = o.upper() if o.upper() in ("ASC", "DESC") else "DESC"
-        if s == "category":
-            order_clauses.append(f"""
-                CASE o.category
-                    WHEN 'parfait'     THEN 1
-                    WHEN 'reve'        THEN 2
-                    WHEN 'atteignable' THEN 3
-                    WHEN 'hors'        THEN 4
-                    ELSE 5
-                END {d}""")
-        elif s == "location":
-            order_clauses.append(f"""
-                CASE WHEN o.remote = 1 THEN 1 ELSE 0 END {d},
-                o.location {d} NULLS LAST""")
-        elif s == "contract_type":
-            order_clauses.append(f"""
-                CASE o.contract_type
-                    WHEN 'CDI'       THEN 1
-                    WHEN 'Permanent' THEN 2
-                    WHEN 'Full-time' THEN 3
-                    WHEN 'Freelance' THEN 4
-                    WHEN 'LIB'       THEN 5
-                    WHEN 'CDD'       THEN 6
-                    WHEN 'MIS'       THEN 7
-                    WHEN 'Part-time' THEN 8
-                    ELSE 9
-                END {d}""")
-        elif s == "verdict":
-            verdict_sort_dir = d  # tri python après enrichissement, cf. plus bas
-        elif s in _SORT_COLS:
-            order_clauses.append(f"o.{s} {d} NULLS LAST")
-        else:
-            order_clauses.append("o.category DESC")
-    order_clause = ", ".join(order_clauses) if order_clauses else "o.category DESC"
-    sql = f"""
-        SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
-               o.category, o.seen_candidat, o.fetched_at, o.filtered_out, o.filter_reason,
-               o.hors_perimetre_reason, o.perimetre_causes,
-               o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
-               o.rescored_at, o.extraction_status, o.extraction_attempts,
-               c.id AS cv_id, c.marque_pret_at AS cv_marque_pret_at,
-               l.id AS lettre_id, l.statut AS lettre_statut_raw,
-               l.marque_pret_at AS lettre_marque_pret_at,
-               ex.expired AS expiration_expired
-        FROM offers o
-        LEFT JOIN cvs c ON c.offer_id = o.id
-        LEFT JOIN lettres l ON l.offer_id = o.id
-        LEFT JOIN expirations ex ON ex.offer_id = o.id
-        {where}
-        ORDER BY {order_clause}
-    """
     conn = get_conn()
     try:
-        rows = conn.execute(sql, params).fetchall()
         etat_par_offre = suivi_storage.etat_map(conn)
         revue_par_offre = suivi_storage.revue_hors_perimetre_map(conn)
+
+        # Le verdict n'est pas une colonne SQL : un CASE sur o.id, construit à
+        # partir des rangs calculés ci-dessus, lui donne sa vraie place dans un
+        # tri composite (critère 20) — jamais un tri Python après coup, qui
+        # écrasait l'ordre des colonnes demandé.
+        verdict_case_sql = "5"
+        verdict_case_params: list = []
+        if "verdict" in sort_parts:
+            cases = []
+            for oid, etat in etat_par_offre.items():
+                label = _verdict_label(etat, revue_par_offre.get(oid))
+                rank = _VERDICT_ORDER.get(label)
+                if rank is not None:
+                    cases.append("WHEN ? THEN ?")
+                    verdict_case_params.extend([oid, rank])
+            if cases:
+                verdict_case_sql = f"CASE o.id {' '.join(cases)} ELSE 5 END"
+
+        order_clauses: list[str] = []
+        order_params: list = []
+        for s, o in zip(sort_parts, order_parts):
+            d = o.upper() if o.upper() in ("ASC", "DESC") else "DESC"
+            if s == "category":
+                order_clauses.append(f"""
+                    CASE o.category
+                        WHEN 'parfait'     THEN 1
+                        WHEN 'reve'        THEN 2
+                        WHEN 'atteignable' THEN 3
+                        WHEN 'hors'        THEN 4
+                        ELSE 5
+                    END {d}""")
+            elif s == "location":
+                order_clauses.append(f"""
+                    CASE WHEN o.remote = 1 THEN 1 ELSE 0 END {d},
+                    o.location {d} NULLS LAST""")
+            elif s == "contract_type":
+                order_clauses.append(f"""
+                    CASE o.contract_type
+                        WHEN 'CDI'       THEN 1
+                        WHEN 'Permanent' THEN 2
+                        WHEN 'Full-time' THEN 3
+                        WHEN 'Freelance' THEN 4
+                        WHEN 'LIB'       THEN 5
+                        WHEN 'CDD'       THEN 6
+                        WHEN 'MIS'       THEN 7
+                        WHEN 'Part-time' THEN 8
+                        ELSE 9
+                    END {d}""")
+            elif s == "verdict":
+                order_clauses.append(f"{verdict_case_sql} {d}")
+                order_params.extend(verdict_case_params)
+            elif s in _SORT_COLS:
+                order_clauses.append(f"o.{s} {d} NULLS LAST")
+            else:
+                order_clauses.append("o.category DESC")
+        order_clause = ", ".join(order_clauses) if order_clauses else "o.category DESC"
+        sql = f"""
+            SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,
+                   o.category, o.seen_candidat, o.fetched_at, o.filtered_out, o.filter_reason,
+                   o.hors_perimetre_reason, o.perimetre_causes,
+                   o.categorie_suggeree, o.categorie_corrigee, o.remarque, o.reviewed_at,
+                   o.rescored_at, o.extraction_status, o.extraction_attempts,
+                   c.id AS cv_id, c.marque_pret_at AS cv_marque_pret_at,
+                   l.id AS lettre_id, l.statut AS lettre_statut_raw,
+                   l.marque_pret_at AS lettre_marque_pret_at,
+                   ex.expired AS expiration_expired
+            FROM offers o
+            LEFT JOIN cvs c ON c.offer_id = o.id
+            LEFT JOIN lettres l ON l.offer_id = o.id
+            LEFT JOIN expirations ex ON ex.offer_id = o.id
+            {where}
+            ORDER BY {order_clause}
+        """
+        rows = conn.execute(sql, params + order_params).fetchall()
         hist_par_offre = suivi_storage.historique_map(conn)
     finally:
         conn.close()
-
-    _VERDICT_ORDER = {
-        "retenu": 1,
-        "hors_perimetre_faux_pos": 2,
-        "hors_perimetre_ok": 3,
-        "ecartee": 4,
-    }
 
     result = []
     for r in rows:
         etat = etat_par_offre.get(r["id"], suivi_etats.A_TRIER)
         revue = revue_par_offre.get(r["id"])
         verdict_label = _verdict_label(etat, revue)
-        if verdict is not None and verdict_label != verdict:
+        tri_val = suivi_etats.tri(etat)
+        if not _correspond_au_filtre_verdict(tri_val, revue, verdict):
             continue
         hist = hist_par_offre.get(r["id"], [])
         result.append(
@@ -475,8 +565,11 @@ def list_offers(
                 contract_type=r["contract_type"],
                 category=r["category"],
                 verdict=verdict_label,
+                tri=tri_val,
+                revue_hors_perimetre=revue,
                 etape=_derive_etape(r, etat),
                 gestes_permis=_gestes_permis_depuis_row(r, etat, hist),
+                gestes=_gestes_avec_etat_depuis_row(r, etat, hist),
                 hors_perimetre_reason=r["hors_perimetre_reason"],
                 perimetre_causes=json.loads(r["perimetre_causes"])
                 if r["perimetre_causes"]
@@ -494,11 +587,6 @@ def list_offers(
             )
         )
 
-    if verdict_sort_dir is not None:
-        result.sort(
-            key=lambda row: _VERDICT_ORDER.get(row.verdict, 5),
-            reverse=(verdict_sort_dir == "DESC"),
-        )
     return result
 
 
@@ -566,11 +654,20 @@ def get_offer(offer_id: int) -> OfferDetail:
         conn.execute("UPDATE offers SET seen_candidat = 1 WHERE id = ?", (offer_id,))
         conn.commit()
 
+        etat = suivi_storage.etat_stocke(conn, offer_id)
+        tri_val = suivi_etats.tri(etat)
+        revue_val = suivi_storage.revue_hors_perimetre(conn, offer_id)
         verdict_label = suivi_storage.verdict_label(conn, offer_id)
         etape = suivi_storage.etape(conn, offer_id)
         gestes_permis = suivi_storage.gestes_permis(conn, offer_id)
+        gestes = suivi_storage.gestes_avec_etat(conn, offer_id)
+        cv_pret, lettre_pret = suivi_storage.pieces_pretes(conn, offer_id)
     finally:
         conn.close()
+
+    tout_telecharger_possible, tout_telecharger_raison = _tout_telecharger(
+        cv_pret, lettre_pret
+    )
 
     return OfferDetail(
         id=row["id"],
@@ -582,8 +679,16 @@ def get_offer(offer_id: int) -> OfferDetail:
         contract_type=row["contract_type"],
         category=row["category"],
         verdict=verdict_label,
+        tri=tri_val,
+        revue_hors_perimetre=revue_val,
         etape=etape,
         gestes_permis=gestes_permis,
+        gestes=[
+            {"geste": g.geste, "permis": g.permis, "raison": g.raison} for g in gestes
+        ],
+        etapes_affichees=ETAPES_AFFICHEES if tri_val == suivi_etats.RETENUE else [],
+        tout_telecharger_possible=tout_telecharger_possible,
+        tout_telecharger_raison=tout_telecharger_raison,
         hors_perimetre_reason=row["hors_perimetre_reason"],
         perimetre_causes=json.loads(row["perimetre_causes"])
         if row["perimetre_causes"]
@@ -663,6 +768,19 @@ class GesteIn(BaseModel):
     motif: str | None = None
     effet_at: str | None = None
 
+    @field_validator("effet_at")
+    @classmethod
+    def _effet_at_doit_etre_une_date(cls, v: str | None) -> str | None:
+        """Critère 21 : refusé en 422 avant toute écriture si `effet_at` n'est
+        pas une date — la validation Pydantic tourne avant le corps de la
+        route."""
+        if v is not None:
+            try:
+                datetime.fromisoformat(v)
+            except ValueError as exc:
+                raise ValueError(f"effet_at n'est pas une date valide : {v!r}") from exc
+        return v
+
 
 @router.post("/offers/{offer_id}/geste")
 async def appliquer_geste_route(offer_id: int, body: GesteIn) -> dict:
@@ -733,11 +851,7 @@ async def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
                 suivi_storage.appliquer_geste(conn, offer_id, suivi_etats.ECARTER)
             elif etat != suivi_etats.ECARTEE:
                 raise HTTPException(
-                    status_code=409,
-                    detail=(
-                        "Une offre retenue ne s'écarte pas directement "
-                        "(Abandonner, puis Remettre à trier)"
-                    ),
+                    status_code=409, detail=_message_ecarter_refuse(etat)
                 )
     finally:
         conn.close()
