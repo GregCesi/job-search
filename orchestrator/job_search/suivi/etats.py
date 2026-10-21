@@ -12,6 +12,7 @@ pas ici : elle ne change jamais cet état (architecture.md, section TCK-311).
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 # ---------------------------------------------------------------------------
 # États stockés
@@ -154,13 +155,16 @@ LIBELLES_GESTES = {
 
 
 class GesteRefuse(Exception):
-    """Le geste n'est pas permis depuis cet état (critère 2) — nomme les deux."""
+    """Le geste n'est pas permis depuis cet état (critère 2) — nomme les deux,
+    par leur libellé, jamais par leur code interne (EXE-194, critère 20)."""
 
     def __init__(self, etat: str, geste: str):
         self.etat = etat
         self.geste = geste
+        libelle_geste = LIBELLES_GESTES.get(geste, geste)
+        libelle_etat = LIBELLES_ETATS.get(etat, etat)
         super().__init__(
-            f"Le geste « {geste} » n'est pas permis depuis l'état « {etat} »"
+            f"Le geste « {libelle_geste} » n'est pas permis depuis l'étape « {libelle_etat} »"
         )
 
 
@@ -208,27 +212,69 @@ def gestes_permis_effectifs(
 
 @dataclass(frozen=True)
 class GesteEtat:
-    """Un geste de la table avec son état permis/refusé et, si refusé, la
-    raison en clair (EXE-200, critère 14)."""
+    """Un geste de la table avec son état permis/refusé, son libellé humain et,
+    si refusé, la raison en clair (EXE-200, critère 14 ; libellé EXE-194,
+    critères 14-15)."""
 
     geste: str
     permis: bool
+    libelle: str
     raison: str | None
 
 
+_MOIS_FR = [
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
+]
+
+
+def _jour_mois_fr(iso: str) -> str:
+    d = datetime.fromisoformat(iso)
+    return f"{d.day} {_MOIS_FR[d.month - 1]}"
+
+
+def libelle_annuler(dernier: "EvenementHistorique | None") -> str:
+    """Dit quel geste l'annulation défera et sa date d'effet (EXE-194, critère
+    15) — par exemple « Annuler Marquer envoyée du 19 octobre » ; libellé
+    générique si rien à annuler."""
+    if dernier is None:
+        return LIBELLES_GESTES[ANNULER]
+    libelle_geste = LIBELLES_GESTES.get(dernier.geste, dernier.geste)
+    return f"Annuler {libelle_geste} du {_jour_mois_fr(dernier.effet_at)}"
+
+
 def gestes_avec_etat(
-    etat: str, *, cv_pret: bool, lettre_pret: bool, annulable: bool
+    etat: str,
+    *,
+    cv_pret: bool,
+    lettre_pret: bool,
+    dernier_annulable: "EvenementHistorique | None",
 ) -> list[GesteEtat]:
-    """Chaque geste de la table (`annuler` compris), permis ou non, avec la
-    raison du refus en clair quand il l'est (critère 14) — jamais par code
-    interne (critère 17)."""
+    """Chaque geste de la table (`annuler` compris), permis ou non, avec son
+    libellé et la raison du refus en clair quand il l'est (critère 14) —
+    jamais par code interne (critère 17). `dernier_annulable` est le dernier
+    geste non annulé de l'historique, ou `None` s'il n'y a rien à annuler
+    (EXE-194, critère 15 : donne sa date d'effet au libellé)."""
+    annulable = dernier_annulable is not None
     resultat: list[GesteEtat] = []
     for geste in TOUS_GESTES:
         if geste == ANNULER:
             permis = annulable
+            libelle = libelle_annuler(dernier_annulable)
             raison = None if permis else "Aucun geste à annuler."
         elif geste not in TRANSITIONS.get(etat, {}):
             permis = False
+            libelle = LIBELLES_GESTES[geste]
             raison = (
                 f"« {LIBELLES_GESTES[geste]} » n'est pas possible depuis "
                 f"l'étape « {LIBELLES_ETATS.get(etat, etat)} »."
@@ -239,11 +285,15 @@ def gestes_avec_etat(
             and not (cv_pret and lettre_pret)
         ):
             permis = False
+            libelle = LIBELLES_GESTES[geste]
             raison = str(PiecesNonPretes(cv_pret, lettre_pret))
         else:
             permis = True
+            libelle = LIBELLES_GESTES[geste]
             raison = None
-        resultat.append(GesteEtat(geste=geste, permis=permis, raison=raison))
+        resultat.append(
+            GesteEtat(geste=geste, permis=permis, libelle=libelle, raison=raison)
+        )
     return resultat
 
 
@@ -308,3 +358,69 @@ def dernier_geste_non_annule(
         if e.annule_at is None:
             return e
     return None
+
+
+def dernier_ecart(
+    historique: list[EvenementHistorique],
+) -> EvenementHistorique | None:
+    """Le plus récent geste `ecarter` non annulé, ou `None` (EXE-194, critères
+    9 et 11) — date d'effet et motif de l'écart affichés dans Écartées."""
+    for e in reversed(historique):
+        if e.annule_at is None and e.geste == ECARTER:
+            return e
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Rang de progression sur le chemin heureux, pour la frise (EXE-194, critère
+# 22) — résout une bifurcation (refusée/sans suite/abandonnée) via l'état de
+# départ du geste qui y a mené, jamais via la position de l'état courant dans
+# la séquence affichée (qui rendait TOUT acquis dès qu'un état hors séquence
+# était atteint — le défaut nommé par le ticket).
+# ---------------------------------------------------------------------------
+
+_RANG_ON_PATH = {
+    RETENUE: 1,
+    CANDIDATURE_ENVOYEE: 2,
+    ENTRETIEN: 3,
+    OFFRE_RECUE: 4,
+}
+
+ETATS_BRANCHE = {REFUSEE, SANS_SUITE, ABANDONNEE}
+
+
+def rang_progression(etat: str, historique: list[EvenementHistorique]) -> int:
+    """Rang atteint sur le chemin heureux (0 à 4). Pour un état hors chemin
+    (branche), remonte à l'état de départ du geste qui y a mené."""
+    if etat in _RANG_ON_PATH:
+        return _RANG_ON_PATH[etat]
+    if etat in ETATS_BRANCHE:
+        for e in reversed(historique):
+            if e.annule_at is None and e.etat_arrivee == etat:
+                return _RANG_ON_PATH.get(e.etat_depart, 0)
+    return 0
+
+
+def etapes_acquises(
+    etat: str,
+    historique: list[EvenementHistorique],
+    *,
+    cv_pret: bool,
+    lettre_pret: bool,
+) -> list[str]:
+    """Sous-ensemble de `ETAPES_AFFICHEES` (api/offers.py) réellement acquis
+    (critère 22) — jamais « tout acquis par défaut » pour un état hors
+    séquence, qui montrait « candidature envoyée » pour une offre abandonnée
+    depuis « retenue » sans jamais avoir été envoyée."""
+    rang = rang_progression(etat, historique)
+    etape_actuelle = etape_affichee(etat, cv_pret=cv_pret, lettre_pret=lettre_pret)
+    acquises: list[str] = []
+    if rang >= 1:
+        acquises.append(RETENUE)
+    if rang >= 2 or (rang == 1 and etape_actuelle == PRETE_A_L_ENVOI):
+        acquises.append(PRETE_A_L_ENVOI)
+    if rang >= 2:
+        acquises.append(CANDIDATURE_ENVOYEE)
+    if rang >= 3:
+        acquises.append(ENTRETIEN)
+    return acquises

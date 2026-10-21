@@ -126,8 +126,9 @@ class TestCritere13GesteRefuseRepond409:
                 suivi_storage.appliquer_geste(conn, 4, suivi_etats.MARQUER_ENVOYEE)
         finally:
             conn.close()
-        assert "a_trier" in str(exc_info.value)
-        assert "marquer_envoyee" in str(exc_info.value)
+        # EXE-194, critère 20 : libellé, jamais code interne (H4 du ticket).
+        assert "à trier" in str(exc_info.value)
+        assert "Marquer envoyée" in str(exc_info.value)
 
     def test_marquer_envoyee_409_si_offre_pas_retenue(self, db_path):
         _insert_offer(db_path, 5)
@@ -143,8 +144,9 @@ class TestCritere13GesteRefuseRepond409:
         )
         assert resp.status_code == 409
         detail = resp.json()["detail"]
-        assert suivi_etats.A_TRIER in detail
-        assert suivi_etats.MARQUER_ENVOYEE in detail
+        # EXE-194, critère 20 : libellé, jamais code interne (H4 du ticket).
+        assert suivi_etats.LIBELLES_ETATS[suivi_etats.A_TRIER] in detail
+        assert suivi_etats.LIBELLES_GESTES[suivi_etats.MARQUER_ENVOYEE] in detail
 
 
 class TestCritere13ChaqueGesteDeLaTableSappliqueParLApi:

@@ -55,8 +55,11 @@ class TestCritere2GesteAbsentRefuse:
         with pytest.raises(etats.GesteRefuse) as exc_info:
             etats.appliquer(etat, geste, cv_pret=True, lettre_pret=True)
         message = str(exc_info.value)
-        assert etat in message
-        assert geste in message
+        # EXE-194, critère 20 : le message nomme l'état et le geste par leur
+        # libellé, jamais par leur code interne (contredit par ce ticket le
+        # choix du jet 45 — H4 du ticket).
+        assert etats.LIBELLES_ETATS[etat] in message
+        assert etats.LIBELLES_GESTES[geste] in message
 
     def test_gestes_permis_exclut_ce_qui_nest_pas_dans_la_table(self):
         assert etats.MARQUER_ENVOYEE not in etats.gestes_permis(etats.A_TRIER)

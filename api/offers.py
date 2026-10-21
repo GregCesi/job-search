@@ -268,6 +268,8 @@ def _correspond_au_filtre_verdict(
         return tri_val == suivi_etats.RETENUE
     if filtre == "ecartee":
         return tri_val == suivi_etats.ECARTEE
+    if filtre == "a_trier":
+        return tri_val == suivi_etats.A_TRIER
     if filtre in ("hors_perimetre_ok", "hors_perimetre_faux_pos"):
         return revue_val == filtre
     return False
@@ -299,17 +301,27 @@ def _gestes_permis_depuis_row(row, etat: str, hist: list) -> list[str]:
 
 
 def _gestes_avec_etat_depuis_row(row, etat: str, hist: list) -> list[dict]:
-    """Chaque geste de la table, permis ou non avec sa raison (critère 14)."""
+    """Chaque geste de la table, permis ou non avec son libellé et sa raison
+    (critère 14 ; libellé dynamique de l'annulation — EXE-194, critère 15)."""
     cv_pret, lettre_pret = _pieces_pretes_depuis_row(row)
     return [
-        {"geste": g.geste, "permis": g.permis, "raison": g.raison}
+        {"geste": g.geste, "permis": g.permis, "libelle": g.libelle, "raison": g.raison}
         for g in suivi_etats.gestes_avec_etat(
             etat,
             cv_pret=cv_pret,
             lettre_pret=lettre_pret,
-            annulable=suivi_etats.permis_annuler(hist),
+            dernier_annulable=suivi_etats.dernier_geste_non_annule(hist),
         )
     ]
+
+
+def _ecart_depuis_hist(hist: list) -> tuple[str | None, str | None]:
+    """(ecartee_le, motif_ecart) dérivés du dernier geste `ecarter` non annulé
+    (EXE-194, critères 9, 11)."""
+    ev = suivi_etats.dernier_ecart(hist)
+    if ev is None:
+        return None, None
+    return ev.effet_at, ev.motif
 
 
 def _tout_telecharger(cv_pret: bool, lettre_pret: bool) -> tuple[bool, str | None]:
@@ -468,6 +480,7 @@ def list_offers(
     try:
         etat_par_offre = suivi_storage.etat_map(conn)
         revue_par_offre = suivi_storage.revue_hors_perimetre_map(conn)
+        hist_par_offre = suivi_storage.historique_map(conn)
 
         # Le verdict n'est pas une colonne SQL : un CASE sur o.id, construit à
         # partir des rangs calculés ci-dessus, lui donne sa vraie place dans un
@@ -485,6 +498,21 @@ def list_offers(
                     verdict_case_params.extend([oid, rank])
             if cases:
                 verdict_case_sql = f"CASE o.id {' '.join(cases)} ELSE 5 END"
+
+        # Date du dernier écart, pour trier Écartées « la plus récente d'abord »
+        # (EXE-194, critère 9) — même technique que le verdict ci-dessus : un
+        # CASE précalculé en Python, jamais un tri Python après coup.
+        ecartee_case_sql = "NULL"
+        ecartee_case_params: list = []
+        if "ecartee_le" in sort_parts:
+            cases = []
+            for oid, hist in hist_par_offre.items():
+                ev = suivi_etats.dernier_ecart(hist)
+                if ev is not None:
+                    cases.append("WHEN ? THEN ?")
+                    ecartee_case_params.extend([oid, ev.effet_at])
+            if cases:
+                ecartee_case_sql = f"CASE o.id {' '.join(cases)} ELSE NULL END"
 
         order_clauses: list[str] = []
         order_params: list = []
@@ -519,6 +547,9 @@ def list_offers(
             elif s == "verdict":
                 order_clauses.append(f"{verdict_case_sql} {d}")
                 order_params.extend(verdict_case_params)
+            elif s == "ecartee_le":
+                order_clauses.append(f"{ecartee_case_sql} {d} NULLS LAST")
+                order_params.extend(ecartee_case_params)
             elif s in _SORT_COLS:
                 order_clauses.append(f"o.{s} {d} NULLS LAST")
             else:
@@ -542,7 +573,6 @@ def list_offers(
             ORDER BY {order_clause}
         """
         rows = conn.execute(sql, params + order_params).fetchall()
-        hist_par_offre = suivi_storage.historique_map(conn)
     finally:
         conn.close()
 
@@ -555,6 +585,7 @@ def list_offers(
         if not _correspond_au_filtre_verdict(tri_val, revue, verdict):
             continue
         hist = hist_par_offre.get(r["id"], [])
+        ecartee_le, motif_ecart = _ecart_depuis_hist(hist)
         result.append(
             OfferRow(
                 id=r["id"],
@@ -574,6 +605,8 @@ def list_offers(
                 perimetre_causes=json.loads(r["perimetre_causes"])
                 if r["perimetre_causes"]
                 else [],
+                ecartee_le=ecartee_le,
+                motif_ecart=motif_ecart,
                 seen_candidat=bool(r["seen_candidat"]),
                 fetched_at=r["fetched_at"] or "",
                 **_derive_review_fields(r),
@@ -661,6 +694,10 @@ def get_offer(offer_id: int) -> OfferDetail:
         etape = suivi_storage.etape(conn, offer_id)
         gestes_permis = suivi_storage.gestes_permis(conn, offer_id)
         gestes = suivi_storage.gestes_avec_etat(conn, offer_id)
+        etapes_acquises = suivi_storage.etapes_acquises(conn, offer_id)
+        dernier_ecart_evt = suivi_storage.dernier_ecart(conn, offer_id)
+        ecartee_le = dernier_ecart_evt.effet_at if dernier_ecart_evt else None
+        motif_ecart = dernier_ecart_evt.motif if dernier_ecart_evt else None
         cv_pret, lettre_pret = suivi_storage.pieces_pretes(conn, offer_id)
     finally:
         conn.close()
@@ -684,11 +721,20 @@ def get_offer(offer_id: int) -> OfferDetail:
         etape=etape,
         gestes_permis=gestes_permis,
         gestes=[
-            {"geste": g.geste, "permis": g.permis, "raison": g.raison} for g in gestes
+            {
+                "geste": g.geste,
+                "permis": g.permis,
+                "libelle": g.libelle,
+                "raison": g.raison,
+            }
+            for g in gestes
         ],
         etapes_affichees=ETAPES_AFFICHEES if tri_val == suivi_etats.RETENUE else [],
+        etapes_acquises=etapes_acquises,
         tout_telecharger_possible=tout_telecharger_possible,
         tout_telecharger_raison=tout_telecharger_raison,
+        ecartee_le=ecartee_le,
+        motif_ecart=motif_ecart,
         hors_perimetre_reason=row["hors_perimetre_reason"],
         perimetre_causes=json.loads(row["perimetre_causes"])
         if row["perimetre_causes"]
@@ -848,7 +894,9 @@ async def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
         elif body.status == "ecartee":
             etat = suivi_storage.etat_stocke(conn, offer_id)
             if etat == suivi_etats.A_TRIER:
-                suivi_storage.appliquer_geste(conn, offer_id, suivi_etats.ECARTER)
+                suivi_storage.appliquer_geste(
+                    conn, offer_id, suivi_etats.ECARTER, motif=body.motif
+                )
             elif etat != suivi_etats.ECARTEE:
                 raise HTTPException(
                     status_code=409, detail=_message_ecarter_refuse(etat)
@@ -942,6 +990,9 @@ def get_review(offer_id: int) -> ReviewOut:
 
 @router.delete("/offers/{offer_id}/verdict", status_code=204)
 def delete_verdict(offer_id: int) -> None:
+    """Annule le dernier geste du tri/de la candidature — ne touche JAMAIS la
+    revue hors périmètre, axe à part (EXE-194, critère 16) : voir
+    `retirer_revue` ci-dessous pour ça."""
     conn = get_conn()
     try:
         offer = conn.execute(
@@ -949,12 +1000,33 @@ def delete_verdict(offer_id: int) -> None:
         ).fetchone()
         if offer is None:
             raise HTTPException(status_code=404, detail="offer not found")
-        if suivi_storage.revue_hors_perimetre(conn, offer_id) is not None:
-            suivi_storage.effacer_revue_hors_perimetre(conn, offer_id)
-        else:
-            try:
-                suivi_storage.annuler_dernier_geste(conn, offer_id)
-            except suivi_etats.GesteRefuse:
-                pass  # rien à annuler : déjà à trier
+        try:
+            suivi_storage.annuler_dernier_geste(conn, offer_id)
+        except suivi_etats.GesteRefuse:
+            pass  # rien à annuler : déjà à trier
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# DELETE /offers/{id}/revue — retire la revue hors périmètre, distinct de
+# l'annulation (EXE-194, critère 17) : ne change jamais le tri ni l'historique.
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/offers/{offer_id}/revue", status_code=204)
+def retirer_revue(offer_id: int) -> None:
+    conn = get_conn()
+    try:
+        offer = conn.execute(
+            "SELECT id FROM offers WHERE id = ?", (offer_id,)
+        ).fetchone()
+        if offer is None:
+            raise HTTPException(status_code=404, detail="offer not found")
+        if suivi_storage.revue_hors_perimetre(conn, offer_id) is None:
+            raise HTTPException(
+                status_code=409, detail="Aucune revue hors périmètre à retirer."
+            )
+        suivi_storage.effacer_revue_hors_perimetre(conn, offer_id)
     finally:
         conn.close()

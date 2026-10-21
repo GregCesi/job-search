@@ -132,8 +132,9 @@ def gestes_permis(conn: sqlite3.Connection, offer_id: int) -> list[str]:
 
 
 def gestes_avec_etat(conn: sqlite3.Connection, offer_id: int) -> list[etats.GesteEtat]:
-    """Chaque geste de la table, permis ou non, avec sa raison (critère 14 —
-    EXE-200)."""
+    """Chaque geste de la table, permis ou non, avec son libellé et sa raison
+    (critère 14 — EXE-200 ; libellé dynamique de l'annulation — EXE-194,
+    critère 15)."""
     etat = etat_stocke(conn, offer_id)
     cv_pret, lettre_pret = _pieces_pretes(conn, offer_id)
     hist = historique(conn, offer_id)
@@ -141,8 +142,23 @@ def gestes_avec_etat(conn: sqlite3.Connection, offer_id: int) -> list[etats.Gest
         etat,
         cv_pret=cv_pret,
         lettre_pret=lettre_pret,
-        annulable=etats.permis_annuler(hist),
+        dernier_annulable=etats.dernier_geste_non_annule(hist),
     )
+
+
+def etapes_acquises(conn: sqlite3.Connection, offer_id: int) -> list[str]:
+    """Sous-ensemble de la frise réellement acquis (EXE-194, critère 22)."""
+    etat = etat_stocke(conn, offer_id)
+    cv_pret, lettre_pret = _pieces_pretes(conn, offer_id)
+    hist = historique(conn, offer_id)
+    return etats.etapes_acquises(etat, hist, cv_pret=cv_pret, lettre_pret=lettre_pret)
+
+
+def dernier_ecart(
+    conn: sqlite3.Connection, offer_id: int
+) -> etats.EvenementHistorique | None:
+    """Dernier geste `ecarter` non annulé (EXE-194, critères 9 et 11)."""
+    return etats.dernier_ecart(historique(conn, offer_id))
 
 
 def appliquer_geste(

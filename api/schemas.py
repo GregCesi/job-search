@@ -6,11 +6,13 @@ from pydantic import BaseModel
 
 
 class GesteEtatSchema(BaseModel):
-    """Un geste de la table, permis ou non, avec sa raison en clair quand il
-    ne l'est pas (EXE-200, critère 14)."""
+    """Un geste de la table, permis ou non, avec son libellé et sa raison en
+    clair quand il ne l'est pas (EXE-200, critère 14 ; libellé EXE-194,
+    critères 14-15)."""
 
     geste: str
     permis: bool
+    libelle: str
     raison: str | None = None
 
 
@@ -38,6 +40,10 @@ class OfferRow(BaseModel):
     gestes: list[GesteEtatSchema] = []
     hors_perimetre_reason: str | None = None
     perimetre_causes: list[str] = []
+    # dérivés, offre écartée seulement (EXE-194, critères 9, 11) : date d'effet
+    # et motif du dernier geste `ecarter` non annulé.
+    ecartee_le: str | None = None
+    motif_ecart: str | None = None
     seen_candidat: bool
     fetched_at: str
     filtered_out: bool = False
@@ -102,6 +108,8 @@ class OfferDetail(OfferRow):
     # si « Tout télécharger » est possible, et sinon pourquoi (critère 16)
     tout_telecharger_possible: bool = False
     tout_telecharger_raison: str | None = None
+    # sous-ensemble de `etapes_affichees` réellement acquis (EXE-194, critère 22)
+    etapes_acquises: list[str] = []
 
 
 class EmployerUrlIn(BaseModel):
@@ -128,6 +136,9 @@ class VerdictIn(BaseModel):
         "hors_perimetre_ok",
         "hors_perimetre_faux_pos",
     ]
+    # motif facultatif de l'écart (EXE-194, critères 2-3) — ignoré pour tout
+    # autre statut.
+    motif: str | None = None
 
 
 class CategoryReviewIn(BaseModel):
