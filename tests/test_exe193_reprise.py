@@ -104,12 +104,28 @@ class TestCritere19And21RetenuesRepriseParEtape:
         assert hist[0].geste == etats.RETENIR
         assert hist[0].effet_at == "2026-10-14T10:00:00+00:00"
 
-    @pytest.mark.parametrize("offer_id", [3974, 3962, 3981, 3982])
-    def test_les_quatre_sont_a_candidature_envoyee(self, base_avant_la_fiche, offer_id):
+    @pytest.mark.parametrize(
+        "offer_id,date_retenue",
+        [
+            (3974, "2026-10-10T08:00:00+00:00"),
+            (3962, "2026-10-12T08:00:00+00:00"),
+            (3981, "2026-10-13T08:00:00+00:00"),
+            (3982, "2026-10-13T09:00:00+00:00"),
+        ],
+    )
+    def test_les_quatre_sont_a_candidature_envoyee(
+        self, base_avant_la_fiche, offer_id, date_retenue
+    ):
         conn = sqlite3.connect(base_avant_la_fiche)
         conn.row_factory = sqlite3.Row
         init_db(conn)
         assert suivi_storage.etat_stocke(conn, offer_id) == etats.CANDIDATURE_ENVOYEE
+        # EXE-200, M3 : la ligne Retenir garde la date du verdict d'origine,
+        # jamais celle de la reprise (`now`).
+        hist = suivi_storage.historique(conn, offer_id)
+        retenir = [e for e in hist if e.geste == etats.RETENIR]
+        assert len(retenir) == 1
+        assert retenir[0].effet_at == date_retenue
 
 
 class TestCritere20DateDenvoiTelleQuelle:
@@ -160,6 +176,12 @@ class TestCritere23RevuesHorsPerimetreGardeesHorsDuTri:
         init_db(conn)
         assert suivi_storage.revue_hors_perimetre(conn, 201) == "hors_perimetre_ok"
         assert suivi_storage.tri(conn, 201) == etats.A_TRIER
+        # EXE-200, M4 : la date de la revue reprise reste celle du verdict
+        # d'origine, jamais celle de la reprise (`now`).
+        row = conn.execute(
+            "SELECT created_at FROM revues_hors_perimetre WHERE offer_id = 201"
+        ).fetchone()
+        assert row["created_at"] == "2026-10-03T08:00:00+00:00"
 
     def test_revue_faux_positif_gardee_offre_a_trier(self, base_avant_la_fiche):
         conn = sqlite3.connect(base_avant_la_fiche)
@@ -169,6 +191,10 @@ class TestCritere23RevuesHorsPerimetreGardeesHorsDuTri:
             suivi_storage.revue_hors_perimetre(conn, 202) == "hors_perimetre_faux_pos"
         )
         assert suivi_storage.tri(conn, 202) == etats.A_TRIER
+        row = conn.execute(
+            "SELECT created_at FROM revues_hors_perimetre WHERE offer_id = 202"
+        ).fetchone()
+        assert row["created_at"] == "2026-10-04T08:00:00+00:00"
 
 
 class TestCritere24CandidateEtMasqueRepris:

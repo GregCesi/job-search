@@ -241,11 +241,12 @@ class TestCritere30TablesDesPiecesInchangeesParLaReprise:
             );
             CREATE TABLE cvs (
                 id INTEGER PRIMARY KEY, offer_id INTEGER, statut TEXT,
-                html TEXT, created_at TEXT
+                html TEXT, created_at TEXT, marque_pret_at TEXT
             );
             CREATE TABLE lettres (
                 id INTEGER PRIMARY KEY, offer_id INTEGER, statut TEXT,
-                texte TEXT, created_at TEXT, faits_ecartes_json TEXT NOT NULL DEFAULT '[]'
+                texte TEXT, created_at TEXT, marque_pret_at TEXT,
+                faits_ecartes_json TEXT NOT NULL DEFAULT '[]'
             );
             CREATE TABLE mails (
                 id INTEGER PRIMARY KEY, offer_id INTEGER, objet TEXT,
@@ -257,12 +258,14 @@ class TestCritere30TablesDesPiecesInchangeesParLaReprise:
             "VALUES (401, 'done', 'Une présentation.', '2026-09-01T09:00:00+00:00')"
         )
         conn.execute(
-            "INSERT INTO cvs (offer_id, statut, html, created_at) "
-            "VALUES (401, 'done', '<html>cv</html>', '2026-09-01T09:00:00+00:00')"
+            "INSERT INTO cvs (offer_id, statut, html, created_at, marque_pret_at) "
+            "VALUES (401, 'done', '<html>cv</html>', '2026-09-01T09:00:00+00:00', "
+            "'2026-09-01T10:00:00+00:00')"
         )
         conn.execute(
-            "INSERT INTO lettres (offer_id, statut, texte, created_at) "
-            "VALUES (401, 'done', 'Texte de la lettre.', '2026-09-01T09:00:00+00:00')"
+            "INSERT INTO lettres (offer_id, statut, texte, created_at, marque_pret_at) "
+            "VALUES (401, 'done', 'Texte de la lettre.', '2026-09-01T09:00:00+00:00', "
+            "'2026-09-01T10:00:00+00:00')"
         )
         conn.execute(
             "INSERT INTO mails (offer_id, objet, corps, origine, created_at) "
@@ -273,10 +276,12 @@ class TestCritere30TablesDesPiecesInchangeesParLaReprise:
         # Colonnes posées à la main ci-dessus seulement — les migrations de
         # schéma (hors reprise) peuvent ajouter des colonnes sans rapport ;
         # seules CES valeurs doivent rester identiques après la reprise.
+        # marque_pret_at comprise (M5 : la reprise ne doit pas effacer les
+        # marques « Prête »).
         colonnes = {
             "fiches_entreprise": "offer_id, statut, presentation, created_at",
-            "cvs": "offer_id, statut, html, created_at",
-            "lettres": "offer_id, statut, texte, created_at",
+            "cvs": "offer_id, statut, html, created_at, marque_pret_at",
+            "lettres": "offer_id, statut, texte, created_at, marque_pret_at",
             "mails": "offer_id, objet, corps, origine, created_at",
         }
         avant = {
