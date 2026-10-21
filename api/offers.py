@@ -27,6 +27,7 @@ from .schemas import (
     OfferRow,
     ReviewOut,
     VerdictIn,
+    valider_effet_at_optionnel,
 )
 
 log = logging.getLogger(__name__)
@@ -316,7 +317,13 @@ def _gestes_avec_etat_depuis_row(row, etat: str, hist: list) -> list[dict]:
     (critère 14 ; libellé dynamique de l'annulation — EXE-194, critère 15)."""
     cv_pret, lettre_pret, lettre_sans = _pieces_pretes_depuis_row(row)
     return [
-        {"geste": g.geste, "permis": g.permis, "libelle": g.libelle, "raison": g.raison}
+        {
+            "geste": g.geste,
+            "permis": g.permis,
+            "libelle": g.libelle,
+            "raison": g.raison,
+            "pieces_non_pretes": g.pieces_non_pretes,
+        }
         for g in suivi_etats.gestes_avec_etat(
             etat,
             cv_pret=cv_pret,
@@ -744,6 +751,7 @@ def get_offer(offer_id: int) -> OfferDetail:
                 "permis": g.permis,
                 "libelle": g.libelle,
                 "raison": g.raison,
+                "pieces_non_pretes": g.pieces_non_pretes,
             }
             for g in gestes
         ],
@@ -837,15 +845,7 @@ class GesteIn(BaseModel):
     @field_validator("effet_at")
     @classmethod
     def _effet_at_doit_etre_une_date(cls, v: str | None) -> str | None:
-        """Critère 21 : refusé en 422 avant toute écriture si `effet_at` n'est
-        pas une date — la validation Pydantic tourne avant le corps de la
-        route."""
-        if v is not None:
-            try:
-                datetime.fromisoformat(v)
-            except ValueError as exc:
-                raise ValueError(f"effet_at n'est pas une date valide : {v!r}") from exc
-        return v
+        return valider_effet_at_optionnel(v)
 
 
 @router.post("/offers/{offer_id}/geste")
@@ -870,7 +870,7 @@ async def appliquer_geste_route(offer_id: int, body: GesteIn) -> dict:
                     effet_at=body.effet_at,
                 )
                 launch = body.geste == suivi_etats.RETENIR
-        except (suivi_etats.GesteRefuse, suivi_etats.PiecesNonPretes) as exc:
+        except (suivi_etats.GesteRefuse, suivi_etats.DateEffetFuture) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
     finally:
         conn.close()

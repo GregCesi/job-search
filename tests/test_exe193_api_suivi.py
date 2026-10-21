@@ -97,7 +97,8 @@ class TestCritere12ListeEtDetailRendentTriEtapeEtGestes:
         assert offer["verdict"] == "retenu"
         assert offer["etape"] == "retenue"
         assert "abandonner" in offer["gestes_permis"]
-        assert "marquer_envoyee" not in offer["gestes_permis"]  # pièces pas prêtes
+        # EXE-197, critère 1 : permis même pièces pas prêtes, avertissement seul.
+        assert "marquer_envoyee" in offer["gestes_permis"]
 
     def test_detail_rend_etape_et_gestes_permis(self, client, db_path):
         _insert_offer(db_path, 2)

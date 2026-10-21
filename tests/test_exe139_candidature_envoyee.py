@@ -109,44 +109,64 @@ class TestCritere1MarqueEnvoyeeSiLesDeuxPretes:
         assert api_pieces.get_pieces(offer_id)["envoyee_le"] == result["envoyee_le"]
 
 
-class TestCritere2RefusSiPieceNonPrete:
-    def test_refuse_si_cv_non_pret(self, db_path):
+def _marquer_envoyee_geste(db_path, offer_id):
+    return next(
+        g
+        for g in suivi_storage.gestes_avec_etat(_connect(db_path), offer_id)
+        if g.geste == "marquer_envoyee"
+    )
+
+
+class TestCritere2EnvoyeeMalgrePieceNonPreteAvecAvertissement:
+    """EXE-197, critères 1, 6, 10 : depuis ce ticket, une pièce non prête
+    n'est plus un refus de `marquer_envoyee` — seulement un avertissement
+    (`pieces_non_pretes`) porté par le geste, lu avant confirmation."""
+
+    def test_envoyee_si_cv_non_pret_avec_avertissement(self, db_path):
         offer_id = 2
         _insert_offer(db_path, offer_id)
         _insert_cv(db_path, offer_id, statut="done")  # pas marqué prêt
         _insert_lettre(db_path, offer_id, statut="done", marque_pret_at=_now())
 
-        with pytest.raises(HTTPException) as exc_info:
-            api_pieces.set_envoyee(offer_id, api_pieces.MarqueEnvoyeeIn(envoyee=True))
-        assert exc_info.value.status_code == 409
-        assert "CV" in exc_info.value.detail
+        avant = _marquer_envoyee_geste(db_path, offer_id)
+        assert avant.permis is True
+        assert avant.pieces_non_pretes == ["cv"]
 
-        # TCK-311/EXE-193 : la date d'envoi vit dans l'historique du module
-        # d'états, plus dans `verdicts.envoyee_at` (H7 du ticket).
-        assert suivi_storage.date_envoyee(_connect(db_path), offer_id) is None
+        result = api_pieces.set_envoyee(
+            offer_id, api_pieces.MarqueEnvoyeeIn(envoyee=True)
+        )
+        assert result["envoyee_le"]
+        assert suivi_storage.date_envoyee(_connect(db_path), offer_id) is not None
 
-    def test_refuse_si_lettre_non_prete(self, db_path):
+    def test_envoyee_si_lettre_non_prete_avec_avertissement(self, db_path):
         offer_id = 20
         _insert_offer(db_path, offer_id)
         _insert_cv(db_path, offer_id, statut="done", marque_pret_at=_now())
         _insert_lettre(db_path, offer_id, statut="done")  # pas marquée prête
 
-        with pytest.raises(HTTPException) as exc_info:
-            api_pieces.set_envoyee(offer_id, api_pieces.MarqueEnvoyeeIn(envoyee=True))
-        assert exc_info.value.status_code == 409
-        assert "lettre" in exc_info.value.detail
+        avant = _marquer_envoyee_geste(db_path, offer_id)
+        assert avant.permis is True
+        assert avant.pieces_non_pretes == ["lettre"]
 
-        assert suivi_storage.date_envoyee(_connect(db_path), offer_id) is None
+        result = api_pieces.set_envoyee(
+            offer_id, api_pieces.MarqueEnvoyeeIn(envoyee=True)
+        )
+        assert result["envoyee_le"]
 
-    def test_refuse_si_aucune_piece_prete(self, db_path):
+    def test_envoyee_si_aucune_piece_prete_avertissement_nomme_les_deux(self, db_path):
         offer_id = 21
         _insert_offer(db_path, offer_id)
 
-        with pytest.raises(HTTPException) as exc_info:
-            api_pieces.set_envoyee(offer_id, api_pieces.MarqueEnvoyeeIn(envoyee=True))
-        assert exc_info.value.status_code == 409
-        assert "CV" in exc_info.value.detail
-        assert "lettre" in exc_info.value.detail
+        avant = _marquer_envoyee_geste(db_path, offer_id)
+        assert avant.permis is True
+        assert avant.pieces_non_pretes == ["cv", "lettre"]
+        assert "CV" in avant.raison
+        assert "lettre" in avant.raison
+
+        result = api_pieces.set_envoyee(
+            offer_id, api_pieces.MarqueEnvoyeeIn(envoyee=True)
+        )
+        assert result["envoyee_le"]
 
 
 class TestCritere3RefusOffreNonRetenueOuInexistante:

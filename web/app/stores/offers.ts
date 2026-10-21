@@ -7,6 +7,9 @@ export interface GesteEtat {
   permis: boolean
   libelle: string
   raison: string | null
+  // EXE-197, critère 10 : codes des pièces qui manquent pour `marquer_envoyee`,
+  // même quand il est permis — jamais recalculé côté front.
+  pieces_non_pretes: string[]
 }
 
 export interface OfferRow {
@@ -287,6 +290,9 @@ export interface Pieces {
   lettre_carte: LettreCarte
   prete_a_l_envoi: boolean
   envoyee_le: string | null
+  // EXE-197, critère 2 : jour de Bruxelles rendu par l'API — date par défaut
+  // de la saisie « Marquer envoyée », jamais calculée côté front.
+  aujourd_hui_bruxelles: string
 }
 
 export interface MailCandidature {

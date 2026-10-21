@@ -129,27 +129,34 @@ class TestCritere6PreteALEnvoiDerivee:
         )
 
 
-class TestCritere7MarquerEnvoyeeGatePieces:
-    def test_refuse_si_cv_et_lettre_pas_prets(self):
-        with pytest.raises(etats.PiecesNonPretes) as exc_info:
+class TestCritere7MarquerEnvoyeePermisQuelQueSoitLEtatDesPieces:
+    """EXE-197, critère 1 : depuis ce ticket, `appliquer` ne lève plus
+    `PiecesNonPretes` — `marquer_envoyee` passe quel que soit l'état des
+    pièces (l'avertissement vit désormais dans `gestes_avec_etat`)."""
+
+    def test_permet_si_cv_et_lettre_pas_prets(self):
+        assert (
             etats.appliquer(
                 etats.RETENUE, etats.MARQUER_ENVOYEE, cv_pret=False, lettre_pret=False
             )
-        assert "Le CV et la lettre ne sont pas prêts" in str(exc_info.value)
+            == etats.CANDIDATURE_ENVOYEE
+        )
 
-    def test_refuse_si_seul_le_cv_manque(self):
-        with pytest.raises(etats.PiecesNonPretes) as exc_info:
+    def test_permet_si_seul_le_cv_manque(self):
+        assert (
             etats.appliquer(
                 etats.RETENUE, etats.MARQUER_ENVOYEE, cv_pret=False, lettre_pret=True
             )
-        assert "Le CV n'est pas prêt" in str(exc_info.value)
+            == etats.CANDIDATURE_ENVOYEE
+        )
 
-    def test_refuse_si_seule_la_lettre_manque(self):
-        with pytest.raises(etats.PiecesNonPretes) as exc_info:
+    def test_permet_si_seule_la_lettre_manque(self):
+        assert (
             etats.appliquer(
                 etats.RETENUE, etats.MARQUER_ENVOYEE, cv_pret=True, lettre_pret=False
             )
-        assert "La lettre n'est pas prête" in str(exc_info.value)
+            == etats.CANDIDATURE_ENVOYEE
+        )
 
     def test_permet_si_les_deux_pieces_sont_pretes(self):
         assert (

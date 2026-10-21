@@ -184,8 +184,9 @@ def appliquer_geste(
     effet_at: str | None = None,
     motif: str | None = None,
 ) -> str:
-    """Nouvel état stocké, ou lève `etats.GesteRefuse` / `etats.PiecesNonPretes`
-    sans rien écrire (critère 2)."""
+    """Nouvel état stocké, ou lève `etats.GesteRefuse` (transition impossible)
+    / `etats.DateEffetFuture` (EXE-197 : `effet_at` de `marquer_envoyee`
+    postérieur au jour de Bruxelles) sans rien écrire (critère 2)."""
     etat_avant = etat_stocke(conn, offer_id)
     cv_pret, lettre_pret, lettre_sans = _pieces_pretes(conn, offer_id)
     nouvel_etat = etats.appliquer(
@@ -196,7 +197,12 @@ def appliquer_geste(
         lettre_sans=lettre_sans,
     )
     now = _now()
-    effet = effet_at if effet_at is not None else now
+    if geste == etats.MARQUER_ENVOYEE:
+        # EXE-197, H3 : seul `marquer_envoyee` porte la règle de date — les
+        # autres gestes gardent leur `effet_at` tel qu'il est reçu.
+        effet = etats.normaliser_effet_marquer_envoyee(effet_at)
+    else:
+        effet = effet_at if effet_at is not None else now
     conn.execute(
         "INSERT INTO etats_offre (offer_id, etat) VALUES (?, ?) "
         "ON CONFLICT(offer_id) DO UPDATE SET etat = excluded.etat",

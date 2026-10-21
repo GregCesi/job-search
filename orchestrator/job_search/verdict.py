@@ -46,7 +46,7 @@ def _record_verdict(conn, offer_id: int, geste: str) -> None:
 
     try:
         nouvel_etat = suivi_storage.appliquer_geste(conn, offer_id, geste)
-    except (etats.GesteRefuse, etats.PiecesNonPretes) as exc:
+    except (etats.GesteRefuse, etats.DateEffetFuture) as exc:
         # Message de refus affiché tel quel, sans trace d'erreur (critère 23).
         print(f"✗ {exc}")
         return

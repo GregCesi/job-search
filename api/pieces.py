@@ -7,16 +7,18 @@ de l'app (architecture.md). Marquer ou démarquer ne touche jamais au
 contenu de la pièce : seule la colonne `marque_pret_at` est écrite ici.
 
 `PUT /envoyee` (EXE-139) marque la candidature comme envoyée — passe par le
-geste `marquer_envoyee` du module d'états (TCK-311, EXE-193), seulement si les
-deux pièces sont Prêtes ; `envoyee=false` annule ce dernier geste. Ne touche
-jamais au statut des pièces : une candidature envoyée le reste si une pièce
-cesse ensuite d'être Prête.
+geste `marquer_envoyee` du module d'états (TCK-311, EXE-193). Depuis EXE-197,
+ce geste n'est plus refusé pour des pièces non prêtes (critère 1) : seul un
+avertissement (`pieces_non_pretes` sur `GET /pieces`), jamais un blocage.
+`envoyee=false` annule ce dernier geste. Ne touche jamais au statut des
+pièces : une candidature envoyée le reste si une pièce cesse ensuite d'être
+Prête.
 """
 
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from orchestrator.job_search.pieces import (
     DECISION_SANS_LETTRE,
@@ -30,6 +32,7 @@ from orchestrator.job_search.suivi import storage as suivi_storage
 
 from . import lettre as lettre_api
 from .db import get_conn
+from .schemas import valider_effet_at_optionnel
 
 router = APIRouter(prefix="/offers")
 
@@ -44,6 +47,14 @@ class MarqueEnvoyeeIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     envoyee: bool
+    # EXE-197, critères 2-7 : date d'effet choisie par Grégoire — absente =
+    # maintenant (comportement d'avant ce ticket). Ignorée par `envoyee=false`.
+    effet_at: str | None = None
+
+    @field_validator("effet_at")
+    @classmethod
+    def _effet_at_doit_etre_une_date(cls, v: str | None) -> str | None:
+        return valider_effet_at_optionnel(v)
 
 
 def _now() -> str:
@@ -87,6 +98,9 @@ def get_pieces(offer_id: int) -> dict:
         "lettre_carte": lettre_carte,
         "prete_a_l_envoi": prete_a_l_envoi(cv_s, lettre_s, lettre_sans),
         "envoyee_le": envoyee_le,
+        # EXE-197, critère 2 : date proposée par défaut pour « Marquer
+        # envoyée » — jour de Bruxelles, jamais calculé côté front.
+        "aujourd_hui_bruxelles": etats.aujourd_hui_bruxelles(),
     }
 
 
@@ -108,8 +122,13 @@ def set_envoyee(offer_id: int, body: MarqueEnvoyeeIn) -> dict:
         if body.envoyee:
             etat_avant = suivi_storage.etat_stocke(conn, offer_id)
             try:
-                suivi_storage.appliquer_geste(conn, offer_id, etats.MARQUER_ENVOYEE)
-            except etats.PiecesNonPretes as exc:
+                suivi_storage.appliquer_geste(
+                    conn,
+                    offer_id,
+                    etats.MARQUER_ENVOYEE,
+                    effet_at=body.effet_at,
+                )
+            except etats.DateEffetFuture as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
             except etats.GesteRefuse as exc:
                 if etat_avant not in _ETATS_ENVOYEE_DEJA_FAITE:

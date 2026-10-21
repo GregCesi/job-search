@@ -200,12 +200,15 @@ class TestCritere14GestesAvecEtatEtRaison:
         assert "marquer_envoyee" not in marquer["raison"]
 
     def test_marquer_envoyee_nomme_la_piece_manquante(self, client, db_path):
+        # EXE-197, critères 1, 9, 10 : depuis ce ticket, pièce non prête n'est
+        # plus un refus — seulement un avertissement, geste toujours permis.
         _insert_offer(db_path, 32)
         _retenir(db_path, 32)
         detail = client.get("/offers/32").json()
         marquer = next(g for g in detail["gestes"] if g["geste"] == "marquer_envoyee")
-        assert marquer["permis"] is False
+        assert marquer["permis"] is True
         assert "CV" in marquer["raison"] or "lettre" in marquer["raison"]
+        assert marquer["pieces_non_pretes"] == ["cv", "lettre"]
 
 
 class TestCritere15EtapesAffichees:

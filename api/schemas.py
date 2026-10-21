@@ -1,19 +1,34 @@
 """Schémas Pydantic de l'API."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
 
 
+def valider_effet_at_optionnel(v: str | None) -> str | None:
+    """`effet_at` refusé en 422 avant toute écriture s'il n'est pas une date
+    au sens de `fromisoformat` (EXE-193, critère 21 ; partagé par `GesteIn`
+    (`api/offers.py`) et `MarqueEnvoyeeIn` (`api/pieces.py`, EXE-197))."""
+    if v is not None:
+        try:
+            datetime.fromisoformat(v)
+        except ValueError as exc:
+            raise ValueError(f"effet_at n'est pas une date valide : {v!r}") from exc
+    return v
+
+
 class GesteEtatSchema(BaseModel):
     """Un geste de la table, permis ou non, avec son libellé et sa raison en
     clair quand il ne l'est pas (EXE-200, critère 14 ; libellé EXE-194,
-    critères 14-15)."""
+    critères 14-15). `pieces_non_pretes` (EXE-197, critère 10) : codes des
+    pièces qui manquent pour `marquer_envoyee`, même quand il est permis."""
 
     geste: str
     permis: bool
     libelle: str
     raison: str | None = None
+    pieces_non_pretes: list[str] = []
 
 
 class OfferRow(BaseModel):

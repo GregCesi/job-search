@@ -11,8 +11,13 @@ La revue hors périmètre (confirmé / faux positif) est un axe à part, qui ne 
 pas ici : elle ne change jamais cet état (architecture.md, section TCK-311).
 """
 
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+# Fuseau de référence pour toute date d'effet de `marquer_envoyee` (EXE-197,
+# H3/H4) : le jour compté est celui de Bruxelles, jamais celui d'UTC.
+FUSEAU_BRUXELLES = ZoneInfo("Europe/Brussels")
 
 # ---------------------------------------------------------------------------
 # États stockés
@@ -169,24 +174,41 @@ class GesteRefuse(Exception):
 
 
 class PiecesNonPretes(Exception):
-    """`marquer_envoyee` depuis `retenue` sans CV et lettre Prêts (critère 7) —
-    même message qu'avant ce ticket (`api/pieces.py`). Depuis EXE-196,
-    `lettre_sans=True` (décision « Sans lettre ») compte comme la lettre
-    satisfaite : elle ne manque jamais dans le message dans ce cas."""
+    """Message humain de l'avertissement de `marquer_envoyee` quand une pièce
+    n'est pas prête (EXE-197, critères 9-10). Depuis EXE-197, ce n'est plus
+    une cause de refus : `appliquer` ne la lève plus (critère 1) ;
+    `gestes_avec_etat` l'instancie seulement pour son message, jamais levée.
+    Depuis EXE-196, `lettre_sans=True` (décision « Sans lettre ») compte comme
+    la lettre satisfaite : elle ne manque jamais dans le message dans ce cas."""
 
     def __init__(self, cv_pret: bool, lettre_pret: bool, lettre_sans: bool = False):
         self.cv_pret = cv_pret
         self.lettre_pret = lettre_pret
         self.lettre_sans = lettre_sans
-        cv_manque = not cv_pret
-        lettre_manque = not (lettre_pret or lettre_sans)
-        if cv_manque and lettre_manque:
+        manquantes = pieces_manquantes_pour_envoi(
+            cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+        )
+        if manquantes == ["cv", "lettre"]:
             quoi = "Le CV et la lettre ne sont pas prêts"
-        elif cv_manque:
+        elif manquantes == ["cv"]:
             quoi = "Le CV n'est pas prêt"
         else:
             quoi = "La lettre n'est pas prête"
         super().__init__(f"{quoi} : impossible de marquer la candidature envoyée")
+
+
+class DateEffetFuture(Exception):
+    """`effet_at` de `marquer_envoyee` postérieur au jour de Bruxelles (EXE-197,
+    critère 4) — seul `marquer_envoyee` porte cette règle (H3 du ticket)."""
+
+    def __init__(self, effet_at: str, aujourd_hui: str):
+        self.effet_at = effet_at
+        self.aujourd_hui = aujourd_hui
+        super().__init__(
+            f"La date « {effet_at} » est postérieure à aujourd'hui "
+            f"({aujourd_hui}, heure de Bruxelles) : impossible de marquer la "
+            "candidature envoyée à l'avance."
+        )
 
 
 def gestes_permis(etat: str) -> list[str]:
@@ -200,10 +222,26 @@ def pieces_pretes_pour_envoi(
 ) -> bool:
     """Condition unique « prête à l'envoi » (EXE-196, critères 1-5, H4) : CV
     Prêt, et lettre Prête ou décision « Sans lettre ». Seul endroit qui
-    l'écrit — `gestes_permis_effectifs`, `gestes_avec_etat`, `appliquer`,
-    `etape_affichee` ci-dessous, et `api/offers.py::_tout_telecharger`,
-    `orchestrator/job_search/pieces.py::prete_a_l_envoi` la lisent ici."""
+    l'écrit — `gestes_avec_etat`, `etape_affichee` ci-dessous, et
+    `api/offers.py::_tout_telecharger`,
+    `orchestrator/job_search/pieces.py::prete_a_l_envoi` la lisent ici.
+    Depuis EXE-197 (critère 1), elle ne gate plus `marquer_envoyee` — voir
+    `pieces_manquantes_pour_envoi` pour l'avertissement qui la remplace."""
     return cv_pret and (lettre_pret or lettre_sans)
+
+
+def pieces_manquantes_pour_envoi(
+    *, cv_pret: bool, lettre_pret: bool, lettre_sans: bool
+) -> list[str]:
+    """Codes des pièces qui manquent pour l'envoi, dans cet ordre (EXE-197,
+    critère 10) — même condition que `pieces_pretes_pour_envoi`, jamais
+    recalculée ailleurs. Liste vide si tout est prêt."""
+    manquantes = []
+    if not cv_pret:
+        manquantes.append("cv")
+    if not (lettre_pret or lettre_sans):
+        manquantes.append("lettre")
+    return manquantes
 
 
 def gestes_permis_effectifs(
@@ -214,35 +252,70 @@ def gestes_permis_effectifs(
     annulable: bool,
     lettre_sans: bool = False,
 ) -> list[str]:
-    """Gestes réellement applicables là, tout de suite (critère 12) : exclut
-    `marquer_envoyee` si les pièces ne sont pas prêtes, ajoute `annuler` si
-    l'historique le permet."""
-    permis = [
-        g
-        for g in gestes_permis(etat)
-        if not (
-            g == MARQUER_ENVOYEE
-            and etat == RETENUE
-            and not pieces_pretes_pour_envoi(
-                cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
-            )
-        )
-    ]
+    """Gestes réellement applicables là, tout de suite (critère 12, EXE-200) :
+    ajoute `annuler` si l'historique le permet. Depuis EXE-197 (critère 1),
+    `marquer_envoyee` n'est plus exclu pour des pièces non prêtes — ce n'est
+    plus qu'un avertissement (`gestes_avec_etat`). `cv_pret`/`lettre_pret`/
+    `lettre_sans` restent dans la signature pour ne pas changer l'appel
+    depuis `storage.gestes_permis` et `api/offers.py`."""
+    permis = gestes_permis(etat)
     if annulable:
         permis.append(ANNULER)
     return permis
+
+
+def maintenant() -> datetime:
+    """Horloge du module — remplacée directement dans les tests (EXE-197,
+    H5 : ni freezegun ni time-machine ne sont installés)."""
+    return datetime.now(timezone.utc)
+
+
+def aujourd_hui_bruxelles(maintenant_utc: datetime | None = None) -> str:
+    """Jour de Bruxelles au format ISO `YYYY-MM-DD` (EXE-197, critères 2, 4,
+    5) — jamais le jour UTC (mutant E2 : refusé à 00:30 heure de Bruxelles si
+    compté en UTC)."""
+    now = maintenant_utc if maintenant_utc is not None else maintenant()
+    return now.astimezone(FUSEAU_BRUXELLES).date().isoformat()
+
+
+def normaliser_effet_marquer_envoyee(effet_at: str | None) -> str:
+    """Date d'effet de `marquer_envoyee` (EXE-197, H3, critères 2, 4, 5, 7) :
+    absente → maintenant ; une date seule (sans heure, saisie au champ date
+    du navigateur) → midi, heure de Bruxelles, de CE jour calendaire, en ISO
+    UTC (critère 7) ; toute date dont le jour de Bruxelles est postérieur à
+    aujourd'hui, jour de Bruxelles → lève `DateEffetFuture` (critère 4). Ne
+    s'applique qu'à `marquer_envoyee` — les autres gestes gardent leur date
+    d'effet telle qu'elle est reçue (H3)."""
+    now = maintenant()
+    if effet_at is None:
+        return now.isoformat()
+    parsed = datetime.fromisoformat(effet_at)
+    if parsed.tzinfo is None:
+        jour = parsed.date()
+        effectif = datetime(
+            jour.year, jour.month, jour.day, 12, tzinfo=FUSEAU_BRUXELLES
+        )
+    else:
+        effectif = parsed
+    aujourdhui = aujourd_hui_bruxelles(now)
+    if effectif.astimezone(FUSEAU_BRUXELLES).date().isoformat() > aujourdhui:
+        raise DateEffetFuture(effet_at, aujourdhui)
+    return effectif.astimezone(timezone.utc).isoformat()
 
 
 @dataclass(frozen=True)
 class GesteEtat:
     """Un geste de la table avec son état permis/refusé, son libellé humain et,
     si refusé, la raison en clair (EXE-200, critère 14 ; libellé EXE-194,
-    critères 14-15)."""
+    critères 14-15). `pieces_non_pretes` (EXE-197, critère 10) : codes des
+    pièces qui manquent pour `marquer_envoyee`, même quand il est permis
+    (critère 1) — vide pour tout autre geste ou quand tout est prêt."""
 
     geste: str
     permis: bool
     libelle: str
     raison: str | None
+    pieces_non_pretes: list[str] = field(default_factory=list)
 
 
 _MOIS_FR = [
@@ -292,6 +365,7 @@ def gestes_avec_etat(
     annulable = dernier_annulable is not None
     resultat: list[GesteEtat] = []
     for geste in TOUS_GESTES:
+        pieces_manquantes: list[str] = []
         if geste == ANNULER:
             permis = annulable
             libelle = libelle_annuler(dernier_annulable)
@@ -303,22 +377,28 @@ def gestes_avec_etat(
                 f"« {LIBELLES_GESTES[geste]} » n'est pas possible depuis "
                 f"l'étape « {LIBELLES_ETATS.get(etat, etat)} »."
             )
-        elif (
-            geste == MARQUER_ENVOYEE
-            and etat == RETENUE
-            and not pieces_pretes_pour_envoi(
-                cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
-            )
-        ):
-            permis = False
-            libelle = LIBELLES_GESTES[geste]
-            raison = str(PiecesNonPretes(cv_pret, lettre_pret, lettre_sans))
         else:
             permis = True
             libelle = LIBELLES_GESTES[geste]
             raison = None
+            # EXE-197, critères 1, 9, 10 : `marquer_envoyee` reste permis
+            # quel que soit l'état des pièces — seul un avertissement, plus
+            # un refus (`PiecesNonPretes` n'est plus levée, cf. `appliquer`).
+            if geste == MARQUER_ENVOYEE and not pieces_pretes_pour_envoi(
+                cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+            ):
+                pieces_manquantes = pieces_manquantes_pour_envoi(
+                    cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
+                )
+                raison = str(PiecesNonPretes(cv_pret, lettre_pret, lettre_sans))
         resultat.append(
-            GesteEtat(geste=geste, permis=permis, libelle=libelle, raison=raison)
+            GesteEtat(
+                geste=geste,
+                permis=permis,
+                libelle=libelle,
+                raison=raison,
+                pieces_non_pretes=pieces_manquantes,
+            )
         )
     return resultat
 
@@ -331,21 +411,17 @@ def appliquer(
     lettre_pret: bool,
     lettre_sans: bool = False,
 ) -> str:
-    """Nouvel état stocké, ou lève `GesteRefuse` / `PiecesNonPretes`.
+    """Nouvel état stocké, ou lève `GesteRefuse` si le geste n'est pas dans la
+    table depuis cet état.
 
-    `cv_pret`/`lettre_pret`/`lettre_sans` ne sont consultés que pour
-    `marquer_envoyee` depuis `retenue` — ignorés pour tout autre geste."""
+    Depuis EXE-197 (critère 1), `marquer_envoyee` n'est plus jamais refusé
+    pour des pièces non prêtes — `cv_pret`/`lettre_pret`/`lettre_sans`
+    restent dans la signature pour ne pas changer les appels existants
+    (`storage.appliquer_geste`, les tests de transition génériques), mais ne
+    sont plus consultés ici."""
     transitions = TRANSITIONS.get(etat, {})
     if geste not in transitions:
         raise GesteRefuse(etat, geste)
-    if (
-        geste == MARQUER_ENVOYEE
-        and etat == RETENUE
-        and not pieces_pretes_pour_envoi(
-            cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
-        )
-    ):
-        raise PiecesNonPretes(cv_pret, lettre_pret, lettre_sans)
     return transitions[geste]
 
 

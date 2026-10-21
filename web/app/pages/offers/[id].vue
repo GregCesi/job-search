@@ -309,17 +309,38 @@
               <p v-if="cvPdfError" class="text-xs text-red-600 text-center">{{ cvPdfError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600 text-center">{{ lettrePdfError }}</p>
 
-              <!-- Candidature envoyée (EXE-139) -->
+              <!-- Candidature envoyée (EXE-139, datée par EXE-197) -->
               <template v-if="!pieces?.envoyee_le">
-                <button
-                  @click="marquerEnvoyee"
-                  :disabled="!pieces?.prete_a_l_envoi || envoyeeBusy"
-                  :title="envoyeeRaison ?? undefined"
-                  class="w-full px-4 py-2.5 rounded-lg border border-indigo-200 text-indigo-700 text-sm font-medium hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400"
-                >
-                  Candidature envoyée
-                </button>
-                <p v-if="envoyeeRaison" class="text-xs text-gray-400 text-center">{{ envoyeeRaison }}</p>
+                <template v-if="!showEnvoyeeForm">
+                  <button
+                    @click="ouvrirEnvoyeeForm"
+                    :disabled="envoyeeBusy"
+                    class="w-full px-4 py-2.5 rounded-lg border border-indigo-200 text-indigo-700 text-sm font-medium hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Candidature envoyée
+                  </button>
+                </template>
+                <div v-else class="w-full flex flex-col gap-2">
+                  <p v-if="envoyeeAvertissement" class="text-xs text-amber-600">{{ envoyeeAvertissement }}</p>
+                  <input
+                    v-model="dateEnvoyee"
+                    type="date"
+                    :max="pieces?.aujourd_hui_bruxelles"
+                    class="w-full rounded border border-gray-200 px-2 py-1.5 text-xs text-gray-600 focus:outline-none focus:border-indigo-300"
+                  />
+                  <div class="flex items-center gap-2">
+                    <button
+                      :disabled="envoyeeBusy"
+                      class="px-3 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                      @click="marquerEnvoyee"
+                    >{{ envoyeeBusy ? '…' : 'Confirmer l\'envoi' }}</button>
+                    <button
+                      :disabled="envoyeeBusy"
+                      class="px-3 py-1 rounded text-xs font-medium text-gray-500 hover:bg-gray-100"
+                      @click="showEnvoyeeForm = false"
+                    >Renoncer</button>
+                  </div>
+                </div>
               </template>
               <div v-else class="flex items-center justify-center gap-2 text-xs text-gray-500">
                 <span>Envoyée le {{ formatDateFr(pieces.envoyee_le) }}</span>
@@ -1665,21 +1686,34 @@ function stepActive(step: string): boolean {
 }
 
 // ── Candidature envoyée (EXE-139) — marque humaine, distincte du statut
-// retenu/rejeté/candidaté et des statuts de pièce ────────────────────────
+// retenu/rejeté/candidaté et des statuts de pièce. Datée par EXE-197 : la
+// saisie ouvre une date (critère 2) et l'avertissement vient du geste
+// « marquer_envoyee » rendu par l'API (critères 9-10), jamais recalculé ici
+// depuis `prete_a_l_envoi` ou `tout_telecharger_raison` (qui restent la
+// condition de « Tout télécharger », découplée depuis ce ticket) ───────────
 const envoyeeBusy = ref(false)
 const envoyeeError = ref<string | null>(null)
-// Même décision serveur que « Tout télécharger » (critère 16) : les deux
-// pièces Prêtes sont la même condition, déjà rendue par l'API.
-const envoyeeRaison = computed(() => offer.value?.tout_telecharger_raison ?? null)
+const showEnvoyeeForm = ref(false)
+const dateEnvoyee = ref('')
+
+const envoyeeGeste = computed(() => offer.value?.gestes.find(g => g.geste === 'marquer_envoyee') ?? null)
+const envoyeeAvertissement = computed(() => envoyeeGeste.value?.raison ?? null)
+
+function ouvrirEnvoyeeForm() {
+  envoyeeError.value = null
+  dateEnvoyee.value = pieces.value?.aujourd_hui_bruxelles ?? ''
+  showEnvoyeeForm.value = true
+}
 
 async function marquerEnvoyee() {
   if (!pieces.value) return
   envoyeeError.value = null
   envoyeeBusy.value = true
   try {
-    const res = await $fetch<{ envoyee_le: string | null }>(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: true } })
+    const res = await $fetch<{ envoyee_le: string | null }>(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: true, effet_at: dateEnvoyee.value || null } })
     pieces.value = { ...pieces.value, envoyee_le: res.envoyee_le }
-    // Critère 18 : l'étape, la frise et les gestes sont relus avec l'offre,
+    showEnvoyeeForm.value = false
+    // Critère 13 : l'étape, la frise et les gestes sont relus avec l'offre,
     // pas seulement `envoyee_le`.
     offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
   } catch (e) {
