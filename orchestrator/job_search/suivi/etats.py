@@ -364,7 +364,12 @@ _MOIS_FR = [
 
 
 def _jour_mois_fr(iso: str) -> str:
+    """EXE-201, critère 15 : jour de Bruxelles, jamais le jour UTC brut — un
+    effet à 22:30 UTC le 20 est déjà le 21 à Bruxelles (+2h, CEST)."""
     d = datetime.fromisoformat(iso)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    d = d.astimezone(FUSEAU_BRUXELLES)
     return f"{d.day} {_MOIS_FR[d.month - 1]}"
 
 

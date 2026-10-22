@@ -544,6 +544,30 @@ class TestCritere14HistoriqueParJourPuisParInsertion:
 
 
 # ---------------------------------------------------------------------------
+# Critère 15 — le libellé d'annulation date le geste au jour de Bruxelles
+# ---------------------------------------------------------------------------
+
+
+class TestCritere15LibelleAnnulerDateAuJourDeBruxelles:
+    def test_effet_tard_le_soir_utc_date_au_jour_suivant_a_bruxelles(self):
+        # 22:30 UTC le 20 octobre = 00:30 heure de Bruxelles le 21 octobre
+        # (CEST, +2h) : le libellé doit dire 21, pas 20.
+        ev = suivi_etats.EvenementHistorique(
+            id=1,
+            geste="marquer_envoyee",
+            etat_depart="retenue",
+            etat_arrivee="candidature_envoyee",
+            effet_at="2026-10-20T22:30:00+00:00",
+            enregistre_at="x",
+            motif=None,
+            annule_at=None,
+        )
+        assert (
+            suivi_etats.libelle_annuler(ev) == "Annuler Marquer envoyée du 21 octobre"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Critère 16 — Suivi compte les offres que le filtre d'ingestion avait
 # écartées mais qui ont ensuite été retenues
 # ---------------------------------------------------------------------------
