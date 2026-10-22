@@ -33,6 +33,8 @@ from orchestrator.job_search.lettre.boucle import (
     ResultatBoucle,
 )
 from orchestrator.job_search.storage.db import init_db
+from orchestrator.job_search.suivi import etats as suivi_etats
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 TOURNURES_INTERDITES = "je veux\n"
 
@@ -141,6 +143,8 @@ def _insert_offer(db_path, offer_id, description_raw="Texte complet de l'offre."
             "'ACME', 'Strasbourg', ?)",
             (offer_id, str(offer_id), description_raw),
         )
+        # EXE-201, critère 6 : la lettre ne part que pour une offre retenue.
+        suivi_storage.appliquer_geste(conn, offer_id, suivi_etats.RETENIR)
         conn.commit()
     finally:
         conn.close()

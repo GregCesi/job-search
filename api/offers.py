@@ -380,6 +380,7 @@ def _gestes_avec_etat_depuis_row(row, etat: str, hist: list) -> list[dict]:
             "libelle": g.libelle,
             "raison": g.raison,
             "pieces_non_pretes": g.pieces_non_pretes,
+            "date_max": g.date_max,
         }
         for g in suivi_etats.gestes_avec_etat(
             etat,
@@ -513,13 +514,12 @@ def list_offers(
     conditions: list[str] = []
     params: list = []
 
-    # Par défaut on exclut les offres filtrées (stage, hors-zone, etc.)
-    if filtered_out is None:
-        conditions.append("o.filtered_out = 0")
-    elif filtered_out:
+    # Par défaut on exclut les offres filtrées (stage, hors-zone, etc.) — sauf
+    # si elles ont été retenues depuis (EXE-201, critère 16) : l'exclusion
+    # SQL ne peut pas le savoir avant d'avoir lu l'état stocké, donc ce cas
+    # est filtré après coup, dans la boucle sur `rows` ci-dessous.
+    if filtered_out is True:
         conditions.append("o.filtered_out = 1")
-    else:
-        conditions.append("o.filtered_out = 0")
 
     if remote is not None:
         conditions.append("o.remote = ?")
@@ -725,6 +725,16 @@ def list_offers(
         revue = revue_par_offre.get(r["id"])
         verdict_label = _verdict_label(etat, revue)
         tri_val = suivi_etats.tri(etat)
+        # Une offre filtrée à l'ingestion mais retenue depuis reste visible —
+        # le filtre d'ingestion ne doit pas la soustraire à son propre suivi
+        # (EXE-201, critère 16). `filtered_out=True` explicite (vue qui ne
+        # veut QUE les filtrées) n'est pas concerné : déjà posé en SQL.
+        if (
+            filtered_out is not True
+            and bool(r["filtered_out"])
+            and tri_val != suivi_etats.RETENUE
+        ):
+            continue
         if not _correspond_au_filtre_verdict(tri_val, revue, verdict):
             continue
         etape_val = _derive_etape(r, etat)
@@ -924,6 +934,7 @@ def get_offer(offer_id: int) -> OfferDetail:
                 "libelle": g.libelle,
                 "raison": g.raison,
                 "pieces_non_pretes": g.pieces_non_pretes,
+                "date_max": g.date_max,
             }
             for g in gestes
         ],

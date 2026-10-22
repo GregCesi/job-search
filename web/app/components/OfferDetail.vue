@@ -141,7 +141,7 @@
               <!-- Candidat : Retenir/Écarter sur une offre à trier, Remettre à
                    trier sur une écartée, Voir la page sur une retenue -->
               <template v-if="props.mode === 'candidat'">
-                <template v-if="offer.tri === 'a_trier'">
+                <template v-if="peutRetenir">
                   <button
                     class="px-3 py-1.5 rounded-lg text-xs font-medium border bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all"
                     @click="handleRetenir()"
@@ -156,7 +156,7 @@
                   </button>
                 </template>
                 <button
-                  v-else-if="offer.tri === 'ecartee'"
+                  v-else-if="peutRemettreATrier"
                   class="px-3 py-1.5 rounded-lg text-xs font-medium border bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all"
                   @click="handleRemettreATrier"
                 >
@@ -193,18 +193,34 @@
                   <p v-if="ecarterError" class="text-xs text-red-600">{{ ecarterError }}</p>
                 </div>
                 <p v-if="remettreError" class="text-xs text-red-600 w-full">{{ remettreError }}</p>
+                <p v-if="verdictError" class="text-xs text-red-600 w-full">{{ verdictError }}</p>
               </template>
-              <!-- Opérateur : boutons verdict classiques -->
+              <!-- Opérateur : les boutons de tri sont les gestes rendus par
+                   l'API, avec leurs libellés (critère 8) — jamais une liste
+                   fixe comparée au tri. -->
               <template v-else>
                 <button
-                  v-for="v in displayedVerdicts" :key="v.status"
+                  v-for="g in triGestesOperateur" :key="g.geste"
+                  :disabled="!g.permis"
+                  :title="g.raison ?? undefined"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium border bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  @click="handleTriGeste(g.geste)"
+                >
+                  {{ g.libelle }}
+                </button>
+                <!-- La revue hors périmètre est un axe à part, jamais un
+                     geste (architecture.md) : ses boutons et leur état actif
+                     restent ici. -->
+                <button
+                  v-for="v in HP_VERDICTS" :key="v.status"
+                  v-show="offer.hors_perimetre_reason"
                   :class="[
                     'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                    isVerdictActive(v.status)
+                    isRevueActive(v.status)
                       ? v.activeClass
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
                   ]"
-                  @click="toggleVerdict(v.status)"
+                  @click="toggleRevue(v.status)"
                 >
                   {{ v.label }}
                 </button>
@@ -214,13 +230,6 @@
                   @click="handleClearVerdict"
                 >
                   {{ annulerGeste.libelle }}
-                </button>
-                <button
-                  v-if="offer.revue_hors_perimetre"
-                  class="px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:bg-gray-50 transition-all"
-                  @click="handleRetirerRevue"
-                >
-                  Retirer la revue
                 </button>
                 <p v-if="verdictError" class="text-xs text-red-600 w-full">{{ verdictError }}</p>
               </template>
@@ -375,27 +384,16 @@ async function handleReview() {
 }
 
 // ── Verdicts ─────────────────────────────────────────────────────────────
-const VERDICTS = [
-  { status: 'retenu',  label: '★ Retenu',   activeClass: 'bg-blue-50 border-blue-300 text-blue-700' },
-  { status: 'ecartee', label: '✗ Écartée',  activeClass: 'bg-red-50 border-red-300 text-red-700' },
-]
-
+// La revue hors périmètre est un axe à part des gestes de tri
+// (architecture.md : « un axe à part, qui ne vit pas [dans le module
+// d'états] ») — ses deux boutons et leur état actif ne viennent donc pas de
+// `gestes` (EXE-200, critère 13 : elle ne remplace jamais le tri).
 const HP_VERDICTS = [
   { status: 'hors_perimetre_ok',       label: '✓ Confirmé HP',  activeClass: 'bg-green-50 border-green-300 text-green-700' },
   { status: 'hors_perimetre_faux_pos', label: '✗ Faux positif', activeClass: 'bg-red-50 border-red-300 text-red-700' },
 ]
 
-// Le tri (retenu/écartée) et la revue hors périmètre sont deux axes
-// indépendants (EXE-200, critère 13) : une offre repérée hors périmètre par
-// l'IA garde ses boutons de tri — la revue ne les remplace pas.
-const displayedVerdicts = computed(() => {
-  if (props.mode === 'candidat') return VERDICTS.filter(v => v.status === 'retenu')
-  return props.offer.hors_perimetre_reason ? [...HP_VERDICTS, ...VERDICTS] : VERDICTS
-})
-
-function isVerdictActive(status: string): boolean {
-  if (status === 'retenu') return props.offer.tri === 'retenue'
-  if (status === 'ecartee') return props.offer.tri === 'ecartee'
+function isRevueActive(status: string): boolean {
   return props.offer.revue_hors_perimetre === status
 }
 
@@ -408,18 +406,47 @@ function extractDetail(e: unknown): string {
 // décision de l'API (gestes_permis), jamais une comparaison du tri — sinon
 // le front recalcule un droit que l'API a déjà rendu (frontend.md).
 const peutRetenir = computed(() => props.offer.gestes_permis.includes('retenir'))
+const peutRemettreATrier = computed(() => props.offer.gestes_permis.includes('remettre_a_trier'))
 
 async function handleRetenir() {
+  verdictError.value = null
   if (peutRetenir.value) {
-    await store.appliquerGeste(props.offer.id, 'retenir')
+    try {
+      await store.appliquerGeste(props.offer.id, 'retenir')
+    } catch (e) {
+      // EXE-201, critère 9 : un Retenir refusé par l'API affiche son
+      // message, comme tout autre geste — jamais silencieux.
+      verdictError.value = extractDetail(e)
+      return
+    }
   }
   router.push(`/offers/${props.offer.id}`)
 }
 
-function toggleVerdict(status: string) {
+// EXE-201, critère 8 : les boutons de tri en vue opérateur sont les gestes
+// de tri que l'API rend pour l'offre (permis ou non, avec leur libellé) —
+// jamais une liste fixe comparée au tri.
+const triGestesOperateur = computed(
+  () => props.offer.gestes.filter(g => ['retenir', 'ecarter', 'remettre_a_trier'].includes(g.geste)),
+)
+const verdictError = ref<string | null>(null)
+
+async function handleTriGeste(geste: string) {
   verdictError.value = null
-  const action = isVerdictActive(status)
-    ? store.clearVerdict(props.offer.id)
+  try {
+    await store.appliquerGeste(props.offer.id, geste)
+  } catch (e) {
+    verdictError.value = extractDetail(e)
+  }
+}
+
+// EXE-201, critère 7 : un clic sur une revue déjà active la retire
+// (`DELETE /revue`) — jamais `clearVerdict` (`DELETE /verdict`), qui annule
+// le dernier geste de tri, un axe différent.
+function toggleRevue(status: string) {
+  verdictError.value = null
+  const action = isRevueActive(status)
+    ? store.retirerRevue(props.offer.id)
     : store.setVerdict(props.offer.id, status)
   action.catch((e) => { verdictError.value = extractDetail(e) })
 }
@@ -429,21 +456,11 @@ function toggleVerdict(status: string) {
 const annulerGeste = computed(
   () => props.offer.gestes.find(g => g.geste === 'annuler' && g.permis) ?? null,
 )
-const verdictError = ref<string | null>(null)
 
 async function handleClearVerdict() {
   verdictError.value = null
   try {
     await store.clearVerdict(props.offer.id)
-  } catch (e) {
-    verdictError.value = extractDetail(e)
-  }
-}
-
-async function handleRetirerRevue() {
-  verdictError.value = null
-  try {
-    await store.retirerRevue(props.offer.id)
   } catch (e) {
     verdictError.value = extractDetail(e)
   }

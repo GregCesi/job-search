@@ -221,11 +221,14 @@ class TestCritere15EtapesAffichees:
         _insert_offer(db_path, 41)
         _retenir(db_path, 41)
         detail = client.get("/offers/41").json()
+        # EXE-201, critère 13 : la séquence va jusqu'à l'étape de fin du
+        # chemin heureux, « offre reçue ».
         assert detail["etapes_affichees"] == [
             "retenue",
             "prete_a_l_envoi",
             "candidature_envoyee",
             "entretien",
+            "offre_recue",
         ]
         assert detail["etape"] == "retenue"
 

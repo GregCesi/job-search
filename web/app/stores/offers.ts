@@ -10,6 +10,10 @@ export interface GesteEtat {
   // EXE-197, critère 10 : codes des pièces qui manquent pour `marquer_envoyee`,
   // même quand il est permis — jamais recalculé côté front.
   pieces_non_pretes: string[]
+  // EXE-201, critère 12 : date la plus tardive acceptée pour ce geste (jour
+  // de Bruxelles), `null` pour un geste sans limite (Entretien) — jamais
+  // deviné côté front quel geste y échappe.
+  date_max: string | null
 }
 
 export interface OfferRow {
@@ -284,6 +288,7 @@ export type LettreCarteStatut =
   | 'generee'
   | 'prete'
   | 'sans_lettre'
+  | 'en_erreur'
 
 export interface BoutonLettre {
   bouton: 'generer' | 'ne_pas_faire' | 'revenir'
@@ -305,6 +310,10 @@ export interface Pieces {
   lettre_carte: LettreCarte
   prete_a_l_envoi: boolean
   envoyee_le: string | null
+  // EXE-201, critères 10, 11 : décision déjà prise par l'API — le choix
+  // entre le formulaire d'envoi et « Envoyée le » se lit ici, jamais sur
+  // `envoyee_le` directement dans une condition (frontend.md).
+  deja_envoyee: boolean
   // EXE-197, critère 2 : jour de Bruxelles rendu par l'API — date par défaut
   // de la saisie « Marquer envoyée », jamais calculée côté front.
   aujourd_hui_bruxelles: string

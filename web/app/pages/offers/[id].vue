@@ -107,7 +107,7 @@
                   <input
                     v-model="dateGesteSuite"
                     type="date"
-                    :max="gesteSuiteOuvert === 'entretien' ? undefined : pieces?.aujourd_hui_bruxelles"
+                    :max="gesteSuiteOuvertDateMax ?? undefined"
                     class="rounded border border-gray-200 px-2 py-1.5 text-gray-600 focus:outline-none focus:border-indigo-300"
                   />
                   <input
@@ -367,10 +367,14 @@
               <p v-if="cvPdfError" class="text-xs text-red-600 text-center">{{ cvPdfError }}</p>
               <p v-if="lettrePdfError" class="text-xs text-red-600 text-center">{{ lettrePdfError }}</p>
 
-              <!-- Candidature envoyée (EXE-139, datée par EXE-197) -->
-              <template v-if="!pieces?.envoyee_le">
+              <!-- Candidature envoyée (EXE-139, datée par EXE-197) — le choix
+                   entre le formulaire et « Envoyée le » suit `deja_envoyee`,
+                   décidé par l'API (critère 11) ; le bouton lui-même
+                   n'apparaît que si le geste est permis (critère 10). -->
+              <template v-if="!pieces?.deja_envoyee">
                 <template v-if="!showEnvoyeeForm">
                   <button
+                    v-if="envoyeeGeste?.permis"
                     @click="ouvrirEnvoyeeForm"
                     :disabled="envoyeeBusy"
                     class="w-full px-4 py-2.5 rounded-lg border border-indigo-200 text-indigo-700 text-sm font-medium hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -401,7 +405,7 @@
                 </div>
               </template>
               <div v-else class="flex items-center justify-center gap-2 text-xs text-gray-500">
-                <span>Envoyée le {{ formatDateFr(pieces.envoyee_le) }}</span>
+                <span>Envoyée le {{ formatDateFr(pieces!.envoyee_le!) }}</span>
                 <button @click="annulerEnvoyee" :disabled="envoyeeBusy" class="text-indigo-600 hover:underline disabled:opacity-50">Annuler</button>
               </div>
               <p v-if="envoyeeError" class="text-xs text-red-600 text-center">{{ envoyeeError }}</p>
@@ -1238,7 +1242,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { Avancement, AvancementPiece, AppelTrace, BoutonLettre, Cv, FicheEntreprise, FicheTas, Lettre, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
+import type { Avancement, AvancementPiece, AppelTrace, BoutonLettre, Cv, FicheEntreprise, FicheTas, Lettre, LettreCarteStatut, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -1499,7 +1503,25 @@ const PIECE_BADGE_CLASS: Record<PieceStatut, string> = {
   prete: 'bg-green-50 text-green-700',
 }
 
+// EXE-201, critère 5 : la mini-carte Lettre et l'onglet Lettre doivent dire
+// le même état, dans chacun des sept que rend `lettre_carte.statut` — une
+// table totale (jamais une comparaison) vers le même badge que l'onglet,
+// plutôt qu'une lecture séparée de l'avancement 4 états (qui ignorait la
+// décision et pouvait contredire l'onglet).
+const LETTRE_CARTE_BADGE: Record<LettreCarteStatut, { label: string, class: string }> = {
+  a_decider:     { label: 'à produire',  class: 'bg-gray-100 text-gray-400' },
+  demandee:      { label: 'en attente',  class: 'bg-amber-50 text-amber-600' },
+  en_generation: { label: 'Génération…', class: 'bg-amber-50 text-amber-600' },
+  generee:       { label: PIECE_LABELS.en_cours, class: PIECE_BADGE_CLASS.en_cours },
+  prete:         { label: PIECE_LABELS.prete, class: PIECE_BADGE_CLASS.prete },
+  sans_lettre:   { label: 'Sans lettre', class: 'bg-gray-100 text-gray-400' },
+  en_erreur:     { label: 'Erreur', class: 'bg-red-50 text-red-600' },
+}
+
 function cardBadge(title: string): { label: string, class: string } {
+  if (title === 'Lettre de motivation' && pieces.value) {
+    return LETTRE_CARTE_BADGE[pieces.value.lettre_carte.statut]
+  }
   const av = cardAvancement(title)
   if (av && av.etat !== 'terminee') {
     if (av.etat === 'en_cours') return { label: 'Génération…', class: 'bg-amber-50 text-amber-600' }
@@ -1517,13 +1539,13 @@ function cardBadge(title: string): { label: string, class: string } {
   if (title === 'CV' && pieces.value) {
     return { label: PIECE_LABELS[pieces.value.cv.statut], class: PIECE_BADGE_CLASS[pieces.value.cv.statut] }
   }
-  if (title === 'Lettre de motivation' && pieces.value) {
-    return { label: PIECE_LABELS[pieces.value.lettre.statut], class: PIECE_BADGE_CLASS[pieces.value.lettre.statut] }
-  }
   return { label: 'à produire', class: 'bg-gray-100 text-gray-400' }
 }
 
 function cardPreview(title: string): string {
+  if (title === 'Lettre de motivation' && pieces.value) {
+    return LETTRE_CARTE_BADGE[pieces.value.lettre_carte.statut].label
+  }
   const av = cardAvancement(title)
   if (av && av.etat !== 'terminee') {
     if (av.etat === 'en_cours') return 'Génération…'
@@ -1775,8 +1797,10 @@ async function marquerEnvoyee() {
   envoyeeError.value = null
   envoyeeBusy.value = true
   try {
-    const res = await $fetch<{ envoyee_le: string | null }>(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: true, effet_at: dateEnvoyee.value || null } })
-    pieces.value = { ...pieces.value, envoyee_le: res.envoyee_le }
+    await $fetch(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: true, effet_at: dateEnvoyee.value || null } })
+    // `deja_envoyee` (critère 11) vient avec le reste de `/pieces`, jamais
+    // rapiécé localement depuis la seule réponse de cette route.
+    await chargerPieces()
     showEnvoyeeForm.value = false
     // Critère 13 : l'étape, la frise et les gestes sont relus avec l'offre,
     // pas seulement `envoyee_le`.
@@ -1800,6 +1824,12 @@ const gestesSuiteDisponibles = computed(
   ),
 )
 const gesteSuiteOuvert = ref<string | null>(null)
+// EXE-201, critère 12 : la date la plus tardive acceptée (aucune pour
+// Entretien) vient de l'API, geste par geste — jamais déduite ici en
+// comparant le code du geste ouvert.
+const gesteSuiteOuvertDateMax = computed(
+  () => offer.value?.gestes.find(g => g.geste === gesteSuiteOuvert.value)?.date_max ?? null,
+)
 const dateGesteSuite = ref('')
 const noteGesteSuite = ref('')
 const gesteSuiteBusy = ref(false)
@@ -1841,8 +1871,10 @@ async function annulerEnvoyee() {
   envoyeeError.value = null
   envoyeeBusy.value = true
   try {
-    const res = await $fetch<{ envoyee_le: string | null }>(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: false } })
-    pieces.value = { ...pieces.value, envoyee_le: res.envoyee_le }
+    await $fetch(`${config.public.apiBase}/offers/${id.value}/envoyee`, { method: 'PUT', body: { envoyee: false } })
+    // `deja_envoyee` (critère 11) vient avec le reste de `/pieces`, jamais
+    // rapiécé localement depuis la seule réponse de cette route.
+    await chargerPieces()
     // Critère 18 : l'étape, la frise et les gestes sont relus avec l'offre,
     // pas seulement `envoyee_le`.
     offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)

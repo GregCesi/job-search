@@ -341,6 +341,10 @@ class GesteEtat:
     libelle: str
     raison: str | None
     pieces_non_pretes: list[str] = field(default_factory=list)
+    # EXE-201, critère 12 : date la plus tardive acceptée pour ce geste
+    # (jour de Bruxelles), `None` pour un geste sans limite (Entretien,
+    # H3) — jamais à deviner côté front quel geste y échappe.
+    date_max: str | None = None
 
 
 _MOIS_FR = [
@@ -388,9 +392,11 @@ def gestes_avec_etat(
     geste non annulé de l'historique, ou `None` s'il n'y a rien à annuler
     (EXE-194, critère 15 : donne sa date d'effet au libellé)."""
     annulable = dernier_annulable is not None
+    date_max_du_jour = aujourd_hui_bruxelles()
     resultat: list[GesteEtat] = []
     for geste in TOUS_GESTES:
         pieces_manquantes: list[str] = []
+        date_max = date_max_du_jour if geste in GESTES_DATE_FUTURE_INTERDITE else None
         if geste == ANNULER:
             permis = annulable
             libelle = libelle_annuler(dernier_annulable)
@@ -423,6 +429,7 @@ def gestes_avec_etat(
                 libelle=libelle,
                 raison=raison,
                 pieces_non_pretes=pieces_manquantes,
+                date_max=date_max,
             )
         )
     return resultat
@@ -556,7 +563,12 @@ def etapes_acquises(
     """Sous-ensemble de `ETAPES_AFFICHEES` (api/offers.py) réellement acquis
     (critère 22) — jamais « tout acquis par défaut » pour un état hors
     séquence, qui montrait « candidature envoyée » pour une offre abandonnée
-    depuis « retenue » sans jamais avoir été envoyée."""
+    depuis « retenue » sans jamais avoir été envoyée.
+
+    EXE-201, critère 13 : l'étape de fin (offre reçue sur le chemin heureux ;
+    refusée, sans suite ou abandonnée sur une branche) est elle-même montrée
+    acquise — la frise s'arrêtait avant elle, comme si l'offre n'y était
+    jamais arrivée."""
     rang = rang_progression(etat, historique)
     etape_actuelle = etape_affichee(
         etat, cv_pret=cv_pret, lettre_pret=lettre_pret, lettre_sans=lettre_sans
@@ -570,15 +582,27 @@ def etapes_acquises(
         acquises.append(CANDIDATURE_ENVOYEE)
     if rang >= 3:
         acquises.append(ENTRETIEN)
+    if rang >= 4:
+        acquises.append(OFFRE_RECUE)
+    if etat in ETATS_BRANCHE:
+        acquises.append(etat)
     return acquises
 
 
 # Séquence fixe du chemin heureux, en tête d'une offre retenue qui n'a pas
-# bifurqué (EXE-200, critère 15). Pour une offre qui a bifurqué (branche),
-# `etapes_affichees` ci-dessous la tronque au point de départ et y ajoute
-# l'étape de fin « à sa place » (EXE-198, critère 18), plutôt que de la faire
-# suivre en aveugle du reste du chemin heureux jamais atteint.
-ETAPES_CHEMIN_HEUREUX = [RETENUE, PRETE_A_L_ENVOI, CANDIDATURE_ENVOYEE, ENTRETIEN]
+# bifurqué (EXE-200, critère 15 ; complétée par EXE-201, critère 13, de
+# l'étape de fin « offre reçue », qui en manquait). Pour une offre qui a
+# bifurqué (branche), `etapes_affichees` ci-dessous la tronque au point de
+# départ et y ajoute l'étape de fin « à sa place » (EXE-198, critère 18),
+# plutôt que de la faire suivre en aveugle du reste du chemin heureux jamais
+# atteint.
+ETAPES_CHEMIN_HEUREUX = [
+    RETENUE,
+    PRETE_A_L_ENVOI,
+    CANDIDATURE_ENVOYEE,
+    ENTRETIEN,
+    OFFRE_RECUE,
+]
 
 # Même séquence sans l'étape dérivée `prete_a_l_envoi` (qui n'a pas de rang
 # propre dans `_RANG_ON_PATH`), indexée par rang 1..4 — sert à tronquer la
@@ -600,14 +624,32 @@ def etapes_affichees(etat: str, historique: list[EvenementHistorique]) -> list[s
     return _RANG_SEQUENCE[:rang_depart] + [etat]
 
 
+def _jour_bruxelles(effet_at: str) -> str:
+    d = datetime.fromisoformat(effet_at)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return d.astimezone(FUSEAU_BRUXELLES).date().isoformat()
+
+
 def historique_affiche(
     historique: list[EvenementHistorique],
 ) -> list[EvenementHistorique]:
-    """Lignes affichables de l'historique (EXE-198, critères 14-15) : les
-    gestes non annulés, du plus récent au plus ancien par date d'effet ; à
-    date d'effet égale, le plus récemment enregistré en premier — départagé
-    par `id` (ordre d'insertion), jamais par `enregistre_at` seul, qui peut
-    coïncider quand l'horloge est figée dans les tests (mutant S4 : une ligne
-    annulée reste dans le rendu)."""
+    """Lignes affichables de l'historique (EXE-198, critères 14-15 ; groupé
+    par jour par EXE-201, critère 14) : les gestes non annulés, du plus
+    récent au plus ancien par JOUR d'effet (jour de Bruxelles) ; dans un même
+    jour, le plus récemment enregistré en premier — départagé par `id`
+    (ordre d'insertion), jamais par `enregistre_at` seul, qui peut coïncider
+    quand l'horloge est figée dans les tests (mutant S4 : une ligne annulée
+    reste dans le rendu).
+
+    Grouper par jour plutôt que par l'instant brut d'effet est nécessaire
+    parce que `marquer_envoyee` et les gestes du bloc daté sont normalisés à
+    midi heure de Bruxelles (`normaliser_effet`), alors que Retenir, Écarter
+    et Remettre à trier gardent leur heure réelle (H3) : un Retenir fait à
+    15:00 a un `effet_at` brut plus tardif qu'un Marquer envoyée du même jour
+    normalisé à midi, et un tri sur l'instant brut les aurait affichés dans
+    le mauvais ordre (EXE-201, mutant F5)."""
     actifs = [e for e in historique if e.annule_at is None]
-    return sorted(actifs, key=lambda e: (e.effet_at, e.id), reverse=True)
+    return sorted(
+        actifs, key=lambda e: (_jour_bruxelles(e.effet_at), e.id), reverse=True
+    )

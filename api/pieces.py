@@ -98,6 +98,11 @@ def get_pieces(offer_id: int) -> dict:
         "lettre_carte": lettre_carte,
         "prete_a_l_envoi": prete_a_l_envoi(cv_s, lettre_s, lettre_sans),
         "envoyee_le": envoyee_le,
+        # EXE-201, critère 10/11 : décision déjà prise par l'API — le front
+        # choisit entre le formulaire d'envoi et « Envoyée le » sur ce seul
+        # champ, jamais en lisant `envoyee_le` lui-même dans une condition
+        # (frontend.md).
+        "deja_envoyee": envoyee_le is not None,
         # EXE-197, critère 2 : date proposée par défaut pour « Marquer
         # envoyée » — jour de Bruxelles, jamais calculé côté front.
         "aujourd_hui_bruxelles": etats.aujourd_hui_bruxelles(),

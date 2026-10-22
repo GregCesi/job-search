@@ -216,6 +216,9 @@ def carte_lettre_for_offer(conn, offer_id: int, lettre_row=None) -> dict:
         generation_en_cours,
         fiche_row["statut"] if fiche_row is not None else None,
         fiche_row["error_message"] if fiche_row is not None else None,
+        lettre_error_message=lettre_row["error_message"]
+        if lettre_row is not None
+        else None,
     )
 
 
@@ -373,12 +376,17 @@ def _offer_text(conn, offer_id: int) -> str:
 
 async def launch_lettre_if_ready(offer_id: int) -> asyncio.Task | None:
     """Enchaîné dès que la fiche entreprise se termine (TCK-281) : lance si ma
-    demande est posée (`decision == 'demandee'`, EXE-195 critères 1, 4) et si
-    les deux gardes (fiche terminée, texte présent — critère 3 d'EXE-162) sont
-    satisfaites. La désignation de points ci-dessous est héritée (EXE-132) :
-    elle n'est plus lue par la génération depuis EXE-162, mais reste écrite pour
-    ne jamais remplacer un choix que j'ai fait (`points_choisis_origine == 'moi'`)."""
+    demande est posée (`decision == 'demandee'`, EXE-195 critères 1, 4), si
+    l'offre est toujours retenue (EXE-201, critère 6 : elle peut avoir été
+    désélectionnée pendant que la fiche tournait) et si les deux gardes
+    (fiche terminée, texte présent — critère 3 d'EXE-162) sont satisfaites. La
+    désignation de points ci-dessous est héritée (EXE-132) : elle n'est plus
+    lue par la génération depuis EXE-162, mais reste écrite pour ne jamais
+    remplacer un choix que j'ai fait (`points_choisis_origine == 'moi'`)."""
     with get_conn() as conn:
+        if not suivi_storage.est_retenue(conn, offer_id):
+            return None
+
         fiche_statut, points = _fiche_statut_et_points(conn, offer_id)
 
         row = conn.execute(

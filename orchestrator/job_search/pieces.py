@@ -40,10 +40,15 @@ CARTE_EN_GENERATION = "en_generation"
 CARTE_GENEREE = "generee"
 CARTE_PRETE = "prete"
 CARTE_SANS_LETTRE = "sans_lettre"
+CARTE_EN_ERREUR = "en_erreur"
 
 RAISON_GENERATION_EN_COURS = (
     "La lettre est en cours de génération : impossible de choisir "
     "« Ne pas faire de lettre pour cette annonce »."
+)
+
+RAISON_GENERATION_INTERROMPUE = (
+    "Génération interrompue (API redémarrée). Relancer la lettre."
 )
 
 
@@ -113,11 +118,20 @@ def carte_lettre(
     generation_en_cours: bool,
     fiche_statut: str | None,
     fiche_error_message: str | None,
+    *,
+    lettre_error_message: str | None = None,
 ) -> dict:
-    """Statut affiché et boutons de la carte Lettre (EXE-195, critères 2-13) —
-    calcul 100% Python depuis les colonnes déjà en base et le registre en
-    mémoire des tâches de fond ; jamais déduit côté front (architecture.md,
-    frontend.md)."""
+    """Statut affiché et boutons de la carte Lettre (EXE-195, critères 2-13 ;
+    état « en erreur » ajouté par EXE-201, critères 1-5) — calcul 100% Python
+    depuis les colonnes déjà en base et le registre en mémoire des tâches de
+    fond ; jamais déduit côté front (architecture.md, frontend.md).
+
+    `lettre_statut_brut == "error"` (la génération a échoué) et
+    `lettre_statut_brut == "pending"` sans génération en cours (orpheline,
+    API redémarrée) rendent tous deux « en erreur », avec « Générer la
+    lettre » actif pour relancer (EXE-201, critères 1-4). Distinct du cas où
+    la lettre n'a jamais tourné (`statut == "aucune"`) et où c'est la fiche
+    qui a échoué pendant l'attente (critère 5 d'EXE-195, inchangé)."""
     message = None
     if decision == DECISION_SANS_LETTRE:
         statut = CARTE_SANS_LETTRE
@@ -127,14 +141,22 @@ def carte_lettre(
         statut = CARTE_PRETE if marque_pret_at is not None else CARTE_GENEREE
     elif generation_en_cours:
         statut = CARTE_EN_GENERATION
+    elif lettre_statut_brut == "error":
+        statut = CARTE_EN_ERREUR
+        message = lettre_error_message
+    elif lettre_statut_brut == "pending":
+        # Orpheline : plus en cours, jamais terminée (API redémarrée).
+        statut = CARTE_EN_ERREUR
+        message = RAISON_GENERATION_INTERROMPUE
     else:
         statut = CARTE_DEMANDEE
-        # Critère 5 : demandée pendant que la fiche tournait encore, qui a
-        # fini en erreur — la lettre n'a jamais tourné (statut reste
-        # `aucune`), c'est la fiche qu'il faut relire.
-        if lettre_statut_brut != "error" and fiche_statut == "error":
+        # Critère 5 (EXE-195) : demandée pendant que la fiche tournait
+        # encore, qui a fini en erreur — la lettre n'a jamais tourné (statut
+        # reste `aucune`), c'est la fiche qu'il faut relire.
+        if fiche_statut == "error":
             message = fiche_error_message
 
+    en_erreur = statut == CARTE_EN_ERREUR
     ne_pas_faire_visible = decision != DECISION_SANS_LETTRE
     peut_ne_pas_faire = ne_pas_faire_visible and not generation_en_cours
     return {
@@ -143,8 +165,8 @@ def carte_lettre(
         "boutons": [
             _bouton(
                 BOUTON_GENERER,
-                visible=decision == DECISION_A_DECIDER,
-                actif=decision == DECISION_A_DECIDER,
+                visible=decision == DECISION_A_DECIDER or en_erreur,
+                actif=decision == DECISION_A_DECIDER or en_erreur,
             ),
             _bouton(
                 BOUTON_NE_PAS_FAIRE,

@@ -29,6 +29,9 @@ class GesteEtatSchema(BaseModel):
     libelle: str
     raison: str | None = None
     pieces_non_pretes: list[str] = []
+    # EXE-201, critère 12 : date la plus tardive acceptée pour ce geste
+    # (jour de Bruxelles) ; `None` pour un geste sans limite (Entretien).
+    date_max: str | None = None
 
 
 class EvenementHistoriqueOut(BaseModel):

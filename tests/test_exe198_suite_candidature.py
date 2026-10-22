@@ -502,11 +502,13 @@ class TestCritere18FriseMontreLetapeDeFinASaPlace:
             "entretien",
             "refusee",
         ]
+        # EXE-201, critère 13 : l'étape de fin est elle-même montrée acquise.
         assert detail["etapes_acquises"] == [
             "retenue",
             "prete_a_l_envoi",
             "candidature_envoyee",
             "entretien",
+            "refusee",
         ]
 
     def test_abandonnee_avant_envoi_ne_montre_pas_candidature_envoyee_acquise(

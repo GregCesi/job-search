@@ -380,7 +380,8 @@ class TestCritere22EtEtMutantN6EtapesAcquises:
 
         detail = client.get("/offers/110").json()
         assert detail["etape"] == "abandonnee"
-        assert detail["etapes_acquises"] == ["retenue"]
+        # EXE-201, critère 13 : l'étape de fin est elle-même montrée acquise.
+        assert detail["etapes_acquises"] == ["retenue", "abandonnee"]
         assert "candidature_envoyee" not in detail["etapes_acquises"]
         assert "entretien" not in detail["etapes_acquises"]
 
@@ -394,9 +395,11 @@ class TestCritere22EtEtMutantN6EtapesAcquises:
         client.post("/offers/111/geste", json={"geste": "abandonner"})
 
         detail = client.get("/offers/111").json()
+        # EXE-201, critère 13 : l'étape de fin est elle-même montrée acquise.
         assert detail["etapes_acquises"] == [
             "retenue",
             "prete_a_l_envoi",
             "candidature_envoyee",
+            "abandonnee",
         ]
         assert "entretien" not in detail["etapes_acquises"]
