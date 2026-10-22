@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
@@ -169,6 +169,73 @@ _VERDICT_ORDER = {
     "hors_perimetre_ok": 3,
     "ecartee": 4,
 }
+
+# Étapes comptées par le filtre au-dessus du tableau Suivi (EXE-199, critère 9).
+_ETAPES_SUIVI = [
+    suivi_etats.RETENUE,
+    suivi_etats.PRETE_A_L_ENVOI,
+    suivi_etats.CANDIDATURE_ENVOYEE,
+    suivi_etats.ENTRETIEN,
+    suivi_etats.OFFRE_RECUE,
+    suivi_etats.REFUSEE,
+    suivi_etats.SANS_SUITE,
+    suivi_etats.ABANDONNEE,
+]
+
+# Deux groupes de la vue Suivi (EXE-199, critères 6-8) : les candidatures en
+# cours avant les terminées — jamais l'inverse (mutant V2).
+_SUIVI_EN_COURS = {
+    suivi_etats.RETENUE,
+    suivi_etats.CANDIDATURE_ENVOYEE,
+    suivi_etats.ENTRETIEN,
+}
+_SUIVI_TERMINEES = {
+    suivi_etats.OFFRE_RECUE,
+    suivi_etats.REFUSEE,
+    suivi_etats.SANS_SUITE,
+    suivi_etats.ABANDONNEE,
+}
+
+
+def _ids_verdict(etat_par_offre: dict, revue_par_offre: dict) -> list[tuple[int, str]]:
+    """Union des offres qui ont un état stocké OU une revue hors périmètre —
+    une offre revue seule, sans geste, n'a pas de ligne dans `etats_offre` et
+    disparaissait du tri par verdict (critère 13, mutant V4)."""
+    ids = set(etat_par_offre) | set(revue_par_offre)
+    return [(oid, etat_par_offre.get(oid, suivi_etats.A_TRIER)) for oid in ids]
+
+
+def _build_suivi_order(etat_par_offre: dict, hist_par_offre: dict) -> tuple[str, list]:
+    """Rang précalculé de l'ordre Suivi (critères 6-8), même technique que le
+    verdict/`ecartee_le` ci-dessus — un CASE précalculé en Python, jamais un
+    tri Python après coup qui écraserait l'ordre composite. En cours (retenue,
+    candidature envoyée, entretien) triées par date du dernier geste non
+    annulé croissante (la plus ancienne relance en tête) ; terminées (offre
+    reçue, refusée, sans suite, abandonnée) par cette même date décroissante
+    (la plus récente en tête)."""
+    en_cours: list[tuple[int, str]] = []
+    terminees: list[tuple[int, str]] = []
+    for oid, etat in etat_par_offre.items():
+        if etat not in _SUIVI_EN_COURS and etat not in _SUIVI_TERMINEES:
+            continue
+        hist = hist_par_offre.get(oid, [])
+        ev = suivi_etats.dernier_geste_non_annule(hist)
+        date = ev.effet_at if ev is not None else ""
+        if etat in _SUIVI_EN_COURS:
+            en_cours.append((oid, date))
+        else:
+            terminees.append((oid, date))
+    en_cours.sort(key=lambda t: t[1])
+    terminees.sort(key=lambda t: t[1], reverse=True)
+    ordered = en_cours + terminees
+    if not ordered:
+        return "999999", []
+    cases = []
+    params: list = []
+    for rank, (oid, _date) in enumerate(ordered, start=1):
+        cases.append("WHEN ? THEN ?")
+        params.extend([oid, rank])
+    return f"CASE o.id {' '.join(cases)} ELSE 999999 END", params
 
 
 def _derive_review_fields(row) -> dict:
@@ -347,6 +414,35 @@ def _ecart_depuis_hist(hist: list) -> tuple[str | None, str | None]:
     return ev.effet_at, ev.motif
 
 
+def _temps_depuis_libelle(effet_at: str) -> str:
+    """Temps écoulé depuis `effet_at`, en jours comptés à Bruxelles (EXE-199,
+    critère 5) : « il y a N j », « aujourd'hui », ou « dans N j » pour une
+    date future (un entretien à venir, par exemple)."""
+    aujourdhui = date.fromisoformat(suivi_etats.aujourd_hui_bruxelles())
+    effectif = datetime.fromisoformat(effet_at)
+    if effectif.tzinfo is None:
+        effectif = effectif.replace(tzinfo=suivi_etats.FUSEAU_BRUXELLES)
+    jour_effet = effectif.astimezone(suivi_etats.FUSEAU_BRUXELLES).date()
+    delta = (aujourdhui - jour_effet).days
+    if delta > 0:
+        return f"il y a {delta} j"
+    if delta == 0:
+        return "aujourd'hui"
+    return f"dans {-delta} j"
+
+
+def _dernier_geste_depuis_hist(hist: list) -> tuple[str | None, str | None, str | None]:
+    """(libellé, date d'effet, temps écoulé en clair) du dernier geste non
+    annulé d'une candidature (EXE-199, critères 4-5) — toujours le dernier,
+    jamais le premier (mutant V3 : Retenir au lieu de Marquer envoyée).
+    Jamais le code interne du geste (architecture.md)."""
+    ev = suivi_etats.dernier_geste_non_annule(hist)
+    if ev is None:
+        return None, None, None
+    libelle = suivi_etats.LIBELLES_GESTES.get(ev.geste, ev.geste)
+    return libelle, ev.effet_at, _temps_depuis_libelle(ev.effet_at)
+
+
 def _tout_telecharger(
     cv_pret: bool, lettre_pret: bool, lettre_sans: bool
 ) -> tuple[bool, str | None]:
@@ -405,6 +501,12 @@ def list_offers(
     q: str | None = Query(None, description="Recherche texte sur title + company"),
     view_profile: bool | None = Query(None),
     include_remote: bool | None = Query(None),
+    etape: str | None = Query(
+        None,
+        description="Filtre Suivi par étape (EXE-199, critère 9) : "
+        "retenue | prete_a_l_envoi | candidature_envoyee | entretien | "
+        "offre_recue | refusee | sans_suite | abandonnee",
+    ),
     sort: str = Query("category"),
     order: str = Query("desc"),
 ) -> list[OfferRow]:
@@ -518,7 +620,7 @@ def list_offers(
         verdict_case_params: list = []
         if "verdict" in sort_parts:
             cases = []
-            for oid, etat in etat_par_offre.items():
+            for oid, etat in _ids_verdict(etat_par_offre, revue_par_offre):
                 label = _verdict_label(etat, revue_par_offre.get(oid))
                 rank = _VERDICT_ORDER.get(label)
                 if rank is not None:
@@ -526,6 +628,15 @@ def list_offers(
                     verdict_case_params.extend([oid, rank])
             if cases:
                 verdict_case_sql = f"CASE o.id {' '.join(cases)} ELSE 5 END"
+
+        # Ordre Suivi (EXE-199, critères 6-8) : en cours avant terminées —
+        # même technique de CASE précalculé que le verdict ci-dessus.
+        suivi_case_sql = "999999"
+        suivi_case_params: list = []
+        if "suivi" in sort_parts:
+            suivi_case_sql, suivi_case_params = _build_suivi_order(
+                etat_par_offre, hist_par_offre
+            )
 
         # Date du dernier écart, pour trier Écartées « la plus récente d'abord »
         # (EXE-194, critère 9) — même technique que le verdict ci-dessus : un
@@ -578,6 +689,9 @@ def list_offers(
             elif s == "ecartee_le":
                 order_clauses.append(f"{ecartee_case_sql} {d} NULLS LAST")
                 order_params.extend(ecartee_case_params)
+            elif s == "suivi":
+                order_clauses.append(f"{suivi_case_sql} {d}")
+                order_params.extend(suivi_case_params)
             elif s in _SORT_COLS:
                 order_clauses.append(f"o.{s} {d} NULLS LAST")
             else:
@@ -613,8 +727,14 @@ def list_offers(
         tri_val = suivi_etats.tri(etat)
         if not _correspond_au_filtre_verdict(tri_val, revue, verdict):
             continue
+        etape_val = _derive_etape(r, etat)
+        if etape is not None and etape_val != etape:
+            continue
         hist = hist_par_offre.get(r["id"], [])
         ecartee_le, motif_ecart = _ecart_depuis_hist(hist)
+        dernier_geste_libelle, dernier_geste_effet_at, temps_depuis_libelle = (
+            _dernier_geste_depuis_hist(hist)
+        )
         result.append(
             OfferRow(
                 id=r["id"],
@@ -627,7 +747,7 @@ def list_offers(
                 verdict=verdict_label,
                 tri=tri_val,
                 revue_hors_perimetre=revue,
-                etape=_derive_etape(r, etat),
+                etape=etape_val,
                 gestes_permis=_gestes_permis_depuis_row(r, etat, hist),
                 gestes=_gestes_avec_etat_depuis_row(r, etat, hist),
                 hors_perimetre_reason=r["hors_perimetre_reason"],
@@ -636,6 +756,9 @@ def list_offers(
                 else [],
                 ecartee_le=ecartee_le,
                 motif_ecart=motif_ecart,
+                dernier_geste_libelle=dernier_geste_libelle,
+                dernier_geste_effet_at=dernier_geste_effet_at,
+                temps_depuis_libelle=temps_depuis_libelle,
                 seen_candidat=bool(r["seen_candidat"]),
                 fetched_at=r["fetched_at"] or "",
                 **_derive_review_fields(r),
@@ -650,6 +773,45 @@ def list_offers(
         )
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# GET /offers/suivi/compte-etapes — nombre de candidatures par étape, pour le
+# filtre au-dessus du tableau Suivi (EXE-199, critère 9) : décidé par l'API,
+# jamais recalculé côté front (critère 11).
+# ---------------------------------------------------------------------------
+
+
+@router.get("/offers/suivi/compte-etapes")
+def compte_etapes_suivi() -> dict[str, int]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT o.id,
+                   c.id AS cv_id, c.marque_pret_at AS cv_marque_pret_at,
+                   l.id AS lettre_id, l.statut AS lettre_statut_raw,
+                   l.marque_pret_at AS lettre_marque_pret_at,
+                   l.decision AS lettre_decision_raw
+            FROM offers o
+            LEFT JOIN cvs c ON c.offer_id = o.id
+            LEFT JOIN lettres l ON l.offer_id = o.id
+            """
+        ).fetchall()
+        etat_par_offre = suivi_storage.etat_map(conn)
+    finally:
+        conn.close()
+
+    comptes: dict[str, int] = {e: 0 for e in _ETAPES_SUIVI}
+    for r in rows:
+        etat = etat_par_offre.get(r["id"], suivi_etats.A_TRIER)
+        if etat not in suivi_etats.ETATS_RETENUS:
+            continue
+        etape_val = _derive_etape(r, etat)
+        if etape_val is not None:
+            comptes[etape_val] = comptes.get(etape_val, 0) + 1
+    comptes["toutes"] = sum(comptes.values())
+    return comptes
 
 
 # ---------------------------------------------------------------------------
@@ -730,6 +892,9 @@ def get_offer(offer_id: int) -> OfferDetail:
         dernier_ecart_evt = suivi_storage.dernier_ecart(conn, offer_id)
         ecartee_le = dernier_ecart_evt.effet_at if dernier_ecart_evt else None
         motif_ecart = dernier_ecart_evt.motif if dernier_ecart_evt else None
+        dernier_geste_libelle, dernier_geste_effet_at, temps_depuis_libelle = (
+            _dernier_geste_depuis_hist(hist)
+        )
         cv_pret, lettre_pret, lettre_sans = suivi_storage.pieces_pretes(conn, offer_id)
     finally:
         conn.close()
@@ -771,6 +936,9 @@ def get_offer(offer_id: int) -> OfferDetail:
         tout_telecharger_libelle=libelle_tout_telecharger(lettre_sans),
         ecartee_le=ecartee_le,
         motif_ecart=motif_ecart,
+        dernier_geste_libelle=dernier_geste_libelle,
+        dernier_geste_effet_at=dernier_geste_effet_at,
+        temps_depuis_libelle=temps_depuis_libelle,
         hors_perimetre_reason=row["hors_perimetre_reason"],
         perimetre_causes=json.loads(row["perimetre_causes"])
         if row["perimetre_causes"]

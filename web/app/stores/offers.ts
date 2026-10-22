@@ -33,6 +33,11 @@ export interface OfferRow {
   // dérivés, offre écartée seulement (EXE-194, critères 9, 11)
   ecartee_le: string | null
   motif_ecart: string | null
+  // dérivés, offre retenue seulement (EXE-199, critères 4-5) — jamais
+  // recalculés ici, cf. frontend.md.
+  dernier_geste_libelle: string | null
+  dernier_geste_effet_at: string | null
+  temps_depuis_libelle: string | null
   seen_candidat: boolean
   fetched_at: string
   // review humaine
@@ -341,13 +346,14 @@ export interface Filters {
   source?: string
   verdict?: string
   seen_candidat?: boolean
+  etape?: string
   q?: string
   sort: string
   order: string
 }
 
 // Candidat (page /)
-export type CandidateView = 'cibles' | 'gaps' | 'filet' | 'retenues' | 'ecartees'
+export type CandidateView = 'cibles' | 'gaps' | 'filet' | 'suivi' | 'ecartees'
 // Opérateur (page /operateur)
 export type OperatorView = 'a_traiter' | 'hors_perimetre' | 'texte_manquant' | 'tout'
 
@@ -358,7 +364,9 @@ const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> 
   cibles:      { category: 'parfait',     verdict: 'a_trier', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
   gaps:        { category: 'reve',        verdict: 'a_trier', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
   filet:       { category: 'atteignable', verdict: 'a_trier', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
-  retenues:    { verdict: 'retenu', hors_perimetre: false, exclude_category: 'hors', exclude_ad_language: 'nl', sort: 'fetched_at', order: 'desc' },
+  // EXE-199, critères 2-3 : toutes les retenues, quels que soient catégorie,
+  // langue, périmètre et profil de vue — aucun de ces filtres n'est envoyé.
+  suivi:       { verdict: 'retenu', sort: 'suivi', order: 'asc' },
   // EXE-194, critère 9 : les offres écartées, la plus récemment écartée d'abord.
   ecartees:    { verdict: 'ecartee', exclude_ad_language: 'nl', sort: 'ecartee_le', order: 'desc' },
   // Opérateur
@@ -382,10 +390,24 @@ export const useOffersStore = defineStore('offers', () => {
   const viewProfileActive = ref(true)
   const includeRemote = ref(false)
   const traceCounts = ref<Record<string, number>>({})
+  // Nombre de candidatures par étape, pour le filtre au-dessus du tableau
+  // Suivi (EXE-199, critères 9, 11) — décidé par l'API, jamais recalculé ici.
+  const suiviEtapesCount = ref<Record<string, number>>({})
 
   async function fetchTraceCounts() {
     const data = await $fetch<Record<string, number>>(`${config.public.apiBase}/traces/counts`)
     traceCounts.value = data
+  }
+
+  async function fetchSuiviEtapesCount() {
+    const data = await $fetch<Record<string, number>>(`${config.public.apiBase}/offers/suivi/compte-etapes`)
+    suiviEtapesCount.value = data
+  }
+
+  // Filtre Suivi par étape (critère 9) : `null` = Toutes, remet la liste entière.
+  function filterSuiviByEtape(etape: string | null) {
+    filters.value = { ...filters.value, etape: etape ?? undefined }
+    fetchOffers()
   }
 
   function hasTraces(sourceId: string): boolean {
@@ -410,8 +432,10 @@ export const useOffersStore = defineStore('offers', () => {
       if (filters.value.source !== undefined) params.source = filters.value.source
       if (filters.value.verdict !== undefined) params.verdict = filters.value.verdict
       if (filters.value.seen_candidat !== undefined) params.seen_candidat = filters.value.seen_candidat
+      if (filters.value.etape !== undefined) params.etape = filters.value.etape
       if (filters.value.q) params.q = filters.value.q
-      if (['cibles', 'gaps', 'filet', 'retenues'].includes(activeView.value)) {
+      // EXE-199, critère 3 : Suivi ne passe jamais par le profil de vue.
+      if (['cibles', 'gaps', 'filet'].includes(activeView.value)) {
         params.view_profile = viewProfileActive.value
         if (includeRemote.value) params.include_remote = true
       }
@@ -471,6 +495,9 @@ export const useOffersStore = defineStore('offers', () => {
       row.etape = data.etape
       row.gestes_permis = data.gestes_permis
       row.gestes = data.gestes
+      row.dernier_geste_libelle = data.dernier_geste_libelle
+      row.dernier_geste_effet_at = data.dernier_geste_effet_at
+      row.temps_depuis_libelle = data.temps_depuis_libelle
     }
   }
 
@@ -525,6 +552,7 @@ export const useOffersStore = defineStore('offers', () => {
     activeView.value = view
     filters.value = { ...VIEW_PRESETS[view] }
     fetchOffers()
+    if (view === 'suivi') fetchSuiviEtapesCount()
   }
 
   return {
@@ -537,8 +565,11 @@ export const useOffersStore = defineStore('offers', () => {
     viewProfileActive,
     includeRemote,
     traceCounts,
+    suiviEtapesCount,
     fetchOffers,
     fetchTraceCounts,
+    fetchSuiviEtapesCount,
+    filterSuiviByEtape,
     hasTraces,
     openDetail,
     submitCategoryReview,

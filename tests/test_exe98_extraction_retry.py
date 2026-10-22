@@ -163,6 +163,7 @@ _LIST_OFFERS_DEFAULTS = dict(
     q=None,
     view_profile=None,
     include_remote=None,
+    etape=None,
     extraction_status=None,
     sort="category",
     order="desc",

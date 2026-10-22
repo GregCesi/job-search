@@ -96,6 +96,7 @@ def _list_offers(verdict=None):
         q=None,
         view_profile=None,
         include_remote=None,
+        etape=None,
         sort="category",
         order="desc",
     )

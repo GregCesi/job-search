@@ -70,6 +70,12 @@ class OfferRow(BaseModel):
     # et motif du dernier geste `ecarter` non annulé.
     ecartee_le: str | None = None
     motif_ecart: str | None = None
+    # dérivés, offre retenue seulement (EXE-199, critères 4-5) : libellé et
+    # date d'effet du dernier geste non annulé, et temps écoulé en clair —
+    # jamais le code interne du geste (architecture.md).
+    dernier_geste_libelle: str | None = None
+    dernier_geste_effet_at: str | None = None
+    temps_depuis_libelle: str | None = None
     seen_candidat: bool
     fetched_at: str
     filtered_out: bool = False

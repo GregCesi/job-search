@@ -274,6 +274,7 @@ def test_source_manuel_filtrable(db_path, profil, extraction, page):
         q=None,
         view_profile=None,
         include_remote=None,
+        etape=None,
         sort="category",
         order="desc",
     )

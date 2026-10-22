@@ -73,7 +73,7 @@ const MENU: MenuEntry[] = [
   { label: 'Cibles',    view: 'cibles'   },
   { label: 'Gaps',      view: 'gaps'     },
   { label: 'Filet',     view: 'filet'    },
-  { label: 'Retenues',  view: 'retenues' },
+  { label: 'Suivi',     view: 'suivi'    },
   { label: 'Écartées',  view: 'ecartees' },
 ]
 

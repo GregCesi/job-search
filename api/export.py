@@ -21,7 +21,12 @@ from orchestrator.job_search.suivi import etats as suivi_etats
 from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
-from .offers import _VERDICT_ORDER, _correspond_au_filtre_verdict, _load_scoring_context
+from .offers import (
+    _VERDICT_ORDER,
+    _correspond_au_filtre_verdict,
+    _ids_verdict,
+    _load_scoring_context,
+)
 
 router = APIRouter()
 
@@ -151,7 +156,7 @@ def export_offers(
         verdict_case_params: list = []
         if "verdict" in sort_parts:
             cases = []
-            for oid, etat in etat_par_offre.items():
+            for oid, etat in _ids_verdict(etat_par_offre, revue_par_offre):
                 label = revue_par_offre.get(oid)
                 if label is None:
                     t = suivi_etats.tri(etat)

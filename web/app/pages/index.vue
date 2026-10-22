@@ -11,7 +11,7 @@
         <span class="text-sm font-semibold text-gray-800 tracking-tight shrink-0">job-search</span>
 
         <!-- Vérification d'expiration (EXE-76/77/78) — les 4 onglets candidat.
-             Retenues vérifie toutes les offres retenues (comportement EXE-77
+             Suivi vérifie toutes les offres retenues (comportement EXE-77
              inchangé) ; les 3 autres désignent les offres affichées. -->
         <button
           v-if="CANDIDATE_VIEWS.includes(store.activeView as CandidateView)"
@@ -83,7 +83,7 @@ import type { OfferRow, CandidateView } from '~/stores/offers'
 const config = useRuntimeConfig()
 const store = useOffersStore()
 const route = useRoute()
-const CANDIDATE_VIEWS: CandidateView[] = ['cibles', 'gaps', 'filet', 'retenues', 'ecartees']
+const CANDIDATE_VIEWS: CandidateView[] = ['cibles', 'gaps', 'filet', 'suivi', 'ecartees']
 onMounted(() => {
   store.viewProfileActive = true
   store.includeRemote = false
@@ -102,7 +102,7 @@ onMounted(() => {
 const router = useRouter()
 
 async function handleSelect(offer: OfferRow) {
-  if (store.activeView === 'retenues') {
+  if (store.activeView === 'suivi') {
     router.push(`/offers/${offer.id}`)
   } else {
     await store.openDetail(offer.id)
@@ -110,7 +110,7 @@ async function handleSelect(offer: OfferRow) {
 }
 
 function handleCheckExpirations() {
-  if (store.activeView === 'retenues') {
+  if (store.activeView === 'suivi') {
     store.checkExpirations()
   } else {
     store.checkExpirations(store.offers.map(o => o.id))
