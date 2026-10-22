@@ -67,6 +67,13 @@ export interface ExtractedFacts {
   parse_failed: boolean
 }
 
+export interface EvenementHistorique {
+  geste: string
+  libelle: string
+  effet_at: string
+  motif: string | null
+}
+
 export interface OfferDetail extends OfferRow {
   source_id: string
   description: string | null
@@ -89,6 +96,9 @@ export interface OfferDetail extends OfferRow {
   // seul) et libellé du bouton — décidés par l'API, jamais recalculés ici.
   tout_telecharger_pieces: string[]
   tout_telecharger_libelle: string
+  // historique affichable : non annulé, du plus récent au plus ancien
+  // (EXE-198, critères 14-15) — déjà trié par l'API, jamais retrié ici.
+  historique: EvenementHistorique[]
 }
 
 export type FicheTas = 'lettre' | 'entretien' | 'rien'
@@ -487,10 +497,15 @@ export const useOffersStore = defineStore('offers', () => {
   // Tout geste de la table du module d'états (EXE-194, critère 10 : Remettre
   // à trier depuis une offre écartée) — motif facultatif, ignoré des gestes
   // qui ne le lisent pas côté API.
-  async function appliquerGeste(id: number, geste: string, motif?: string | null) {
+  async function appliquerGeste(
+    id: number,
+    geste: string,
+    motif?: string | null,
+    effetAt?: string | null,
+  ) {
     await $fetch(`${config.public.apiBase}/offers/${id}/geste`, {
       method: 'POST',
-      body: { geste, motif: motif ?? null },
+      body: { geste, motif: motif ?? null, effet_at: effetAt ?? null },
     })
     await _resyncOffer(id)
   }

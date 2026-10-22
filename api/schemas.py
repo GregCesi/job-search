@@ -31,6 +31,17 @@ class GesteEtatSchema(BaseModel):
     pieces_non_pretes: list[str] = []
 
 
+class EvenementHistoriqueOut(BaseModel):
+    """Une ligne affichable de l'historique d'une candidature (EXE-198,
+    critères 14-15) : non annulée, avec sa date d'effet, son libellé humain
+    (jamais le code interne, cf. architecture.md) et sa note facultative."""
+
+    geste: str
+    libelle: str
+    effet_at: str
+    motif: str | None = None
+
+
 class OfferRow(BaseModel):
     id: int
     title: str | None
@@ -129,6 +140,9 @@ class OfferDetail(OfferRow):
     tout_telecharger_libelle: str = "Tout télécharger"
     # sous-ensemble de `etapes_affichees` réellement acquis (EXE-194, critère 22)
     etapes_acquises: list[str] = []
+    # historique affichable : non annulé, du plus récent au plus ancien
+    # (EXE-198, critères 14-15)
+    historique: list[EvenementHistoriqueOut] = []
 
 
 class EmployerUrlIn(BaseModel):

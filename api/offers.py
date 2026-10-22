@@ -170,16 +170,6 @@ _VERDICT_ORDER = {
     "ecartee": 4,
 }
 
-# Séquence fixe affichée en tête d'une offre retenue (critère 15) — seules les
-# étapes du chemin « heureux » ; une offre qui a bifurqué (refusée, sans
-# suite, abandonnée) n'y figure pas mais `etape` dit où elle est réellement.
-ETAPES_AFFICHEES = [
-    suivi_etats.RETENUE,
-    suivi_etats.PRETE_A_L_ENVOI,
-    suivi_etats.CANDIDATURE_ENVOYEE,
-    suivi_etats.ENTRETIEN,
-]
-
 
 def _derive_review_fields(row) -> dict:
     """Dérive categorie_finale + etat_review + staleness à la volée (jamais persistés)."""
@@ -331,6 +321,20 @@ def _gestes_avec_etat_depuis_row(row, etat: str, hist: list) -> list[dict]:
             lettre_sans=lettre_sans,
             dernier_annulable=suivi_etats.dernier_geste_non_annule(hist),
         )
+    ]
+
+
+def _historique_affiche_depuis_hist(hist: list) -> list[dict]:
+    """Lignes affichables de l'historique, libellé humain joint (EXE-198,
+    critères 14-15) — jamais le code interne du geste, cf. architecture.md."""
+    return [
+        {
+            "geste": ev.geste,
+            "libelle": suivi_etats.LIBELLES_GESTES.get(ev.geste, ev.geste),
+            "effet_at": ev.effet_at,
+            "motif": ev.motif,
+        }
+        for ev in suivi_etats.historique_affiche(hist)
     ]
 
 
@@ -720,6 +724,9 @@ def get_offer(offer_id: int) -> OfferDetail:
         gestes_permis = suivi_storage.gestes_permis(conn, offer_id)
         gestes = suivi_storage.gestes_avec_etat(conn, offer_id)
         etapes_acquises = suivi_storage.etapes_acquises(conn, offer_id)
+        hist = suivi_storage.historique(conn, offer_id)
+        etapes_affichees = suivi_etats.etapes_affichees(etat, hist)
+        historique_out = _historique_affiche_depuis_hist(hist)
         dernier_ecart_evt = suivi_storage.dernier_ecart(conn, offer_id)
         ecartee_le = dernier_ecart_evt.effet_at if dernier_ecart_evt else None
         motif_ecart = dernier_ecart_evt.motif if dernier_ecart_evt else None
@@ -755,8 +762,9 @@ def get_offer(offer_id: int) -> OfferDetail:
             }
             for g in gestes
         ],
-        etapes_affichees=ETAPES_AFFICHEES if tri_val == suivi_etats.RETENUE else [],
+        etapes_affichees=etapes_affichees,
         etapes_acquises=etapes_acquises,
+        historique=historique_out,
         tout_telecharger_possible=tout_telecharger_possible,
         tout_telecharger_raison=tout_telecharger_raison,
         tout_telecharger_pieces=pieces_a_envoyer(lettre_sans),

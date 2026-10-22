@@ -152,7 +152,8 @@ LIBELLES_GESTES = {
     RELANCER: "Relancer",
     ENTRETIEN_GESTE: "Entretien",
     OFFRE_RECUE_GESTE: "Offre reçue",
-    REFUSER: "Refuser",
+    # EXE-198, critère 5 : c'est l'entreprise qui refuse, jamais Grégoire.
+    REFUSER: "Refusée",
     SANS_SUITE_GESTE: "Sans suite",
     ABANDONNER: "Abandonner",
     ANNULER: "Annuler le dernier geste",
@@ -278,14 +279,37 @@ def aujourd_hui_bruxelles(maintenant_utc: datetime | None = None) -> str:
     return now.astimezone(FUSEAU_BRUXELLES).date().isoformat()
 
 
-def normaliser_effet_marquer_envoyee(effet_at: str | None) -> str:
-    """Date d'effet de `marquer_envoyee` (EXE-197, H3, critères 2, 4, 5, 7) :
-    absente → maintenant ; une date seule (sans heure, saisie au champ date
-    du navigateur) → midi, heure de Bruxelles, de CE jour calendaire, en ISO
-    UTC (critère 7) ; toute date dont le jour de Bruxelles est postérieur à
-    aujourd'hui, jour de Bruxelles → lève `DateEffetFuture` (critère 4). Ne
-    s'applique qu'à `marquer_envoyee` — les autres gestes gardent leur date
-    d'effet telle qu'elle est reçue (H3)."""
+# Bloc daté (EXE-198, H3) : gestes dont la date d'effet passe par
+# `normaliser_effet` plutôt que par l'`effet_at` brut reçu — `marquer_envoyee`
+# (EXE-197) plus les six gestes de suite posés par ce ticket. Retenir, Écarter
+# et Remettre à trier n'y entrent jamais (H3) : ils gardent leur `effet_at`
+# tel qu'il est reçu, décision de `storage.appliquer_geste`.
+GESTES_DATE_BLOC = {
+    MARQUER_ENVOYEE,
+    RELANCER,
+    ENTRETIEN_GESTE,
+    OFFRE_RECUE_GESTE,
+    REFUSER,
+    SANS_SUITE_GESTE,
+    ABANDONNER,
+}
+
+# Sous-ensemble du bloc qui refuse une date postérieure à aujourd'hui, jour de
+# Bruxelles (critère 7) — Entretien seul en est exempté : un entretien se
+# prépare à l'avance.
+GESTES_DATE_FUTURE_INTERDITE = GESTES_DATE_BLOC - {ENTRETIEN_GESTE}
+
+
+def normaliser_effet(geste: str, effet_at: str | None) -> str:
+    """Date d'effet d'un geste du bloc daté (EXE-197, H3, critères 2, 4, 5, 7 ;
+    étendu à tout `GESTES_DATE_BLOC` par EXE-198, H3, critère 7) : absente →
+    maintenant ; une date seule (sans heure, saisie au champ date du
+    navigateur) → midi, heure de Bruxelles, de CE jour calendaire, en ISO UTC
+    (critère 7) ; pour un geste de `GESTES_DATE_FUTURE_INTERDITE`, une date
+    dont le jour de Bruxelles est postérieur à aujourd'hui, jour de Bruxelles
+    → lève `DateEffetFuture` (critère 7) — Entretien accepte toute date,
+    passée ou future. Les gestes hors de `GESTES_DATE_BLOC` ne passent jamais
+    par cette fonction (H3)."""
     now = maintenant()
     if effet_at is None:
         return now.isoformat()
@@ -297,9 +321,10 @@ def normaliser_effet_marquer_envoyee(effet_at: str | None) -> str:
         )
     else:
         effectif = parsed
-    aujourdhui = aujourd_hui_bruxelles(now)
-    if effectif.astimezone(FUSEAU_BRUXELLES).date().isoformat() > aujourdhui:
-        raise DateEffetFuture(effet_at, aujourdhui)
+    if geste in GESTES_DATE_FUTURE_INTERDITE:
+        aujourdhui = aujourd_hui_bruxelles(now)
+        if effectif.astimezone(FUSEAU_BRUXELLES).date().isoformat() > aujourdhui:
+            raise DateEffetFuture(effet_at, aujourdhui)
     return effectif.astimezone(timezone.utc).isoformat()
 
 
@@ -546,3 +571,43 @@ def etapes_acquises(
     if rang >= 3:
         acquises.append(ENTRETIEN)
     return acquises
+
+
+# Séquence fixe du chemin heureux, en tête d'une offre retenue qui n'a pas
+# bifurqué (EXE-200, critère 15). Pour une offre qui a bifurqué (branche),
+# `etapes_affichees` ci-dessous la tronque au point de départ et y ajoute
+# l'étape de fin « à sa place » (EXE-198, critère 18), plutôt que de la faire
+# suivre en aveugle du reste du chemin heureux jamais atteint.
+ETAPES_CHEMIN_HEUREUX = [RETENUE, PRETE_A_L_ENVOI, CANDIDATURE_ENVOYEE, ENTRETIEN]
+
+# Même séquence sans l'étape dérivée `prete_a_l_envoi` (qui n'a pas de rang
+# propre dans `_RANG_ON_PATH`), indexée par rang 1..4 — sert à tronquer la
+# séquence ci-dessus au bon endroit pour une branche.
+_RANG_SEQUENCE = [RETENUE, CANDIDATURE_ENVOYEE, ENTRETIEN, OFFRE_RECUE]
+
+
+def etapes_affichees(etat: str, historique: list[EvenementHistorique]) -> list[str]:
+    """Séquence à afficher en tête d'une offre retenue (EXE-198, critère 18) :
+    le chemin heureux complet si l'offre y est toujours ; sinon le chemin
+    heureux tronqué au point de départ de la bifurcation, suivi de l'étape de
+    fin — jamais le chemin heureux complet suivi en aveugle de la branche.
+    Liste vide si l'offre n'est pas retenue."""
+    if etat not in ETATS_RETENUS:
+        return []
+    if etat not in ETATS_BRANCHE:
+        return list(ETAPES_CHEMIN_HEUREUX)
+    rang_depart = rang_progression(etat, historique)
+    return _RANG_SEQUENCE[:rang_depart] + [etat]
+
+
+def historique_affiche(
+    historique: list[EvenementHistorique],
+) -> list[EvenementHistorique]:
+    """Lignes affichables de l'historique (EXE-198, critères 14-15) : les
+    gestes non annulés, du plus récent au plus ancien par date d'effet ; à
+    date d'effet égale, le plus récemment enregistré en premier — départagé
+    par `id` (ordre d'insertion), jamais par `enregistre_at` seul, qui peut
+    coïncider quand l'horloge est figée dans les tests (mutant S4 : une ligne
+    annulée reste dans le rendu)."""
+    actifs = [e for e in historique if e.annule_at is None]
+    return sorted(actifs, key=lambda e: (e.effet_at, e.id), reverse=True)

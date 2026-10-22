@@ -106,6 +106,22 @@ def historique(
     ]
 
 
+def historique_affiche(
+    conn: sqlite3.Connection, offer_id: int
+) -> list[etats.EvenementHistorique]:
+    """Lignes affichables de l'historique d'une offre (EXE-198, critères
+    14-15) : non annulées, du plus récent au plus ancien."""
+    return etats.historique_affiche(historique(conn, offer_id))
+
+
+def etapes_affichees(conn: sqlite3.Connection, offer_id: int) -> list[str]:
+    """Séquence à afficher en tête d'une offre retenue, étape de fin à sa
+    place pour une branche (EXE-198, critère 18)."""
+    etat = etat_stocke(conn, offer_id)
+    hist = historique(conn, offer_id)
+    return etats.etapes_affichees(etat, hist)
+
+
 def historique_map(
     conn: sqlite3.Connection,
 ) -> dict[int, list[etats.EvenementHistorique]]:
@@ -197,10 +213,12 @@ def appliquer_geste(
         lettre_sans=lettre_sans,
     )
     now = _now()
-    if geste == etats.MARQUER_ENVOYEE:
-        # EXE-197, H3 : seul `marquer_envoyee` porte la règle de date — les
-        # autres gestes gardent leur `effet_at` tel qu'il est reçu.
-        effet = etats.normaliser_effet_marquer_envoyee(effet_at)
+    if geste in etats.GESTES_DATE_BLOC:
+        # EXE-197, H3, étendu par EXE-198, H3 : le bloc daté (marquer_envoyee
+        # et les six gestes de suite) porte la règle de date — Retenir,
+        # Écarter et Remettre à trier gardent leur `effet_at` tel qu'il est
+        # reçu.
+        effet = etats.normaliser_effet(geste, effet_at)
     else:
         effet = effet_at if effet_at is not None else now
     conn.execute(

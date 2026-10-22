@@ -88,6 +88,64 @@
               </template>
             </div>
 
+            <!-- Suite de la candidature (EXE-198) : chaque geste du bloc daté
+                 demande une date (aujourd'hui par défaut) et une note facultative
+                 (critère 6) ; gestes et libellés rendus par l'API, jamais fixés
+                 ici (critère 11). -->
+            <div v-if="gestesSuiteDisponibles.length" class="rounded-lg border border-gray-200 bg-white px-4 py-3 space-y-2 flex-shrink-0 text-xs">
+              <div class="flex items-center gap-2 flex-wrap">
+                <button
+                  v-for="g in gestesSuiteDisponibles"
+                  :key="g.geste"
+                  @click="ouvrirGesteSuite(g.geste)"
+                  class="px-2.5 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                  :class="gesteSuiteOuvert === g.geste ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : ''"
+                >{{ g.libelle }}</button>
+              </div>
+              <div v-if="gesteSuiteOuvert" class="flex flex-col gap-2 pt-1">
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="dateGesteSuite"
+                    type="date"
+                    :max="gesteSuiteOuvert === 'entretien' ? undefined : pieces?.aujourd_hui_bruxelles"
+                    class="rounded border border-gray-200 px-2 py-1.5 text-gray-600 focus:outline-none focus:border-indigo-300"
+                  />
+                  <input
+                    v-model="noteGesteSuite"
+                    type="text"
+                    placeholder="Note (facultative)"
+                    class="flex-1 rounded border border-gray-200 px-2 py-1.5 text-gray-600 focus:outline-none focus:border-indigo-300"
+                  />
+                </div>
+                <div class="flex items-center gap-2">
+                  <button
+                    :disabled="gesteSuiteBusy"
+                    class="px-3 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                    @click="confirmerGesteSuite"
+                  >{{ gesteSuiteBusy ? '…' : 'Confirmer' }}</button>
+                  <button
+                    :disabled="gesteSuiteBusy"
+                    class="px-3 py-1 rounded text-xs font-medium text-gray-500 hover:bg-gray-100"
+                    @click="gesteSuiteOuvert = null"
+                  >Renoncer</button>
+                </div>
+              </div>
+              <p v-if="gesteSuiteError" class="text-red-600">{{ gesteSuiteError }}</p>
+            </div>
+
+            <!-- Historique de la candidature (EXE-198, critère 14) : trié par
+                 l'API, jamais retrié ici — une ligne par geste non annulé. -->
+            <div v-if="offer.historique.length" class="rounded-lg border border-gray-200 bg-white px-4 py-3 space-y-1.5 flex-shrink-0 text-xs">
+              <p class="font-medium text-gray-500">Historique</p>
+              <ul class="space-y-1">
+                <li v-for="(h, idx) in offer.historique" :key="idx" class="flex items-start gap-2 text-gray-600">
+                  <span class="text-gray-400 shrink-0 w-20">{{ formatDateFr(h.effet_at) }}</span>
+                  <span class="font-medium shrink-0">{{ h.libelle }}</span>
+                  <span v-if="h.motif" class="text-gray-400 truncate">{{ h.motif }}</span>
+                </li>
+              </ul>
+            </div>
+
             <!-- Vérification d'expiration (EXE-76/77/78) — tag/date/checks pour
                  toute offre expirée ; URL employeur réservée aux retenues -->
             <div v-if="isRetenue || offer.expired" class="rounded-lg border border-gray-200 bg-white px-4 py-3 space-y-2 flex-shrink-0 text-xs">
@@ -1670,6 +1728,13 @@ const ETAPE_CANDIDATURE_LABELS: Record<string, string> = {
   prete_a_l_envoi: 'Prête à l\'envoi',
   candidature_envoyee: 'Candidature envoyée',
   entretien: 'Entretien à préparer',
+  // EXE-198, critère 18 : étapes de fin, affichées « à leur place » quand la
+  // candidature a bifurqué — `etapes_affichees` les ajoute déjà en bout de
+  // séquence, rendu par l'API (critère 11).
+  offre_recue: 'Offre reçue',
+  refusee: 'Refusée',
+  sans_suite: 'Sans suite',
+  abandonnee: 'Abandonnée',
 }
 
 // EXE-194, critère 22 : l'acquis vient de `etapes_acquises`, rendu par
@@ -1720,6 +1785,54 @@ async function marquerEnvoyee() {
     envoyeeError.value = await errorDetail(e)
   } finally {
     envoyeeBusy.value = false
+  }
+}
+
+// ── Suite de la candidature (EXE-198) — relancer, entretien, offre reçue,
+// refusée, sans suite, abandonner : chaque geste du bloc daté, permis ou non
+// rendu par l'API (`offer.gestes`), jamais une liste fixe ici (critère 11).
+const GESTES_SUITE = [
+  'relancer', 'entretien', 'offre_recue', 'refuser', 'sans_suite', 'abandonner',
+]
+const gestesSuiteDisponibles = computed(
+  () => (offer.value?.gestes ?? []).filter(
+    g => GESTES_SUITE.includes(g.geste) && g.permis,
+  ),
+)
+const gesteSuiteOuvert = ref<string | null>(null)
+const dateGesteSuite = ref('')
+const noteGesteSuite = ref('')
+const gesteSuiteBusy = ref(false)
+const gesteSuiteError = ref<string | null>(null)
+
+function ouvrirGesteSuite(geste: string) {
+  gesteSuiteError.value = null
+  gesteSuiteOuvert.value = geste
+  dateGesteSuite.value = pieces.value?.aujourd_hui_bruxelles ?? ''
+  noteGesteSuite.value = ''
+}
+
+async function confirmerGesteSuite() {
+  if (!gesteSuiteOuvert.value) return
+  gesteSuiteError.value = null
+  gesteSuiteBusy.value = true
+  try {
+    await $fetch(`${config.public.apiBase}/offers/${id.value}/geste`, {
+      method: 'POST',
+      body: {
+        geste: gesteSuiteOuvert.value,
+        motif: noteGesteSuite.value || null,
+        effet_at: dateGesteSuite.value || null,
+      },
+    })
+    gesteSuiteOuvert.value = null
+    // Critère 11 : l'étape, les boutons et la frise sont relus avec l'offre,
+    // sans rechargement de la page.
+    offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
+  } catch (e) {
+    gesteSuiteError.value = await errorDetail(e)
+  } finally {
+    gesteSuiteBusy.value = false
   }
 }
 
