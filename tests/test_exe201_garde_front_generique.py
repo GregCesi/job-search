@@ -15,16 +15,17 @@ ticket — ESLint/Vitest non retenus, ils demandent une dépendance et une
 et un des champs interdits.
 
 Exceptions nommées (critère 17) : aucune ne porte sur un bouton de geste, le
-bloc d'envoi, la carte Lettre ou la frise — sauf les cinq lignes
+bloc d'envoi, la carte Lettre ou la frise — sauf les six lignes
 `lettreCarte(?.)statut === …` de `pages/offers/[id].vue`, qui choisissent
 laquelle des sept sections de l'onglet Lettre afficher. Lues ainsi par le
 chat (déclaré dans l'entrée Journal, « lu X comme Y ») : l'interdiction du
 ticket cible les décisions de permission/affichage des *boutons* de la carte
 (que l'API rend déjà par `boutons[].visible/actif`, lus tels quels par
-`lettreCarteBoutonsVisibles` sans aucune comparaison), pas le choix,
-pré-existant depuis EXE-162/195 et hors du Problème et des 22 critères de ce
-ticket, de quelle section de contenu afficher — un renvoi côté API de
-« quelle section afficher » serait un ajout de surplus que rien ne demande.
+`lettreCarteBoutonsVisibles` sans aucune comparaison), pas le choix, de
+quelle section de contenu afficher — un renvoi côté API de « quelle section
+afficher » serait un ajout de surplus que rien ne demande. Cinq de ces
+lignes sont pré-existantes depuis EXE-162/195 ; la sixième (section « en
+erreur ») est ajoutée par EXE-202, critères 1-4.
 """
 
 import re
@@ -104,7 +105,7 @@ EXCEPTIONS: dict[tuple[str, int], str] = {
     ): "Surligne l'étape courante du mini-stepper de génération de la pièce, pas la frise de candidature.",
     (
         "pages/offers/[id].vue",
-        880,
+        899,
     ): "Surligne l'étape courante du mini-stepper de génération de la pièce, pas la frise de candidature.",
     # Carte Lettre : contenu de section, pas permission d'un bouton (cf.
     # docstring du module ci-dessus).
@@ -128,21 +129,28 @@ EXCEPTIONS: dict[tuple[str, int], str] = {
         "pages/offers/[id].vue",
         644,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
+    # Section « en erreur » de l'onglet Lettre (EXE-202, critères 1-4) :
+    # même nature que les cinq lignes ci-dessus, choix de la section de
+    # contenu à afficher, pas d'un bouton.
+    (
+        "pages/offers/[id].vue",
+        664,
+    ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     # `isRetenue` : affiche/masque des sections génériques de la page (URL
     # employeur, placeholders « réservé à une offre retenue », polling
     # d'avancement) — ni un bouton de geste, ni le bloc d'envoi (qui n'est
     # pas gardé par `isRetenue`), ni la carte Lettre, ni la frise.
     (
         "pages/offers/[id].vue",
-        1257,
+        1276,
     ): "Visibilité de sections génériques de la page, pas des 4 catégories interdites.",
     (
         "pages/offers/[id].vue",
-        1691,
+        1714,
     ): "toggleCvPret : calcule le prochain état du marquage Prêt, pas un bouton de geste.",
     (
         "pages/offers/[id].vue",
-        1703,
+        1726,
     ): "toggleLettrePret : calcule le prochain état du marquage Prêt, pas un bouton de geste.",
 }
 

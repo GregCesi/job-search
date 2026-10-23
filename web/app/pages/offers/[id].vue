@@ -658,6 +658,25 @@
               </div>
             </div>
 
+            <!-- En erreur (EXE-202, critères 1-3) : relance par Générer la
+                 lettre, sans éditeur ni Régénérer — boutons rendus par l'API
+                 (jamais décidés ici, critère 13 d'EXE-195). -->
+            <div v-else-if="lettreCarte?.statut === 'en_erreur'" class="rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3">
+              <p class="text-sm font-medium text-red-700">En erreur</p>
+              <p v-if="lettreCarte.message" class="text-sm text-red-600">{{ lettreCarte.message }}</p>
+              <div class="flex items-center gap-2">
+                <button
+                  v-for="bouton in lettreCarteBoutonsVisibles"
+                  :key="bouton.bouton"
+                  @click="actionLettreCarte(bouton.bouton)"
+                  :disabled="!bouton.actif || lettreBusy"
+                  :title="bouton.raison ?? undefined"
+                  class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                >{{ lettreBusy ? 'Lancement…' : bouton.libelle }}</button>
+              </div>
+              <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
+            </div>
+
             <!-- Lettre prête -->
             <template v-else>
               <div
@@ -1311,6 +1330,10 @@ async function retirerDesRetenues() {
   try {
     await $fetch(`${config.public.apiBase}/offers/${id.value}/verdict`, { method: 'DELETE' })
     offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
+    // EXE-202, critère 5 : ce geste peut annuler n'importe quel dernier
+    // geste, dont « Marquer envoyée » — les pièces (`deja_envoyee`,
+    // `envoyee_le`) sont relues avec l'offre, jamais laissées périmées.
+    await chargerPieces()
   } catch (e) {
     annulerError.value = await errorDetail(e)
   }
