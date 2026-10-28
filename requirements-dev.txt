@@ -2,3 +2,10 @@
 # TCK-235, 28 septembre 2026.
 ruff==0.16.9
 pytest==9.1.1
+
+# Outils de mesure de la recon qualité, versions figées.
+# TCK-301, 28 octobre 2026. jscpd passe par npx, hors de ce fichier.
+radon==6.0.1
+vulture==2.16
+import-linter==2.15
+graphifyy==0.9.97
