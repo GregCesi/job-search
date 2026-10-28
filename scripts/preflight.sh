@@ -43,6 +43,13 @@ fi
 
 "$VENV/bin/ruff" --version
 
+# Dépendances du front. Les tests du navigateur (EXE-202) démarrent le front et
+# échouent si web/node_modules manque ; un worktree neuf ne l'a pas. Sans cette
+# étape, le pré-vol du jet 49 (EXE-203) a été rouge sur 12 erreurs. TCK-301,
+# 28 octobre 2026.
+echo "PRÉ-VOL: dépendances du front (npm ci dans web/)"
+(cd "$ROOT/web" && npm ci --silent --no-audit --no-fund)
+
 echo "PRÉ-VOL: suite de tests sur l'état d'entrée"
 PYTHONDONTWRITEBYTECODE=1 "$VENV/bin/python" -m pytest -q
 
