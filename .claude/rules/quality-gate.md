@@ -28,6 +28,12 @@ conclure : c'est le rendu du script qui fait foi, et c'est lui que ton verdict r
 6. **Reconstructibilité** — si le ticket touche `requirements.txt`,
    `requirements-dev.txt` ou `pyproject.toml` : un venv neuf les installe. Sinon `vide`.
 
+7. **Cliquet** — `scripts/cliquet.py` rend 0 : les plafonds de `scripts/plafonds.toml`
+   tiennent (appels `.execute(` hors fichiers de stockage, taille des fichiers,
+   complexité des blocs). Et `lint-imports` rend 0 : les contrats de couches de
+   `pyproject.toml` tiennent. Les plafonds ne se baissent qu'à la main, après
+   promotion ; tu ne les écris pas, et tu ne retires pas une exception.
+
 Le périmètre des critères 1 et 2 se constate sur les fichiers modifiés depuis la
 création de ta branche, commités ou non, plus les fichiers nouveaux. Le script le
 calcule ; tu n'as pas à le faire.

@@ -69,5 +69,11 @@ if printf '%s\n' "$changes" | grep -qE '^(requirements[^/]*\.txt|pyproject\.toml
   rm -rf "$TMP"
 else ligne 6 vide "dépendances — non touchées"; fi
 
+# 7. Cliquet : la dette mesurée ne remonte pas, les contrats de couches tiennent.
+#    Plafonds dans scripts/plafonds.toml, contrats dans pyproject.toml. TCK-301.
+if "$PY" scripts/cliquet.py && PYTHONPATH="$ROOT" "$ROOT/.venv/bin/lint-imports" --no-cache; then
+  ligne 7 vert "cliquet + contrats de couches"
+else ligne 7 rouge "cliquet + contrats de couches"; fi
+
 if [ "$rouge" -eq 0 ]; then echo "BARRE: verte"; else echo "BARRE: rouge"; fi
 exit "$rouge"

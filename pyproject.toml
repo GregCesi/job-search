@@ -17,3 +17,18 @@ select = ["E4", "E7", "E9", "F", "I"]
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-p no:cacheprovider"
+
+# Contrats de couches, vérifiés par le critère 7 de la barre (lint-imports).
+# TCK-301, 28 octobre 2026. Un import toléré se retire de ignore_imports quand
+# il disparaît ; on n'en ajoute pas.
+[tool.importlinter]
+root_packages = ["orchestrator", "api"]
+include_external_packages = false
+
+[[tool.importlinter.contracts]]
+id = "metier-sans-web"
+name = "Le coeur metier n'importe pas la couche web"
+type = "forbidden"
+source_modules = ["orchestrator"]
+forbidden_modules = ["api"]
+ignore_imports = ["orchestrator.job_search.rescore -> api.view_profile"]

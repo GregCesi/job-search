@@ -1,0 +1,46 @@
+# Plafonds du cliquet (scripts/cliquet.py, critère 7 de la barre).
+# Valeurs mesurées le 28 octobre 2026 sur b76cab3, TCK-301.
+#
+# Ils ne se baissent qu'à la main, après promotion d'un jet : la barre imprime
+# « CLIQUET à baisser » pour chaque plafond au-dessus de la mesure. On ne les
+# remonte jamais. Une exception dont le fichier ou le bloc a disparu se retire.
+
+[execute]
+# Appels .execute( sous api/ et orchestrator/, hors fichiers de stockage
+# (dossier storage/ ou stockage/, fichier storage.py ou stockage.py).
+hors_stockage = 190
+
+[taille]
+# Lignes par fichier .py, .vue et .ts sous api/, orchestrator/ et web/app/.
+seuil = 800
+
+[taille.exceptions]
+"web/app/pages/offers/[id].vue" = 2670
+"orchestrator/job_search/lettre/boucle.py" = 1568
+"api/offers.py" = 1239
+"orchestrator/job_search/lettre/banc.py" = 930
+"api/lettre.py" = 863
+"orchestrator/job_search/lettre/service.py" = 811
+
+[complexite]
+# Complexité cyclomatique d'un bloc Python (radon), sous api/ et orchestrator/.
+# 20 est la borne haute du rang C.
+seuil = 20
+
+[complexite.exceptions]
+"api/offers.py::list_offers" = 69
+"orchestrator/job_search/rescore.py::main" = 62
+"orchestrator/job_search/lettre/banc.py::resumer_config" = 57
+"api/export.py::export_offers" = 47
+"orchestrator/job_search/run.py::main" = 37
+"api/export.py::_format_export_md" = 32
+"api/offers.py::_derive_score_breakdown" = 28
+"orchestrator/job_search/fiche/service.py::rechercher_entreprise" = 28
+"orchestrator/job_search/scoring/extractor.py::extract_facts" = 27
+"orchestrator/job_search/cv/service.py::run_cv" = 25
+"orchestrator/job_search/fiche/cascade.py::identify_employer" = 24
+"api/export.py::export_calibration" = 23
+"orchestrator/job_search/scoring/filters.py::apply_hard_filters" = 23
+"orchestrator/job_search/sources/forem.py::ForemSource._map" = 23
+"orchestrator/job_search/lettre/boucle.py::noeud_tamis" = 22
+"orchestrator/job_search/sources/actiris.py::ActirisSource._map" = 22
