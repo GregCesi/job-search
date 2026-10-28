@@ -1,0 +1,5 @@
+$ git grep -lE '(^|[^a-z])(manual|Manual|MANUAL)' -- api orchestrator ':!orchestrator/job_search/sources/' web/app
+api/ajouts.py
+api/cv.py
+orchestrator/job_search/ajout/service.py
+orchestrator/job_search/cv/service.py

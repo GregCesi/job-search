@@ -1,0 +1,15 @@
+$ grep -rno "\.execute(" orchestrator/job_search --include="*.py" | cut -d: -f1 | awk -F/ '{ print (NF>3 ? $1"/"$2"/"$3"/" : $0) }' | sort | uniq -c | sort -rn
+  52 orchestrator/job_search/storage/
+  27 orchestrator/job_search/lettre/
+  24 orchestrator/job_search/cv/
+  21 orchestrator/job_search/suivi/
+  10 orchestrator/job_search/run.py
+   7 orchestrator/job_search/fiche/
+   6 orchestrator/job_search/ingestion.py
+   4 orchestrator/job_search/mail/
+   3 orchestrator/job_search/expiration/
+   2 orchestrator/job_search/verdict.py
+   2 orchestrator/job_search/pdf/
+   2 orchestrator/job_search/ajout/
+   1 orchestrator/job_search/rescore.py
+   1 orchestrator/job_search/reference/

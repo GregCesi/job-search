@@ -1,0 +1,100 @@
+[1mClone found (python)[22m
+ - [1m[32mavancement.py[39m[22m [43:50 - 55:57] (13 lines, 73 tokens)
+   mail.py [59:78 - 71:57]
+[1mClone found (python)[22m
+ - [1m[32mcv.py[39m[22m [51:33 - 63:25] (13 lines, 55 tokens)
+   fiche.py [34:36 - 46:25]
+[1mClone found (python)[22m
+ - [1m[32mcv.py[39m[22m [131:20 - 137:29] (7 lines, 57 tokens)
+   fiche.py [129:23 - 135:29]
+[1mClone found (python)[22m
+ - [1m[32mcv.py[39m[22m [141:35 - 151:14] (11 lines, 53 tokens)
+   fiche.py [139:31 - 149:14]
+[1mClone found (python)[22m
+ - [1m[32mexport.py[39m[22m [90:29 - 104:7] (15 lines, 79 tokens)
+   offers.py [532:48 - 546:7]
+[1mClone found (python)[22m
+ - [1m[32mexport.py[39m[22m [103:40 - 128:36] (26 lines, 127 tokens)
+   offers.py [563:32 - 588:36]
+[1mClone found (python)[22m
+ - [1m[32mexport.py[39m[22m [174:9 - 187:22] (14 lines, 93 tokens)
+   offers.py [656:9 - 669:22]
+[1mClone found (python)[22m
+ - [1m[32mexport.py[39m[22m [186:28 - 203:19] (18 lines, 80 tokens)
+   offers.py [672:46 - 689:19]
+[1mClone found (python)[22m
+ - [1m[32mexport.py[39m[22m [203:33 - 211:34] (9 lines, 64 tokens)
+   offers.py [695:33 - 702:34]
+[1mClone found (python)[22m
+ - [1m[32mexport.py[39m[22m [334:32 - 345:21] (12 lines, 69 tokens)
+   offers.py [80:40 - 91:21]
+[1mClone found (python)[22m
+ - [1m[32mexport.py[39m[22m [400:18 - 408:10] (9 lines, 55 tokens)
+   job_search/storage/reviews.py [61:12 - 69:6]
+[1mClone found (python)[22m
+ - [1m[32mlettre.py[39m[22m [438:5 - 447:18] (10 lines, 50 tokens)
+   lettre.py [499:5 - 508:18]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/cv/service.py[39m[22m [135:5 - 144:15] (10 lines, 53 tokens)
+   job_search/fiche/service.py [147:17 - 156:15]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/cv/service.py[39m[22m [353:79 - 361:54] (9 lines, 65 tokens)
+   job_search/cv/service.py [637:25 - 645:54]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/cv/service.py[39m[22m [355:5 - 361:54] (7 lines, 62 tokens)
+   job_search/cv/service.py [501:5 - 507:54]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/cv/service.py[39m[22m [387:5 - 396:21] (10 lines, 58 tokens)
+   job_search/cv/service.py [464:5 - 473:21]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/cv/service.py[39m[22m [597:60 - 615:73] (19 lines, 86 tokens)
+   job_search/cv/service.py [646:58 - 664:73]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/expiration/service.py[39m[22m [56:59 - 63:21] (8 lines, 57 tokens)
+   job_search/expiration/service.py [71:58 - 78:21]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/ingestion.py[39m[22m [445:47 - 456:15] (12 lines, 50 tokens)
+   job_search/ingestion.py [606:46 - 617:15]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/lettre/boucle.py[39m[22m [337:50 - 347:29] (11 lines, 52 tokens)
+   job_search/mail/generation.py [109:5 - 118:29]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/lettre/service.py[39m[22m [416:71 - 452:41] (37 lines, 182 tokens)
+   job_search/lettre/service.py [524:56 - 560:41]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/lettre/service.py[39m[22m [629:64 - 641:21] (13 lines, 53 tokens)
+   job_search/lettre/service.py [707:17 - 719:21]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/sources/actiris.py[39m[22m [300:5 - 306:49] (7 lines, 53 tokens)
+   job_search/sources/forem.py [204:5 - 210:49]
+[1mClone found (python)[22m
+ - [1m[32mjob_search/suivi/storage.py[39m[22m [95:9 - 104:10] (10 lines, 61 tokens)
+   job_search/suivi/storage.py [135:13 - 144:14]
+[1mClone found (typescript)[22m
+ - [1m[32mcomponents/OfferDetail.vue:typescript[39m[22m [567:1 - 586:2] (18 lines, 117 tokens)
+   pages/offers/[id].vue:typescript [2650:1 - 2669:2]
+[1mClone found (html)[22m
+ - [1m[32mpages/offers/[id].vue:html[39m[22m [552:103 - 566:14] (5 lines, 59 tokens)
+   pages/offers/[id].vue:html [899:99 - 931:14]
+[1mClone found (html)[22m
+ - [1m[32mpages/offers/[id].vue:html[39m[22m [629:20 - 643:17] (14 lines, 81 tokens)
+   pages/offers/[id].vue:html [666:102 - 680:17]
+[1mClone found (typescript)[22m
+ - [1m[32mpages/offers/[id].vue:typescript[39m[22m [2401:44 - 2410:2] (10 lines, 72 tokens)
+   pages/offers/[id].vue:typescript [2432:61 - 2441:2]
+[90m┌────────────┬────────────────┬─────────────┬──────────────┬──────────────┬──────────────────┬───────────────────┐[39m
+[90m│[39m[31m Format     [39m[90m│[39m[31m Files analyzed [39m[90m│[39m[31m Total lines [39m[90m│[39m[31m Total tokens [39m[90m│[39m[31m Clones found [39m[90m│[39m[31m Duplicated lines [39m[90m│[39m[31m Duplicated tokens [39m[90m│[39m
+[90m├────────────┼────────────────┼─────────────┼──────────────┼──────────────┼──────────────────┼───────────────────┤[39m
+[90m│[39m html       [90m│[39m 16             [90m│[39m 1626        [90m│[39m 11242        [90m│[39m 2            [90m│[39m 19 (1.17%)       [90m│[39m 140 (1.25%)       [90m│[39m
+[90m├────────────┼────────────────┼─────────────┼──────────────┼──────────────┼──────────────────┼───────────────────┤[39m
+[90m│[39m python     [90m│[39m 90             [90m│[39m 20179       [90m│[39m 110095       [90m│[39m 24           [90m│[39m 310 (1.54%)      [90m│[39m 1687 (1.53%)      [90m│[39m
+[90m├────────────┼────────────────┼─────────────┼──────────────┼──────────────┼──────────────────┼───────────────────┤[39m
+[90m│[39m typescript [90m│[39m 21             [90m│[39m 3114        [90m│[39m 20614        [90m│[39m 2            [90m│[39m 28 (0.90%)       [90m│[39m 189 (0.92%)       [90m│[39m
+[90m├────────────┼────────────────┼─────────────┼──────────────┼──────────────┼──────────────────┼───────────────────┤[39m
+[90m│[39m vue        [90m│[39m 17             [90m│[39m 5269        [90m│[39m 26437        [90m│[39m 0            [90m│[39m 0 (0.00%)        [90m│[39m 0 (0.00%)         [90m│[39m
+[90m├────────────┼────────────────┼─────────────┼──────────────┼──────────────┼──────────────────┼───────────────────┤[39m
+[90m│[39m [1mTotal:[22m     [90m│[39m 144            [90m│[39m 30188       [90m│[39m 168388       [90m│[39m 28           [90m│[39m 357 (1.18%)      [90m│[39m 2016 (1.20%)      [90m│[39m
+[90m└────────────┴────────────────┴─────────────┴──────────────┴──────────────┴──────────────────┴───────────────────┘[39m
+[90mFound 28 clones.[39m
+[32mJSON report saved to docs/recon/sorties/jscpd/jscpd-report.json[39m
+[90mtime: 31.776ms[39m

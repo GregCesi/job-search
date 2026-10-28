@@ -1,0 +1,16 @@
+Re-extracting code files in . (no LLM needed)...
+[graphify watch] 7 file(s) not classified (no supported extension or shebang), skipped: .env.example, .git, .gitignore, contrat-couches.toml, favicon.ico, projet.env (+1 more)
+  AST cache: 0/314 files served from cache (0%); 314 to extract
+  AST extraction: 100/314 uncached files (31%) [8 workers]
+  AST extraction: 200/314 uncached files (63%) [8 workers]
+  AST extraction: 300/314 uncached files (95%) [8 workers]
+  AST extraction: 314/314 uncached files (100%) [8 workers]
+  warning: 1 source file(s) produced zero nodes and are absent from the graph: pyproject.toml. A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666).
+  warning: 8 code file(s) yielded no symbols (0.01 MB) — a data file, or source this extractor models no symbols for: web/app/app.vue, web/app/components/PieceReadyToggle.vue, web/nuxt.config.ts, web/tailwind.config.ts, .claude/commands/fiche-entreprise.md (+3 more)
+Graph has 6436 nodes (above 5000 limit). Building aggregated community view...
+graph.html written (aggregated: 242 community nodes, 1249 cross-community edges)
+Tip: run with --obsidian for full node-level detail.
+[graphify watch] Rebuilt: 6436 nodes, 15888 edges, 242 communities
+[graphify watch] graph.json, graph.html and GRAPH_REPORT.md updated in graphify-out
+Code graph updated. For doc/paper/image changes run /graphify --update in your AI assistant.
+Tip: set GEMINI_API_KEY or GOOGLE_API_KEY to use Gemini for semantic extraction.

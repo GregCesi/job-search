@@ -1,0 +1,67 @@
+api/export.py
+    F 56:0 export_offers - F (47)
+    F 245:0 _format_export_md - E (32)
+    F 380:0 export_calibration - D (23)
+api/offers.py
+    F 470:0 list_offers - F (69)
+    F 61:0 _derive_score_breakdown - D (28)
+    F 869:0 get_offer - C (11)
+api/lettre.py
+    F 377:0 launch_lettre_if_ready - C (11)
+api/traces.py
+    F 119:0 list_traces - C (11)
+orchestrator/job_search/run.py
+    F 228:0 main - E (37)
+    F 50:0 _tri_phase - C (15)
+    F 146:0 _second_pass_batches - C (15)
+orchestrator/job_search/rescore.py
+    F 25:0 main - F (62)
+orchestrator/job_search/pieces.py
+    F 114:0 carte_lettre - C (14)
+orchestrator/job_search/lettre/service.py
+    F 274:0 _generate_via_boucle - C (16)
+orchestrator/job_search/lettre/repertoire.py
+    F 280:0 valider_juge_et_redaction - C (11)
+orchestrator/job_search/lettre/boucle.py
+    F 504:0 noeud_tamis - D (22)
+    F 602:0 _blocs_communs_redaction - C (15)
+    F 916:0 _parser_verificateur - C (15)
+    F 1383:0 _invoquer_graphe - C (12)
+orchestrator/job_search/lettre/banc.py
+    F 311:0 resumer_config - F (57)
+    F 583:0 _annexe_passage - C (13)
+    F 87:0 parser_config - C (11)
+    F 846:0 main - C (11)
+orchestrator/job_search/calibration/disagreement.py
+    F 28:0 disagreement - C (13)
+orchestrator/job_search/storage/db.py
+    F 418:0 migrate_lettres_schema - C (13)
+    F 464:0 migrate_lettre_versions_schema - C (12)
+orchestrator/job_search/fiche/service.py
+    F 193:0 rechercher_entreprise - D (28)
+orchestrator/job_search/fiche/prompt.py
+    F 71:0 _section_repertoire - C (11)
+orchestrator/job_search/fiche/cascade.py
+    F 93:0 identify_employer - D (24)
+orchestrator/job_search/scoring/extractor.py
+    F 182:0 extract_facts - D (27)
+    F 132:0 ensure_models_available - C (13)
+orchestrator/job_search/scoring/filters.py
+    F 52:0 apply_hard_filters - D (23)
+orchestrator/job_search/sources/forem.py
+    M 157:4 ForemSource._map - D (23)
+    M 105:4 ForemSource._list_all - C (12)
+orchestrator/job_search/sources/actiris.py
+    M 196:4 ActirisSource._map - D (22)
+    M 127:4 ActirisSource._list_all - C (12)
+    M 252:4 ActirisSource._parse_detail - C (12)
+orchestrator/job_search/sources/france_travail.py
+    M 130:4 FranceTravailSource._map - C (12)
+orchestrator/job_search/cv/service.py
+    F 147:0 run_cv - D (25)
+    F 341:0 apply_correction - C (13)
+    F 570:0 recalc_profile_after_fiche - C (12)
+orchestrator/job_search/expiration/service.py
+    F 43:0 run_expiration_check - C (14)
+orchestrator/job_search/reference/metrics.py
+    F 148:0 aggregate - C (17)

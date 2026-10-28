@@ -1,0 +1,73 @@
+POST /ajouts | api/ajouts.py:90 | délègue
+GET /ajouts | api/ajouts.py:109 | base directe
+GET /ajouts/{ajout_id} | api/ajouts.py:122 | base directe
+GET /offers/{offer_id}/avancement | api/avancement.py:98 | les deux
+GET /avancement | api/avancement.py:114 | base directe
+POST /offers/{offer_id}/cv | api/cv.py:151 | les deux
+GET /offers/{offer_id}/cv | api/cv.py:170 | base directe
+POST /offers/{offer_id}/cv/skills | api/cv.py:186 | les deux
+PUT /offers/{offer_id}/cv/titre | api/cv.py:212 | les deux
+PUT /offers/{offer_id}/cv/profil | api/cv.py:229 | les deux
+POST /offers/{offer_id}/cv/en | api/cv.py:246 | les deux
+GET /offers/{offer_id}/cv/pdf | api/cv.py:286 | les deux
+GET /offers/{offer_id}/cv/corrections | api/cv.py:329 | base directe
+PUT /offers/{offer_id}/employer-url | api/expiration.py:24 | les deux
+POST /offers/check-expirations | api/expiration.py:59 | les deux
+GET /export/offers | api/export.py:55 | les deux
+GET /export/calibration | api/export.py:379 | base directe
+POST /offers/{offer_id}/fiche | api/fiche.py:149 | les deux
+GET /offers/{offer_id}/fiche | api/fiche.py:169 | base directe
+PUT /offers/{offer_id}/fiche/avis | api/fiche.py:189 | base directe
+POST /offers/{offer_id}/fiche/intermediaire | api/fiche.py:209 | base directe
+PATCH /offers/{offer_id}/fiche/points/{point_idx} | api/fiche.py:273 | base directe
+POST /offers/{offer_id}/fiche/points/{point_idx}/explain | api/fiche.py:284 | base directe
+GET /offers/{offer_id}/lettre/points | api/lettre.py:248 | base directe
+PUT /offers/{offer_id}/lettre/points | api/lettre.py:260 | base directe
+POST /offers/{offer_id}/lettre | api/lettre.py:428 | les deux
+POST /offers/{offer_id}/lettre/ne-pas-faire | api/lettre.py:466 | les deux
+POST /offers/{offer_id}/lettre/revenir | api/lettre.py:493 | les deux
+GET /offers/{offer_id}/lettre | api/lettre.py:527 | base directe
+PUT /offers/{offer_id}/lettre/angle | api/lettre.py:545 | les deux
+PUT /offers/{offer_id}/lettre/texte | api/lettre.py:562 | les deux
+POST /offers/{offer_id}/lettre/regenerer | api/lettre.py:621 | les deux
+POST /offers/{offer_id}/lettre/regenerer-depuis-ma-lettre | api/lettre.py:647 | délègue
+POST /offers/{offer_id}/lettre/ecarter | api/lettre.py:674 | délègue
+POST /offers/{offer_id}/lettre/remettre | api/lettre.py:700 | les deux
+GET /offers/{offer_id}/lettre/pdf | api/lettre.py:760 | les deux
+GET /offers/{offer_id}/lettre/mise-en-page | api/lettre.py:778 | les deux
+GET /offers/{offer_id}/lettre/versions | api/lettre.py:796 | base directe
+GET /offers/{offer_id}/lettre/versions/{version_id}/appels | api/lettre.py:852 | base directe
+GET /offers/{offer_id}/mail | api/mail.py:75 | les deux
+PUT /offers/{offer_id}/mail | api/mail.py:99 | délègue
+POST /offers/{offer_id}/mail/generer | api/mail.py:110 | les deux
+GET /offers/{offer_id}/mail/appel | api/mail.py:154 | délègue
+GET /health | api/main.py:71 | aucune
+GET /offers | api/offers.py:469 | les deux
+GET /offers/suivi/compte-etapes | api/offers.py:795 | les deux
+POST /offers/check-known | api/offers.py:838 | base directe
+GET /offers/{offer_id} | api/offers.py:868 | les deux
+POST /offers/{offer_id}/geste | api/offers.py:1038 | les deux
+PUT /offers/{offer_id}/verdict | api/offers.py:1078 | les deux
+PUT /offers/{offer_id}/category-review | api/offers.py:1127 | base directe
+GET /offers/{offer_id}/review | api/offers.py:1175 | base directe
+DELETE /offers/{offer_id}/verdict | api/offers.py:1198 | les deux
+DELETE /offers/{offer_id}/revue | api/offers.py:1224 | les deux
+GET /offers/{offer_id}/pieces | api/pieces.py:76 | les deux
+PUT /offers/{offer_id}/envoyee | api/pieces.py:123 | délègue
+PUT /offers/{offer_id}/cv/pret | api/pieces.py:169 | les deux
+PUT /offers/{offer_id}/lettre/pret | api/pieces.py:197 | les deux
+GET /reference | api/reference.py:72 | aucune
+GET /reference/{entry_id} | api/reference.py:86 | aucune
+PUT /reference/{entry_id} | api/reference.py:96 | aucune
+POST /offers/{offer_id}/reference | api/reference.py:114 | délègue
+GET /traces/counts | api/traces.py:103 | aucune
+GET /traces/versions | api/traces.py:109 | aucune
+GET /traces | api/traces.py:118 | base directe
+PUT /traces/{trace_key}/note | api/traces.py:154 | base directe
+GET /traces/export | api/traces.py:193 | base directe
+
+routes : 67
+base directe : 22
+délègue : 7
+les deux : 32
+aucune : 6

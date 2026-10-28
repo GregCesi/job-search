@@ -1,0 +1,23 @@
+Unused files (1)
+tailwind.config.ts
+Unused dependencies (2)
+@tailwindcss/typography  package.json:15:6
+vue-router               package.json:21:6
+Unused exported types (17)
+GesteEtat            interface  app/stores/offers.ts:5:18            
+ExpirationCheck      interface  app/stores/offers.ts:59:18           
+EvenementHistorique  interface  app/stores/offers.ts:79:18           
+FichePoint           interface  app/stores/offers.ts:115:18          
+FicheSource          interface  app/stores/offers.ts:124:18          
+CvSkillGroup         interface  app/stores/offers.ts:149:18          
+CvStatut             type       app/stores/offers.ts:154:13          
+LettreStatut         type       app/stores/offers.ts:178:13          
+FaitRetenu           interface  app/stores/offers.ts:180:18          
+Jugement             interface  app/stores/offers.ts:189:18          
+Releve               interface  app/stores/offers.ts:197:18          
+LettreEtape          interface  app/stores/offers.ts:205:18          
+LettreCarte          interface  app/stores/offers.ts:301:18          
+AvancementEtat       type       app/stores/offers.ts:332:13          
+OperatorView         type       app/stores/offers.ts:367:13          
+PieceKey             type       app/stores/pieceNotifications.ts:9:13
+TraceParsedFacts     interface  app/stores/traces.ts:5:18            

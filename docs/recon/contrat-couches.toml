@@ -1,0 +1,9 @@
+[tool.importlinter]
+root_packages = ["orchestrator", "api"]
+include_external_packages = false
+[[tool.importlinter.contracts]]
+id = "metier-sans-web"
+name = "Le coeur metier n'importe pas la couche web"
+type = "forbidden"
+source_modules = ["orchestrator"]
+forbidden_modules = ["api"]

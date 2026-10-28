@@ -1,0 +1,13 @@
+$ grep -rno "\.execute(" api --include="*.py" | cut -d: -f1 | sort | uniq -c | sort -rn
+  27 api/lettre.py
+  12 api/offers.py
+  10 api/pieces.py
+  10 api/fiche.py
+  10 api/cv.py
+   8 api/avancement.py
+   6 api/traces.py
+   4 api/mail.py
+   4 api/expiration.py
+   2 api/export.py
+   2 api/ajouts.py
+   1 api/traces_reader.py

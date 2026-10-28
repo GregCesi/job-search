@@ -1,0 +1,6 @@
+api/ajouts.py:47: unused variable 'cls' (100% confidence)
+api/ajouts.py:52: unused variable 'cls' (100% confidence)
+api/offers.py:1034: unused variable 'cls' (100% confidence)
+api/pieces.py:56: unused variable 'cls' (100% confidence)
+api/reference.py:37: unused variable 'cls' (100% confidence)
+orchestrator/job_search/sources/base.py:43: unused variable 'cls' (100% confidence)

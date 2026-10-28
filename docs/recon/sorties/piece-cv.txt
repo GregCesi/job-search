@@ -1,0 +1,26 @@
+$ git grep -lE '(^|[^a-z])(cv|Cv|CV)' -- api orchestrator/job_search ':!orchestrator/job_search/cv/' web/app
+api/ajouts.py
+api/avancement.py
+api/cascade.py
+api/cv.py
+api/fiche.py
+api/main.py
+api/offers.py
+api/pieces.py
+api/schemas.py
+orchestrator/job_search/avancement.py
+orchestrator/job_search/lettre/banc.py
+orchestrator/job_search/lettre/boucle.py
+orchestrator/job_search/lettre/service.py
+orchestrator/job_search/mail/generation.py
+orchestrator/job_search/paths.py
+orchestrator/job_search/pdf/__init__.py
+orchestrator/job_search/pdf/coordonnees.py
+orchestrator/job_search/pdf/filename.py
+orchestrator/job_search/pieces.py
+orchestrator/job_search/storage/db.py
+orchestrator/job_search/suivi/etats.py
+orchestrator/job_search/suivi/storage.py
+web/app/pages/offers/[id].vue
+web/app/stores/offers.ts
+web/app/stores/pieceNotifications.ts

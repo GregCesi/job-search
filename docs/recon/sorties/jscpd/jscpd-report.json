@@ -1,0 +1,1133 @@
+{
+  "duplicates": [
+    {
+      "firstFile": {
+        "end": 55,
+        "endLoc": {
+          "column": 56,
+          "line": 55,
+          "position": 1939
+        },
+        "name": "avancement.py",
+        "start": 43,
+        "startLoc": {
+          "column": 49,
+          "line": 43,
+          "position": 1491
+        }
+      },
+      "format": "python",
+      "fragment": "def _mail_avancement(conn, offer_id: int) -> dict:\n    offer = conn.execute(\n        \"SELECT title, company FROM offers WHERE id = ?\", (offer_id,)\n    ).fetchone()\n    fiche = conn.execute(\n        \"SELECT employeur_nom FROM fiches_entreprise WHERE offer_id = ?\",\n        (offer_id,),\n    ).fetchone()\n    entreprise = resolve_entreprise(\n        offer[\"company\"] if offer else None,\n        fiche[\"employeur_nom\"] if fiche else None,\n    )\n    intitule = (offer[\"title\"] if offer else None) or \"\"",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 13,
+      "secondFile": {
+        "end": 71,
+        "endLoc": {
+          "column": 56,
+          "line": 71,
+          "position": 2337
+        },
+        "name": "mail.py",
+        "start": 59,
+        "startLoc": {
+          "column": 77,
+          "line": 59,
+          "position": 1889
+        }
+      },
+      "tokens": 73
+    },
+    {
+      "firstFile": {
+        "end": 63,
+        "endLoc": {
+          "column": 24,
+          "line": 63,
+          "position": 2052
+        },
+        "name": "cv.py",
+        "start": 51,
+        "startLoc": {
+          "column": 32,
+          "line": 51,
+          "position": 1752
+        }
+      },
+      "format": "python",
+      "fragment": "titre_defaut_router = APIRouter()\n\n# Références fortes sur les tâches de fond (l'event loop ne garde que des références faibles).\n_tasks: set[asyncio.Task] = set()\n_running: set[int] = set()\n\n\ndef is_running(offer_id: int) -> bool:\n    return offer_id in _running\n\n\ndef running_offer_ids() -> set[int]:\n    return set(_running)",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 13,
+      "secondFile": {
+        "end": 46,
+        "endLoc": {
+          "column": 24,
+          "line": 46,
+          "position": 1796
+        },
+        "name": "fiche.py",
+        "start": 34,
+        "startLoc": {
+          "column": 35,
+          "line": 34,
+          "position": 1496
+        }
+      },
+      "tokens": 55
+    },
+    {
+      "firstFile": {
+        "end": 137,
+        "endLoc": {
+          "column": 28,
+          "line": 137,
+          "position": 4260
+        },
+        "name": "cv.py",
+        "start": 131,
+        "startLoc": {
+          "column": 19,
+          "line": 131,
+          "position": 3933
+        }
+      },
+      "format": "python",
+      "fragment": "async def launch_cv(offer_id: int) -> asyncio.Task | None:\n    \"\"\"Lance la génération si elle n'est pas déjà en cours ni déjà terminée —\n    idempotent (critères 1, 11, 12 du ticket EXE-127). Rend la tâche créée, ou\n    `None` si rien n'a été lancé.\"\"\"\n    if offer_id in _running:\n        return None\n    with get_conn() as conn:",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 7,
+      "secondFile": {
+        "end": 135,
+        "endLoc": {
+          "column": 28,
+          "line": 135,
+          "position": 5116
+        },
+        "name": "fiche.py",
+        "start": 129,
+        "startLoc": {
+          "column": 22,
+          "line": 129,
+          "position": 4789
+        }
+      },
+      "tokens": 57
+    },
+    {
+      "firstFile": {
+        "end": 151,
+        "endLoc": {
+          "column": 13,
+          "line": 151,
+          "position": 4671
+        },
+        "name": "cv.py",
+        "start": 141,
+        "startLoc": {
+          "column": 34,
+          "line": 141,
+          "position": 4413
+        }
+      },
+      "format": "python",
+      "fragment": "        if row is not None and row[\"statut\"] == \"done\":\n            return None\n        reset_pending(conn, offer_id)\n    _running.add(offer_id)\n    task = asyncio.create_task(_generate(offer_id))\n    _tasks.add(task)\n    task.add_done_callback(_tasks.discard)\n    return task\n\n\n@router.post(\"/{offer_id}/cv\")",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 11,
+      "secondFile": {
+        "end": 149,
+        "endLoc": {
+          "column": 13,
+          "line": 149,
+          "position": 5535
+        },
+        "name": "fiche.py",
+        "start": 139,
+        "startLoc": {
+          "column": 30,
+          "line": 139,
+          "position": 5277
+        }
+      },
+      "tokens": 53
+    },
+    {
+      "firstFile": {
+        "end": 104,
+        "endLoc": {
+          "column": 6,
+          "line": 104,
+          "position": 3103
+        },
+        "name": "export.py",
+        "start": 90,
+        "startLoc": {
+          "column": 28,
+          "line": 90,
+          "position": 2552
+        }
+      },
+      "format": "python",
+      "fragment": "        params.append(source)\n    if category is not None:\n        conditions.append(\"o.category = ?\")\n        params.append(category)\n    if exclude_category is not None:\n        conditions.append(\"o.category != ?\")\n        params.append(exclude_category)\n    if hors_perimetre is True:\n        conditions.append(\"o.hors_perimetre_reason IS NOT NULL\")\n    elif hors_perimetre is False:\n        conditions.append(\"o.hors_perimetre_reason IS NULL\")\n    if hp_cause is not None:\n        conditions.append(\"o.perimetre_causes LIKE ?\")\n        params.append(f'%\"{hp_cause}\"%')\n    if etat_review is not None:",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 15,
+      "secondFile": {
+        "end": 546,
+        "endLoc": {
+          "column": 6,
+          "line": 546,
+          "position": 20045
+        },
+        "name": "offers.py",
+        "start": 532,
+        "startLoc": {
+          "column": 47,
+          "line": 532,
+          "position": 19494
+        }
+      },
+      "tokens": 79
+    },
+    {
+      "firstFile": {
+        "end": 128,
+        "endLoc": {
+          "column": 35,
+          "line": 128,
+          "position": 4303
+        },
+        "name": "export.py",
+        "start": 103,
+        "startLoc": {
+          "column": 39,
+          "line": 103,
+          "position": 3095
+        }
+      },
+      "format": "python",
+      "fragment": "        params.append(f'%\"{hp_cause}\"%')\n    if etat_review is not None:\n        etats = [e.strip() for e in etat_review.split(\",\") if e.strip()]\n        if etats:\n            clauses = []\n            for e in etats:\n                if e == \"non_relue\":\n                    clauses.append(\"o.reviewed_at IS NULL\")\n                elif e == \"validee\":\n                    clauses.append(\n                        \"(o.reviewed_at IS NOT NULL AND o.categorie_corrigee IS NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))\"\n                    )\n                elif e == \"corrigee\":\n                    clauses.append(\n                        \"(o.categorie_corrigee IS NOT NULL AND (o.rescored_at IS NULL OR o.rescored_at <= o.reviewed_at))\"\n                    )\n                elif e == \"a_revoir\":\n                    clauses.append(\n                        \"(o.reviewed_at IS NOT NULL AND o.rescored_at IS NOT NULL AND o.rescored_at > o.reviewed_at)\"\n                    )\n            if clauses:\n                conditions.append(f\"({' OR '.join(clauses)})\")\n    if q is not None:\n        conditions.append(\"(LOWER(o.title) LIKE ? OR LOWER(o.company) LIKE ?)\")\n        like = f\"%{q.lower()}%\"\n        params.extend([like, like])",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 26,
+      "secondFile": {
+        "end": 588,
+        "endLoc": {
+          "column": 35,
+          "line": 588,
+          "position": 22089
+        },
+        "name": "offers.py",
+        "start": 563,
+        "startLoc": {
+          "column": 31,
+          "line": 563,
+          "position": 20881
+        }
+      },
+      "tokens": 127
+    },
+    {
+      "firstFile": {
+        "end": 187,
+        "endLoc": {
+          "column": 21,
+          "line": 187,
+          "position": 6654
+        },
+        "name": "export.py",
+        "start": 174,
+        "startLoc": {
+          "column": 8,
+          "line": 174,
+          "position": 6078
+        }
+      },
+      "format": "python",
+      "fragment": "        order_clauses: list[str] = []\n        order_params: list = []\n        for s, o in zip(sort_parts, order_parts):\n            d = o.upper() if o.upper() in (\"ASC\", \"DESC\") else \"DESC\"\n            if s == \"category\":\n                order_clauses.append(f\"\"\"\n                    CASE o.category\n                        WHEN 'parfait'     THEN 1\n                        WHEN 'reve'        THEN 2\n                        WHEN 'atteignable' THEN 3\n                        WHEN 'hors'        THEN 4\n                        ELSE 5\n                    END {d}\"\"\")\n            elif s == \"contract_type\":",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 14,
+      "secondFile": {
+        "end": 669,
+        "endLoc": {
+          "column": 21,
+          "line": 669,
+          "position": 25683
+        },
+        "name": "offers.py",
+        "start": 656,
+        "startLoc": {
+          "column": 8,
+          "line": 656,
+          "position": 25107
+        }
+      },
+      "tokens": 93
+    },
+    {
+      "firstFile": {
+        "end": 203,
+        "endLoc": {
+          "column": 18,
+          "line": 203,
+          "position": 7374
+        },
+        "name": "export.py",
+        "start": 186,
+        "startLoc": {
+          "column": 27,
+          "line": 186,
+          "position": 6628
+        }
+      },
+      "format": "python",
+      "fragment": "                    END {d}\"\"\")\n            elif s == \"contract_type\":\n                order_clauses.append(f\"\"\"\n                    CASE o.contract_type\n                        WHEN 'CDI'       THEN 1\n                        WHEN 'Permanent' THEN 2\n                        WHEN 'Full-time' THEN 3\n                        WHEN 'Freelance' THEN 4\n                        WHEN 'LIB'       THEN 5\n                        WHEN 'CDD'       THEN 6\n                        WHEN 'MIS'       THEN 7\n                        WHEN 'Part-time' THEN 8\n                        ELSE 9\n                    END {d}\"\"\")\n            elif s == \"verdict\":\n                order_clauses.append(f\"{verdict_case_sql} {d}\")\n                order_params.extend(verdict_case_params)\n            elif s in _sort_cols:",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 18,
+      "secondFile": {
+        "end": 689,
+        "endLoc": {
+          "column": 18,
+          "line": 689,
+          "position": 26595
+        },
+        "name": "offers.py",
+        "start": 672,
+        "startLoc": {
+          "column": 45,
+          "line": 672,
+          "position": 25849
+        }
+      },
+      "tokens": 80
+    },
+    {
+      "firstFile": {
+        "end": 211,
+        "endLoc": {
+          "column": 33,
+          "line": 211,
+          "position": 7751
+        },
+        "name": "export.py",
+        "start": 203,
+        "startLoc": {
+          "column": 32,
+          "line": 203,
+          "position": 7388
+        }
+      },
+      "format": "python",
+      "fragment": "            elif s in _sort_cols:\n                order_clauses.append(f\"o.{s} {d} NULLS LAST\")\n            else:\n                order_clauses.append(\"o.category DESC\")\n        order_clause = \", \".join(order_clauses) if order_clauses else \"o.category DESC\"\n\n        sql = f\"\"\"\n            SELECT o.id, o.title, o.company, o.location, o.remote, o.contract_type,\n                   o.category, o.url, o.description, o.source,",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 9,
+      "secondFile": {
+        "end": 702,
+        "endLoc": {
+          "column": 33,
+          "line": 702,
+          "position": 27287
+        },
+        "name": "offers.py",
+        "start": 695,
+        "startLoc": {
+          "column": 32,
+          "line": 695,
+          "position": 26925
+        }
+      },
+      "tokens": 64
+    },
+    {
+      "firstFile": {
+        "end": 345,
+        "endLoc": {
+          "column": 20,
+          "line": 345,
+          "position": 12748
+        },
+        "name": "export.py",
+        "start": 334,
+        "startLoc": {
+          "column": 31,
+          "line": 334,
+          "position": 12250
+        }
+      },
+      "format": "python",
+      "fragment": "    if data.get(\"parse_failed\"):\n        return None\n\n    try:\n        from orchestrator.job_search.scoring.attainability import compute_attainability\n        from orchestrator.job_search.scoring.desirability import compute_desirability\n        from orchestrator.job_search.sources.base import ExtractedFacts\n\n        facts = ExtractedFacts.model_validate(data)\n        desir = compute_desirability(facts, profile.search_criteria, profile, table)\n        attain = compute_attainability(facts, profile, table)\n    except Exception:",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 12,
+      "secondFile": {
+        "end": 91,
+        "endLoc": {
+          "column": 20,
+          "line": 91,
+          "position": 2930
+        },
+        "name": "offers.py",
+        "start": 80,
+        "startLoc": {
+          "column": 39,
+          "line": 80,
+          "position": 2432
+        }
+      },
+      "tokens": 69
+    },
+    {
+      "firstFile": {
+        "end": 408,
+        "endLoc": {
+          "column": 9,
+          "line": 408,
+          "position": 14633
+        },
+        "name": "export.py",
+        "start": 400,
+        "startLoc": {
+          "column": 17,
+          "line": 400,
+          "position": 14273
+        }
+      },
+      "format": "python",
+      "fragment": "        review = HumanReview(\n            offer_id=row[\"offer_id\"],\n            ratings_json=row[\"ratings_json\"],\n            ai_snapshot_json=row[\"ai_snapshot_json\"],\n            global_audit_text=row[\"global_audit_text\"],\n            global_score=row[\"global_score\"],\n            seen_at_review=bool(row[\"seen_at_review\"]),\n            created_at=row[\"created_at\"],\n        )",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 9,
+      "secondFile": {
+        "end": 69,
+        "endLoc": {
+          "column": 5,
+          "line": 69,
+          "position": 2139
+        },
+        "name": "job_search/storage/reviews.py",
+        "start": 61,
+        "startLoc": {
+          "column": 11,
+          "line": 61,
+          "position": 1811
+        }
+      },
+      "tokens": 55
+    },
+    {
+      "firstFile": {
+        "end": 447,
+        "endLoc": {
+          "column": 17,
+          "line": 447,
+          "position": 17963
+        },
+        "name": "lettre.py",
+        "start": 438,
+        "startLoc": {
+          "column": 4,
+          "line": 438,
+          "position": 17586
+        }
+      },
+      "format": "python",
+      "fragment": "    with get_conn() as conn:\n        if not suivi_storage.est_retenue(conn, offer_id):\n            raise HTTPException(\n                status_code=409,\n                detail=\"La lettre n'est générée que pour une offre retenue\",\n            )\n        row = conn.execute(\n            \"SELECT * FROM lettres WHERE offer_id = ?\", (offer_id,)\n        ).fetchone()\n        if row is not None and row[\"statut\"] == \"done\":",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 10,
+      "secondFile": {
+        "end": 508,
+        "endLoc": {
+          "column": 17,
+          "line": 508,
+          "position": 20685
+        },
+        "name": "lettre.py",
+        "start": 499,
+        "startLoc": {
+          "column": 4,
+          "line": 499,
+          "position": 20308
+        }
+      },
+      "tokens": 50
+    },
+    {
+      "firstFile": {
+        "end": 144,
+        "endLoc": {
+          "column": 14,
+          "line": 144,
+          "position": 5024
+        },
+        "name": "job_search/cv/service.py",
+        "start": 135,
+        "startLoc": {
+          "column": 4,
+          "line": 135,
+          "position": 4720
+        }
+      },
+      "format": "python",
+      "fragment": "    )\n\n\ndef _parse_output(result: ResultMessage) -> dict:\n    out = result.structured_output\n    if out is None and result.result:\n        out = json.loads(result.result)\n    if not isinstance(out, dict):\n        raise ValueError(f\"sortie SDK sans JSON exploitable (subtype={result.subtype})\")\n    return out",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 10,
+      "secondFile": {
+        "end": 156,
+        "endLoc": {
+          "column": 14,
+          "line": 156,
+          "position": 5904
+        },
+        "name": "job_search/fiche/service.py",
+        "start": 147,
+        "startLoc": {
+          "column": 16,
+          "line": 147,
+          "position": 5600
+        }
+      },
+      "tokens": 53
+    },
+    {
+      "firstFile": {
+        "end": 361,
+        "endLoc": {
+          "column": 53,
+          "line": 361,
+          "position": 14584
+        },
+        "name": "job_search/cv/service.py",
+        "start": 353,
+        "startLoc": {
+          "column": 78,
+          "line": 353,
+          "position": 14238
+        }
+      },
+      "format": "python",
+      "fragment": "    toute correction : le contenu change, la validation humaine est à refaire.\n    \"\"\"\n    init_db(conn)\n    row = conn.execute(\"SELECT * FROM cvs WHERE offer_id = ?\", (offer_id,)).fetchone()\n    if row is None or row[\"statut\"] != \"done\":\n        raise CvNotReadyError(f\"aucun CV terminé pour l'offre {offer_id}\")\n\n    groupes = _groupes_from_json(row[\"groupes_json\"])\n    notions = json.loads(row[\"notions_json\"] or \"[]\")",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 9,
+      "secondFile": {
+        "end": 645,
+        "endLoc": {
+          "column": 53,
+          "line": 645,
+          "position": 25494
+        },
+        "name": "job_search/cv/service.py",
+        "start": 637,
+        "startLoc": {
+          "column": 24,
+          "line": 637,
+          "position": 25148
+        }
+      },
+      "tokens": 65
+    },
+    {
+      "firstFile": {
+        "end": 361,
+        "endLoc": {
+          "column": 53,
+          "line": 361,
+          "position": 14584
+        },
+        "name": "job_search/cv/service.py",
+        "start": 355,
+        "startLoc": {
+          "column": 4,
+          "line": 355,
+          "position": 14252
+        }
+      },
+      "format": "python",
+      "fragment": "    init_db(conn)\n    row = conn.execute(\"SELECT * FROM cvs WHERE offer_id = ?\", (offer_id,)).fetchone()\n    if row is None or row[\"statut\"] != \"done\":\n        raise CvNotReadyError(f\"aucun CV terminé pour l'offre {offer_id}\")\n\n    groupes = _groupes_from_json(row[\"groupes_json\"])\n    notions = json.loads(row[\"notions_json\"] or \"[]\")",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 7,
+      "secondFile": {
+        "end": 507,
+        "endLoc": {
+          "column": 53,
+          "line": 507,
+          "position": 20407
+        },
+        "name": "job_search/cv/service.py",
+        "start": 501,
+        "startLoc": {
+          "column": 4,
+          "line": 501,
+          "position": 20075
+        }
+      },
+      "tokens": 62
+    },
+    {
+      "firstFile": {
+        "end": 396,
+        "endLoc": {
+          "column": 20,
+          "line": 396,
+          "position": 16051
+        },
+        "name": "job_search/cv/service.py",
+        "start": 387,
+        "startLoc": {
+          "column": 4,
+          "line": 387,
+          "position": 15631
+        }
+      },
+      "format": "python",
+      "fragment": "    row_profil: Profil = row[\"profil\"] or \"base\"\n    lead_fr, lead_fr_err = resolve_lead_text(\"fr\", row_profil)\n    if lead_fr_err:\n        raise ProfilFichierManquantError(lead_fr_err)\n\n    if not CV_REFERENCE_PATH.exists():\n        raise FileNotFoundError(f\"CV de référence manquant : {CV_REFERENCE_PATH}\")\n    cv_html_ref = CV_REFERENCE_PATH.read_text(encoding=\"utf-8\")\n    html = generate_cv_html(\n        cv_html_ref,",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 10,
+      "secondFile": {
+        "end": 473,
+        "endLoc": {
+          "column": 20,
+          "line": 473,
+          "position": 18884
+        },
+        "name": "job_search/cv/service.py",
+        "start": 464,
+        "startLoc": {
+          "column": 4,
+          "line": 464,
+          "position": 18464
+        }
+      },
+      "tokens": 58
+    },
+    {
+      "firstFile": {
+        "end": 615,
+        "endLoc": {
+          "column": 72,
+          "line": 615,
+          "position": 24345
+        },
+        "name": "job_search/cv/service.py",
+        "start": 597,
+        "startLoc": {
+          "column": 59,
+          "line": 597,
+          "position": 23769
+        }
+      },
+      "format": "python",
+      "fragment": "    lead_fr, lead_fr_err = resolve_lead_text(\"fr\", \"claude\")\n    if lead_fr_err:\n        raise ProfilFichierManquantError(lead_fr_err)\n\n    if not CV_REFERENCE_PATH.exists():\n        raise FileNotFoundError(f\"CV de référence manquant : {CV_REFERENCE_PATH}\")\n    cv_html_ref = CV_REFERENCE_PATH.read_text(encoding=\"utf-8\")\n    html = generate_cv_html(\n        cv_html_ref,\n        row[\"titre\"],\n        row[\"localisation\"],\n        groupes,\n        notions,\n        lead_text=lead_fr,\n    )\n\n    if row[\"en_html\"]:\n        en_html, en_error_message = _build_en(\n            row[\"titre\"], row[\"localisation\"], groupes, notions, profil=\"claude\"",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 19,
+      "secondFile": {
+        "end": 664,
+        "endLoc": {
+          "column": 72,
+          "line": 664,
+          "position": 26128
+        },
+        "name": "job_search/cv/service.py",
+        "start": 646,
+        "startLoc": {
+          "column": 57,
+          "line": 646,
+          "position": 25552
+        }
+      },
+      "tokens": 86
+    },
+    {
+      "firstFile": {
+        "end": 63,
+        "endLoc": {
+          "column": 20,
+          "line": 63,
+          "position": 2532
+        },
+        "name": "job_search/expiration/service.py",
+        "start": 56,
+        "startLoc": {
+          "column": 58,
+          "line": 56,
+          "position": 2231
+        }
+      },
+      "format": "python",
+      "fragment": "            placeholders = \",\".join(\"?\" for _ in offer_ids)\n            rows = conn.execute(\n                f\"\"\"\n                SELECT o.id AS offer_id, o.url AS offer_url, e.employer_url, e.expired\n                FROM offers o\n                LEFT JOIN expirations e ON e.offer_id = o.id\n                WHERE o.id IN ({placeholders})\n                \"\"\",",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 8,
+      "secondFile": {
+        "end": 78,
+        "endLoc": {
+          "column": 20,
+          "line": 78,
+          "position": 3072
+        },
+        "name": "job_search/expiration/service.py",
+        "start": 71,
+        "startLoc": {
+          "column": 57,
+          "line": 71,
+          "position": 2771
+        }
+      },
+      "tokens": 57
+    },
+    {
+      "firstFile": {
+        "end": 456,
+        "endLoc": {
+          "column": 14,
+          "line": 456,
+          "position": 18446
+        },
+        "name": "job_search/ingestion.py",
+        "start": 445,
+        "startLoc": {
+          "column": 46,
+          "line": 445,
+          "position": 18068
+        }
+      },
+      "format": "python",
+      "fragment": "    qu'à l'ingestion : aucun appel LLM, elle repasse « texte manquant ».\"\"\"\n    if _cleaned_text_len(offer) < _MIN_TEXT_LENGTH:\n        ad_lang = detect_ad_language(offer.description or \"\")\n        save_offer(\n            conn,\n            offer,\n            extraction_status=\"missing_text\",\n            extraction_attempts=0,\n            second_pass_attempts=0,\n            ad_language=ad_lang,\n        )\n        return TriOutcome(outcome=OfferOutcome(extraction_status=\"missing_text\"))",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 12,
+      "secondFile": {
+        "end": 617,
+        "endLoc": {
+          "column": 14,
+          "line": 617,
+          "position": 24093
+        },
+        "name": "job_search/ingestion.py",
+        "start": 606,
+        "startLoc": {
+          "column": 45,
+          "line": 606,
+          "position": 23715
+        }
+      },
+      "tokens": 50
+    },
+    {
+      "firstFile": {
+        "end": 347,
+        "endLoc": {
+          "column": 28,
+          "line": 347,
+          "position": 12217
+        },
+        "name": "job_search/lettre/boucle.py",
+        "start": 337,
+        "startLoc": {
+          "column": 49,
+          "line": 337,
+          "position": 11941
+        }
+      },
+      "format": "python",
+      "fragment": "    options = ClaudeAgentOptions(**options_kwargs)\n\n    result: ResultMessage | None = None\n\n    async def _consume() -> None:\n        nonlocal result\n        async for msg in query(prompt=prompt_text, options=options):\n            if isinstance(msg, ResultMessage):\n                result = msg\n\n    debut = time.monotonic()",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 11,
+      "secondFile": {
+        "end": 118,
+        "endLoc": {
+          "column": 28,
+          "line": 118,
+          "position": 3579
+        },
+        "name": "job_search/mail/generation.py",
+        "start": 109,
+        "startLoc": {
+          "column": 4,
+          "line": 109,
+          "position": 3304
+        }
+      },
+      "tokens": 52
+    },
+    {
+      "firstFile": {
+        "end": 452,
+        "endLoc": {
+          "column": 40,
+          "line": 452,
+          "position": 17264
+        },
+        "name": "job_search/lettre/service.py",
+        "start": 416,
+        "startLoc": {
+          "column": 70,
+          "line": 416,
+          "position": 16237
+        }
+      },
+      "format": "python",
+      "fragment": "            appels_json=?, regeneration_en_cours=0, regeneration_error=NULL\n        WHERE offer_id=?\n        \"\"\",\n        (\n            gen.texte,\n            json.dumps(gen.signalees, ensure_ascii=False),\n            gen.nb_mots,\n            int(gen.depasse),\n            modele,\n            gen.modele_juge,\n            json.dumps(gen.fait_retenu, ensure_ascii=False)\n            if gen.fait_retenu\n            else None,\n            gen.texte_type_id,\n            gen.nb_tours,\n            gen.raison_fin,\n            json.dumps(gen.jugement, ensure_ascii=False) if gen.jugement else None,\n            json.dumps(gen.releve, ensure_ascii=False) if gen.releve else None,\n            json.dumps(gen.appels, ensure_ascii=False),\n            offer_id,\n        ),\n    )\n    _append_version(\n        conn,\n        offer_id,\n        gen.texte,\n        gen.signalees,\n        gen.nb_mots,\n        gen.depasse,\n        \"modele\",\n        gen.fait_retenu,\n        modele,\n        gen.modele_juge,\n        gen.jugement,\n        gen.nb_tours,\n        gen.raison_fin,\n        angle_utilise=gen.angle_utilise,",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 37,
+      "secondFile": {
+        "end": 560,
+        "endLoc": {
+          "column": 40,
+          "line": 560,
+          "position": 21131
+        },
+        "name": "job_search/lettre/service.py",
+        "start": 524,
+        "startLoc": {
+          "column": 55,
+          "line": 524,
+          "position": 20104
+        }
+      },
+      "tokens": 182
+    },
+    {
+      "firstFile": {
+        "end": 641,
+        "endLoc": {
+          "column": 20,
+          "line": 641,
+          "position": 24488
+        },
+        "name": "job_search/lettre/service.py",
+        "start": 629,
+        "startLoc": {
+          "column": 63,
+          "line": 629,
+          "position": 24007
+        }
+      },
+      "format": "python",
+      "fragment": "            _update_lettre_courante(conn, offer_id, gen, modele)\n            conn.commit()\n        except BaseException as exc:  # noqa: BLE001 — l'échec est une donnée (cf run_lettre)\n            conn.execute(\n                \"UPDATE lettres SET regeneration_en_cours=0, regeneration_error=? \"\n                \"WHERE offer_id=?\",\n                (f\"{type(exc).__name__}: {exc}\"[:2000], offer_id),\n            )\n            conn.commit()\n            if not isinstance(exc, Exception):\n                raise\n    finally:\n        conn.close()",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 13,
+      "secondFile": {
+        "end": 719,
+        "endLoc": {
+          "column": 20,
+          "line": 719,
+          "position": 28113
+        },
+        "name": "job_search/lettre/service.py",
+        "start": 707,
+        "startLoc": {
+          "column": 16,
+          "line": 707,
+          "position": 27632
+        }
+      },
+      "tokens": 53
+    },
+    {
+      "firstFile": {
+        "end": 306,
+        "endLoc": {
+          "column": 48,
+          "line": 306,
+          "position": 10787
+        },
+        "name": "job_search/sources/actiris.py",
+        "start": 300,
+        "startLoc": {
+          "column": 4,
+          "line": 300,
+          "position": 10491
+        }
+      },
+      "format": "python",
+      "fragment": "    def _throttle(self) -> None:\n        now = time.monotonic()\n        if self._last_request_at is not None:\n            elapsed = now - self._last_request_at\n            if elapsed < _MIN_INTERVAL:\n                time.sleep(_MIN_INTERVAL - elapsed)\n        self._last_request_at = time.monotonic()",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 7,
+      "secondFile": {
+        "end": 210,
+        "endLoc": {
+          "column": 48,
+          "line": 210,
+          "position": 7989
+        },
+        "name": "job_search/sources/forem.py",
+        "start": 204,
+        "startLoc": {
+          "column": 4,
+          "line": 204,
+          "position": 7693
+        }
+      },
+      "tokens": 53
+    },
+    {
+      "firstFile": {
+        "end": 104,
+        "endLoc": {
+          "column": 9,
+          "line": 104,
+          "position": 3558
+        },
+        "name": "job_search/suivi/storage.py",
+        "start": 95,
+        "startLoc": {
+          "column": 8,
+          "line": 95,
+          "position": 3232
+        }
+      },
+      "format": "python",
+      "fragment": "        etats.EvenementHistorique(\n            id=r[\"id\"],\n            geste=r[\"geste\"],\n            etat_depart=r[\"etat_depart\"],\n            etat_arrivee=r[\"etat_arrivee\"],\n            effet_at=r[\"effet_at\"],\n            enregistre_at=r[\"enregistre_at\"],\n            motif=r[\"motif\"],\n            annule_at=r[\"annule_at\"],\n        )",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 10,
+      "secondFile": {
+        "end": 144,
+        "endLoc": {
+          "column": 13,
+          "line": 144,
+          "position": 5046
+        },
+        "name": "job_search/suivi/storage.py",
+        "start": 135,
+        "startLoc": {
+          "column": 12,
+          "line": 135,
+          "position": 4684
+        }
+      },
+      "tokens": 61
+    },
+    {
+      "firstFile": {
+        "end": 586,
+        "endLoc": {
+          "column": 1,
+          "line": 586,
+          "position": 26883
+        },
+        "name": "components/OfferDetail.vue",
+        "start": 567,
+        "startLoc": {
+          "column": 0,
+          "line": 567,
+          "position": 26047
+        }
+      },
+      "format": "typescript",
+      "fragment": "const CATEGORY_LABELS: Record<string, string> = {\n  parfait: '★ Parfait',\n  reve: '◈ Rêve',\n  atteignable: '✓ Atteignable',\n  hors: '✗ Hors',\n  hors_perimetre: '⊘ Hors-périmètre',\n}\n\nfunction categoryLabel(cat: string | null | undefined): string {\n  return cat ? (CATEGORY_LABELS[cat] ?? cat) : '?'\n}\n\nfunction categoryBadgeClass(cat: string | null | undefined): string {\n  if (cat === 'parfait') return 'bg-green-50 border-green-300 text-green-700'\n  if (cat === 'reve') return 'bg-indigo-50 border-indigo-300 text-indigo-700'\n  if (cat === 'atteignable') return 'bg-amber-50 border-amber-300 text-amber-700'\n  if (cat === 'hors') return 'bg-gray-100 border-gray-400 text-gray-600'\n  if (cat === 'hors_perimetre') return 'bg-slate-100 border-slate-400 text-slate-600'\n  return 'bg-gray-100 border-gray-200 text-gray-500'\n}",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 20,
+      "secondFile": {
+        "end": 2669,
+        "endLoc": {
+          "column": 1,
+          "line": 2669,
+          "position": 129656
+        },
+        "name": "pages/offers/[id].vue",
+        "start": 2650,
+        "startLoc": {
+          "column": 0,
+          "line": 2650,
+          "position": 128790
+        }
+      },
+      "tokens": 117
+    },
+    {
+      "firstFile": {
+        "end": 566,
+        "endLoc": {
+          "column": 13,
+          "line": 566,
+          "position": 32680
+        },
+        "name": "pages/offers/[id].vue",
+        "start": 552,
+        "startLoc": {
+          "column": 102,
+          "line": 552,
+          "position": 31890
+        }
+      },
+      "format": "html",
+      "fragment": "              <span :class=\"pieces.lettre.statut === step.value ? 'text-indigo-600' : 'text-gray-300'\">{{ step.label }}</span>\n              <svg v-if=\"idx < PIECE_STEPS.length - 1\" class=\"w-3 h-3 text-gray-300 flex-shrink-0\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" viewBox=\"0 0 24 24\">\n                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 5l7 7-7 7\"/>\n              </svg>\n            </template>\n          </div>\n          <p v-if=\"lettrePretError\" class=\"text-xs text-red-600\">{{ lettrePretError }}</p>\n\n          <!-- Non éligible -->\n          <div v-if=\"!isRetenue\" class=\"rounded-lg border border-gray-200 bg-white p-6 flex flex-col items-center justify-center text-center gap-3\">\n            <p class=\"text-sm text-gray-400 italic\">La lettre n'est générée que pour une offre retenue.</p>\n          </div>\n\n          <template v-else>\n            <!-- Mon angle (EXE-171) : visible dans tous les états de la lettre,",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 15,
+      "secondFile": {
+        "end": 931,
+        "endLoc": {
+          "column": 13,
+          "line": 931,
+          "position": 58145
+        },
+        "name": "pages/offers/[id].vue",
+        "start": 899,
+        "startLoc": {
+          "column": 98,
+          "line": 899,
+          "position": 56364
+        }
+      },
+      "tokens": 59
+    },
+    {
+      "firstFile": {
+        "end": 643,
+        "endLoc": {
+          "column": 16,
+          "line": 643,
+          "position": 37559
+        },
+        "name": "pages/offers/[id].vue",
+        "start": 629,
+        "startLoc": {
+          "column": 19,
+          "line": 629,
+          "position": 36822
+        }
+      },
+      "format": "html",
+      "fragment": "              </div>\n              <div class=\"flex items-center gap-2\">\n                <button\n                  v-for=\"bouton in lettreCarteBoutonsVisibles\"\n                  :key=\"bouton.bouton\"\n                  @click=\"actionLettreCarte(bouton.bouton)\"\n                  :disabled=\"!bouton.actif || lettreBusy\"\n                  :title=\"bouton.raison ?? undefined\"\n                  class=\"px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50\"\n                >{{ lettreBusy ? 'Lancement…' : bouton.libelle }}</button>\n              </div>\n              <p v-if=\"lettreActionError\" class=\"text-xs text-red-600\">{{ lettreActionError }}</p>\n            </div>\n\n            <!-- En cours : génération ou régénération (EXE-167, critère 8) -->",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 15,
+      "secondFile": {
+        "end": 680,
+        "endLoc": {
+          "column": 16,
+          "line": 680,
+          "position": 40018
+        },
+        "name": "pages/offers/[id].vue",
+        "start": 666,
+        "startLoc": {
+          "column": 101,
+          "line": 666,
+          "position": 39281
+        }
+      },
+      "tokens": 81
+    },
+    {
+      "firstFile": {
+        "end": 2410,
+        "endLoc": {
+          "column": 1,
+          "line": 2410,
+          "position": 119032
+        },
+        "name": "pages/offers/[id].vue",
+        "start": 2401,
+        "startLoc": {
+          "column": 43,
+          "line": 2401,
+          "position": 118692
+        }
+      },
+      "format": "typescript",
+      "fragment": "    await $fetch(`${lettreUrl()}/regenerer`, { method: 'POST', body: { modele: modeleLettre.value } })\n    if (lettre.value) lettre.value = { ...lettre.value, regeneration_en_cours: true, regeneration_error: null }\n    await chargerPieces()\n    startLettrePolling()\n  } catch (e) {\n    lettreActionError.value = messageErreurLettre(e)\n  } finally {\n    lettreBusy.value = false\n  }\n}",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 10,
+      "secondFile": {
+        "end": 2441,
+        "endLoc": {
+          "column": 1,
+          "line": 2441,
+          "position": 120256
+        },
+        "name": "pages/offers/[id].vue",
+        "start": 2432,
+        "startLoc": {
+          "column": 60,
+          "line": 2432,
+          "position": 119916
+        }
+      },
+      "tokens": 72
+    }
+  ],
+  "statistics": {
+    "detectionDate": "2026-10-28T14:43:46.465Z",
+    "formats": {
+      "html": {
+        "clones": 2,
+        "duplicatedLines": 19,
+        "duplicatedTokens": 140,
+        "lines": 1626,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 1.168511685116851,
+        "percentageTokens": 1.2453300124533,
+        "sources": 16,
+        "tokens": 11242
+      },
+      "python": {
+        "clones": 24,
+        "duplicatedLines": 310,
+        "duplicatedTokens": 1687,
+        "lines": 20179,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 1.536250557510283,
+        "percentageTokens": 1.5323130024070122,
+        "sources": 90,
+        "tokens": 110095
+      },
+      "typescript": {
+        "clones": 2,
+        "duplicatedLines": 28,
+        "duplicatedTokens": 189,
+        "lines": 3114,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.8991650610147719,
+        "percentageTokens": 0.9168526244299989,
+        "sources": 21,
+        "tokens": 20614
+      },
+      "vue": {
+        "clones": 0,
+        "duplicatedLines": 0,
+        "duplicatedTokens": 0,
+        "lines": 5269,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 0.0,
+        "percentageTokens": 0.0,
+        "sources": 17,
+        "tokens": 26437
+      }
+    },
+    "total": {
+      "clones": 28,
+      "duplicatedLines": 357,
+      "duplicatedTokens": 2016,
+      "lines": 30188,
+      "newClones": 0,
+      "newDuplicatedLines": 0,
+      "percentage": 1.1825891082549358,
+      "percentageTokens": 1.197234957360382,
+      "sources": 144,
+      "tokens": 168388
+    }
+  }
+}

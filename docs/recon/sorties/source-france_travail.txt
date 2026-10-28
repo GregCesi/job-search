@@ -1,0 +1,4 @@
+$ git grep -lE '(^|[^a-z])(france_travail|France_travail|FranceTravail|FRANCE_TRAVAIL|France Travail|france travail)' -- api orchestrator ':!orchestrator/job_search/sources/' web/app
+orchestrator/job_search/run.py
+orchestrator/job_search/scoring/filters.py
+web/app/components/FiltersPanel.vue

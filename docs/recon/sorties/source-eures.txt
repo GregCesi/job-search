@@ -1,0 +1,3 @@
+$ git grep -lE '(^|[^a-z])(eures|Eures|EURES)' -- api orchestrator ':!orchestrator/job_search/sources/' web/app
+orchestrator/job_search/run.py
+orchestrator/job_search/scoring/filters.py
