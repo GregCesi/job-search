@@ -87,7 +87,7 @@
                 </svg>
               </template>
             </div>
-
+            <TriGestes :offer="offer" @applique="chargerOffre" />
             <!-- Suite de la candidature (EXE-198) : chaque geste du bloc daté
                  demande une date (aujourd'hui par défaut) et une note facultative
                  (critère 6) ; gestes et libellés rendus par l'API, jamais fixés
@@ -1287,7 +1287,7 @@ const ficheAvertissement = computed<string | null>(() => {
   return raisons.length ? raisons.join(' ; ') : null
 })
 
-onMounted(async () => {
+async function chargerOffre() {
   offer.value = await $fetch<OfferDetail>(`${config.public.apiBase}/offers/${id.value}`)
   await chargerFiche()
   if (fiche.value?.statut === 'pending') startPolling()
@@ -1304,7 +1304,7 @@ onMounted(async () => {
     await chargerAvancement()
     if (avancementActif(avancement.value)) startAvancementPolling()
   }
-})
+}
 onBeforeUnmount(() => {
   stopPolling()
   stopCvPolling()
@@ -2616,6 +2616,9 @@ function onApercuKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && apercuCard.value) fermerApercu()
 }
 onMounted(() => window.addEventListener('keydown', onApercuKeydown))
+// EXE-205 : `chargerOffre` sert au montage et après un geste de tri (TriGestes) :
+// Retenir lance la fiche et le CV, relus ici sans recharger la page.
+onMounted(chargerOffre)
 onBeforeUnmount(() => window.removeEventListener('keydown', onApercuKeydown))
 
 watch(activeCard, (title) => { if (title === 'Lettre de motivation') nextTick(autoGrowTexte) })
@@ -2645,26 +2648,5 @@ function techBadgeClass(importance: string | null) {
   if (importance === 'required')     return 'bg-green-100 text-green-800'
   if (importance === 'nice_to_have') return 'bg-gray-100 text-gray-500'
   return 'bg-gray-100 text-gray-400'
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  parfait: '★ Parfait',
-  reve: '◈ Rêve',
-  atteignable: '✓ Atteignable',
-  hors: '✗ Hors',
-  hors_perimetre: '⊘ Hors-périmètre',
-}
-
-function categoryLabel(cat: string | null | undefined): string {
-  return cat ? (CATEGORY_LABELS[cat] ?? cat) : '?'
-}
-
-function categoryBadgeClass(cat: string | null | undefined): string {
-  if (cat === 'parfait')        return 'bg-green-50 border-green-300 text-green-700'
-  if (cat === 'reve')           return 'bg-indigo-50 border-indigo-300 text-indigo-700'
-  if (cat === 'atteignable')    return 'bg-amber-50 border-amber-300 text-amber-700'
-  if (cat === 'hors')           return 'bg-gray-100 border-gray-400 text-gray-600'
-  if (cat === 'hors_perimetre') return 'bg-slate-100 border-slate-400 text-slate-600'
-  return 'bg-gray-100 border-gray-200 text-gray-500'
 }
 </script>
