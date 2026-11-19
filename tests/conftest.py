@@ -16,6 +16,7 @@ import mlflow
 import pytest
 
 import api.db as api_db
+import orchestrator.job_search.cv.profil as cv_profil
 import orchestrator.job_search.mail.candidature as mail_candidature
 import orchestrator.job_search.paths as paths
 import orchestrator.job_search.storage.db as storage_db
@@ -58,3 +59,17 @@ def _isolate_mail_gabarit_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(
         mail_candidature, "MAIL_CANDIDATURE_SANS_LETTRE_PATH", sans_lettre
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_profil_dev_paths(tmp_path, monkeypatch):
+    """EXE-208, critère 14 : les deux fichiers du profil développeur pointent
+    hors de `data/` du dépôt pour CHAQUE test — même convention que
+    `_isolate_db_path` (un test qui veut son propre fichier le repose par son
+    propre monkeypatch, dernier appel gagnant). Aucun fichier n'est créé ici."""
+    fr = tmp_path / "profil_dev.fr.txt"
+    en = tmp_path / "profil_dev.en.txt"
+    monkeypatch.setattr(paths, "CV_PROFIL_DEV_FR_PATH", fr)
+    monkeypatch.setattr(paths, "CV_PROFIL_DEV_EN_PATH", en)
+    monkeypatch.setattr(cv_profil, "CV_PROFIL_DEV_FR_PATH", fr)
+    monkeypatch.setattr(cv_profil, "CV_PROFIL_DEV_EN_PATH", en)

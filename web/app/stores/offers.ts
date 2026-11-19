@@ -153,6 +153,8 @@ export interface CvSkillGroup {
 
 export type CvStatut = 'pending' | 'done' | 'error'
 
+export type CvProfil = 'base' | 'claude' | 'dev' // EXE-208 : dev = profil développeur
+
 export interface Cv {
   statut: CvStatut
   html: string | null
@@ -169,9 +171,9 @@ export interface Cv {
   created_at: string
   en_html: string | null // EXE-183
   en_error_message: string | null // EXE-183
-  profil: 'base' | 'claude' | null // EXE-184
+  profil: CvProfil | null // EXE-184, EXE-208
   profil_motif_libelle: string | null // EXE-184
-  profil_affiche: 'base' | 'claude' | null // EXE-185 : constaté sur le texte du CV
+  profil_affiche: CvProfil | null // EXE-185 : constaté sur le texte du CV
   profil_phrase: string // EXE-185
 }
 

@@ -437,7 +437,7 @@
         </div>
         <div class="flex items-center gap-4">
           <!-- EXE-207 : le PDF du CV se télécharge depuis l'aperçu, sans passer
-               par Modifier. La bascule de profil (Profil base, Profil Claude) ne
+               par Modifier. La bascule de profil (CvProfilBascule) ne
                vit plus que dans Modifier, en tête de l'overlay ci-dessous. -->
           <CvPdfBoutons
             v-if="apercuCard === 'CV' && cv?.statut === 'done'"
@@ -511,20 +511,12 @@
             <button @click="cvLangue = 'fr'" :class="cvLangue === 'fr' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">FR</button>
             <button @click="cvLangue = 'en'" :class="cvLangue === 'en' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">EN</button>
           </div>
-          <div v-if="activeCard === 'CV' && cv?.statut === 'done'" class="flex items-center gap-0.5 rounded-lg border border-gray-200 p-0.5 text-xs font-medium">
-            <button
-              @click="changerCvProfil('base')"
-              :disabled="cvProfilBusy || cv.profil_affiche === 'base'"
-              :class="cv.profil_affiche === 'base' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'"
-              class="px-2 py-1 rounded disabled:opacity-50"
-            >Profil base</button>
-            <button
-              @click="changerCvProfil('claude')"
-              :disabled="cvProfilBusy || cv.profil_affiche === 'claude'"
-              :class="cv.profil_affiche === 'claude' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'"
-              class="px-2 py-1 rounded disabled:opacity-50"
-            >Profil Claude</button>
-          </div>
+          <CvProfilBascule
+            v-if="activeCard === 'CV' && cv?.statut === 'done'"
+            :profil-affiche="cv.profil_affiche"
+            :busy="cvProfilBusy"
+            @choisir="changerCvProfil"
+          />
         </div>
         <div class="flex items-center gap-4">
           <button @click="activeCard = null" class="text-gray-400 hover:text-gray-600">
@@ -1261,7 +1253,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import type { Avancement, AvancementPiece, AppelTrace, BoutonLettre, Cv, FicheEntreprise, FicheTas, Lettre, LettreCarteStatut, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
+import type { Avancement, AvancementPiece, AppelTrace, BoutonLettre, Cv, CvProfil, FicheEntreprise, FicheTas, Lettre, LettreCarteStatut, LettreVersion, MailCandidature, OfferDetail, PieceInfo, Pieces, PieceStatut, TechInfo } from '~/stores/offers'
 
 const config = useRuntimeConfig()
 const router = useRouter()
@@ -2126,10 +2118,10 @@ async function genererCvEn() {
   }
 }
 
-// ── Profil du CV : base ou écosystème Claude (EXE-184, critères 10-13) ──────
+// ── Profil du CV : base, Claude ou développeur (EXE-184, EXE-208) ─────────
 const cvProfilBusy = ref(false)
 
-async function changerCvProfil(profil: 'base' | 'claude') {
+async function changerCvProfil(profil: CvProfil) {
   cvActionError.value = null
   cvProfilBusy.value = true
   try {

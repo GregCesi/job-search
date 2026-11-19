@@ -101,40 +101,40 @@ EXCEPTIONS: dict[tuple[str, int], str] = {
     # l'API rend par `etapes_affichees`/`etapes_acquises`.
     (
         "pages/offers/[id].vue",
-        552,
+        544,
     ): "Surligne l'étape courante du mini-stepper de génération de la pièce, pas la frise de candidature.",
     (
         "pages/offers/[id].vue",
-        899,
+        891,
     ): "Surligne l'étape courante du mini-stepper de génération de la pièce, pas la frise de candidature.",
     # Carte Lettre : contenu de section, pas permission d'un bouton (cf.
     # docstring du module ci-dessus).
     (
         "pages/offers/[id].vue",
-        595,
+        587,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     (
         "pages/offers/[id].vue",
-        611,
+        603,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     (
         "pages/offers/[id].vue",
-        615,
+        607,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     (
         "pages/offers/[id].vue",
-        616,
+        608,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     (
         "pages/offers/[id].vue",
-        644,
+        636,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     # Section « en erreur » de l'onglet Lettre (EXE-202, critères 1-4) :
     # même nature que les cinq lignes ci-dessus, choix de la section de
     # contenu à afficher, pas d'un bouton.
     (
         "pages/offers/[id].vue",
-        664,
+        656,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     # `isRetenue` : affiche/masque des sections génériques de la page (URL
     # employeur, placeholders « réservé à une offre retenue », polling
@@ -142,15 +142,15 @@ EXCEPTIONS: dict[tuple[str, int], str] = {
     # pas gardé par `isRetenue`), ni la carte Lettre, ni la frise.
     (
         "pages/offers/[id].vue",
-        1276,
+        1268,
     ): "Visibilité de sections génériques de la page, pas des 4 catégories interdites.",
     (
         "pages/offers/[id].vue",
-        1714,
+        1706,
     ): "toggleCvPret : calcule le prochain état du marquage Prêt, pas un bouton de geste.",
     (
         "pages/offers/[id].vue",
-        1726,
+        1718,
     ): "toggleLettrePret : calcule le prochain état du marquage Prêt, pas un bouton de geste.",
 }
 

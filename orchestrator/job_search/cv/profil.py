@@ -4,23 +4,29 @@ Détection 100% Python (architecture.md §3-4) : aucun appel modèle ne décide 
 choix, ni à la génération ni au recalcul après la fiche entreprise. Le profil
 de base n'est jamais écrit en dur ici : c'est le paragraphe déjà présent dans
 le CV de référence, laissé intact (H1 du ticket). Le profil Claude est le
-texte d'un fichier posé à part (H4), repris mot pour mot (critère 6).
+texte d'un fichier posé à part (H4), repris mot pour mot (critère 6). Le
+profil développeur (EXE-208) est un troisième fichier, sur le même mécanisme que
+le profil Claude, et ne se choisit qu'à la main : le choix automatique ne rend
+jamais que base ou Claude.
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Literal
 
 from orchestrator.job_search.cv.skills import extract_lead_text
 from orchestrator.job_search.paths import (
     CV_PROFIL_CLAUDE_EN_PATH,
     CV_PROFIL_CLAUDE_FR_PATH,
+    CV_PROFIL_DEV_EN_PATH,
+    CV_PROFIL_DEV_FR_PATH,
     CV_REFERENCE_EN_PATH,
     CV_REFERENCE_PATH,
 )
 
-Profil = Literal["base", "claude"]
+Profil = Literal["base", "claude", "dev"]
 ProfilMotif = Literal["technos_offre", "fiche_entreprise", "aucune_mention", "manuel"]
 
 MOTIF_LABELS: dict[str, str] = {
@@ -93,19 +99,33 @@ def determine_profile(
     return "base", "aucune_mention"
 
 
+_NOM_PROFIL_FICHIER: dict[str, str] = {"claude": "Claude", "dev": "développeur"}
+
+
+def _profil_path(profil: Profil, lang: Literal["fr", "en"]) -> Path:
+    """Fichier du texte de profil d'un profil à fichier (Claude ou développeur),
+    lu au moment de l'appel : les chemins sont repris de ce module à chaque
+    fois, pour qu'un test puisse les reposer."""
+    if profil == "claude":
+        return CV_PROFIL_CLAUDE_FR_PATH if lang == "fr" else CV_PROFIL_CLAUDE_EN_PATH
+    return CV_PROFIL_DEV_FR_PATH if lang == "fr" else CV_PROFIL_DEV_EN_PATH
+
+
 def resolve_lead_text(
     lang: Literal["fr", "en"], profil: Profil
 ) -> tuple[str | None, str | None]:
     """(texte, message_erreur). Le profil de base ne touche jamais le
-    paragraphe d'origine (H1) : `texte` vaut `None`, rien à substituer. Pour le
-    profil Claude, `texte` est le contenu du fichier, mot pour mot (critère 6) ;
-    si le fichier manque, `message_erreur` le nomme (critère 14)."""
+    paragraphe d'origine (H1) : `texte` vaut `None`, rien à substituer. Pour les
+    profils Claude et développeur, `texte` est le contenu du fichier, mot pour
+    mot (EXE-184 critère 6, EXE-208 critères 2-3) ; si le fichier manque,
+    `message_erreur` le nomme (EXE-184 critère 14, EXE-208 critères 10-11)."""
     if profil == "base":
         return None, None
-    path = CV_PROFIL_CLAUDE_FR_PATH if lang == "fr" else CV_PROFIL_CLAUDE_EN_PATH
+    path = _profil_path(profil, lang)
     label = "français" if lang == "fr" else "anglais"
     if not path.exists():
-        return None, f"Profil Claude ({label}) manquant : {path}"
+        nom = _NOM_PROFIL_FICHIER[profil]
+        return None, f"Profil {nom} ({label}) manquant : {path}"
     return path.read_text(encoding="utf-8").strip(), None
 
 
@@ -113,8 +133,9 @@ def constate_profil(cv_html: str | None, lang: Literal["fr", "en"]) -> Profil | 
     """Profil constaté sur le texte réellement présent dans le CV (EXE-185,
     critères 2, 6, 8) — jamais le champ enregistré seul. Compare le paragraphe
     de profil du CV au paragraphe du CV de référence (profil de base, jamais
-    modifié par lui-même) et au fichier du profil Claude de la même langue,
-    mot pour mot. `None` si le texte ne correspond à aucun des deux (critère 6)."""
+    modifié par lui-même), puis aux fichiers des profils Claude et développeur
+    (EXE-208, H4) de la même langue, mot pour mot. `None` si le texte ne
+    correspond à aucun (critère 6)."""
     lead = extract_lead_text(cv_html)
     if lead is None:
         return None
@@ -126,9 +147,11 @@ def constate_profil(cv_html: str | None, lang: Literal["fr", "en"]) -> Profil | 
         if base_lead is not None and lead == base_lead.strip():
             return "base"
 
-    claude_path = CV_PROFIL_CLAUDE_FR_PATH if lang == "fr" else CV_PROFIL_CLAUDE_EN_PATH
-    if claude_path.exists() and lead == claude_path.read_text(encoding="utf-8").strip():
-        return "claude"
+    profil_fichier: Profil
+    for profil_fichier in ("claude", "dev"):
+        path = _profil_path(profil_fichier, lang)
+        if path.exists() and lead == path.read_text(encoding="utf-8").strip():
+            return profil_fichier
 
     return None
 

@@ -88,7 +88,7 @@ class TitreDefautIn(BaseModel):
 class CvProfilIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    profil: Literal["base", "claude"]
+    profil: Literal["base", "claude", "dev"]
 
 
 def _row_to_cv(row) -> dict:

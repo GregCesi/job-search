@@ -22,6 +22,11 @@ CV_REFERENCE_EN_PATH = REPO_ROOT / "data" / "cv" / "cv_reference_en.html"
 # posé hors git comme le reste de data/cv/ (H4 du ticket).
 CV_PROFIL_CLAUDE_FR_PATH = REPO_ROOT / "data" / "cv" / "profil_claude.fr.txt"
 CV_PROFIL_CLAUDE_EN_PATH = REPO_ROOT / "data" / "cv" / "profil_claude.en.txt"
+# Paragraphe de profil « développeur » (EXE-208) : troisième texte, choisi à la
+# main seulement — lu, jamais modifié ni créé par le code, posé hors git à côté
+# de ceux du profil Claude (H2 du ticket).
+CV_PROFIL_DEV_FR_PATH = REPO_ROOT / "data" / "cv" / "profil_dev.fr.txt"
+CV_PROFIL_DEV_EN_PATH = REPO_ROOT / "data" / "cv" / "profil_dev.en.txt"
 PROFILE_PATH = REPO_ROOT / "profiles" / "gregoire.yaml"
 VUE_CANDIDAT_PATH = REPO_ROOT / "profiles" / "vue_candidat.yaml"
 ALIAS_PATH = REPO_ROOT / "profiles" / "alias.yaml"
