@@ -1,5 +1,15 @@
 # Régime d'exécution
 
+**Tu ne poses jamais de question.** Personne ne lit ta sortie pendant le tour : un
+message qui attend une réponse bloque le jet entier. Un doute se tranche par
+l'interprétation étroite, écrite `lu X comme Y` dans le Journal ; si aucune
+interprétation ne tient, tu passes la fiche en `Arrêté` et tu écris tes questions
+dans l'entrée Journal. Une question posée dans ta sortie est une faute, même bien posée.
+
+_Écrit le 19 novembre 2026, TCK-316 : au jet 54 de job-search, EXE-206 a posé une
+question au lieu de rendre un verdict, et le jet est resté bloqué une demi-heure.
+Le point d'arrêt 1 demandait alors de poser ses questions et d'attendre._
+
 Un ticket, un worktree. Séquentiel : jamais deux tickets en vol.
 
 Ce fichier décrit **comment tu te conduis**. Ce que tu dois produire est dans le
@@ -47,9 +57,10 @@ le cas.
    démarrer, et il vérifie son écriture. Pas une exécution concurrente — la tienne.
    Tu ne vérifies rien sur ce `Statut`.
 
-2. **Point d'arrêt 1** — si ce que le ticket demande est ambigu, pose tes
-   questions maintenant, en un seul message, et attends. Rien n'est écrit dans
-   Notion à ce stade.
+2. **Point d'arrêt 1** — si ce que le ticket demande est ambigu, tu ne poses
+   aucune question : tu retiens l'interprétation étroite et tu l'écris `lu X comme Y`.
+   Si aucune interprétation ne tient, `Arrêté`, avec tes questions dans l'entrée
+   Journal.
 
 3. **Le venv** — voir règle 2 de la section Git.
 
@@ -93,7 +104,7 @@ La porte de sortie s'évalue **avant** les compteurs, à chaque tour.
 
 | #   | Déclencheur                                                                                                                 | Évalué quand                                 | Conduite                                                                | Écrit                                                                           |
 | --- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| 1   | **Ambiguïté sur ce qui est demandé** (le _quoi_), à la lecture du ticket                                                    | Avant tout travail                           | Tour de questions **groupé** — un seul message, ou aucun — puis attente | Rien dans Notion                                                                |
+| 1   | **Ambiguïté sur ce qui est demandé** (le _quoi_), à la lecture du ticket                                                    | Avant tout travail                           | Interprétation étroite, jamais de question ni d'attente ; si aucune ne tient, arrêt | `lu X comme Y` au Journal, ou `Arrêté` avec les questions dans l'entrée Journal |
 | 2   | **Porte de sortie** — objet nommé absent, objet pas de la nature supposée, prémisse explicite fausse                        | À tout moment                                | Arrêt                                                                   | `Arrêté`. Journal : le cas heurté, l'objet, ce qui était attendu                |
 | 3   | **Test passé au vert, jugé faux ensuite**                                                                                   | À tout moment après un vert                  | Arrêt. Le test **n'est pas modifié**                                    | `Arrêté`. Journal : cas _prémisse fausse_                                       |
 | 4   | **Stagnation** — 2 tours consécutifs, même critère de gate, même signature d'erreur, après une modification censée corriger | Après chaque passage de gate, à partir du 2ᵉ | Arrêt                                                                   | `Arrêté`. Journal : critère, signature, tentatives menées, hypothèse de blocage |
