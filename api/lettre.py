@@ -64,6 +64,7 @@ from orchestrator.job_search.lettre.redaction import (
 )
 from orchestrator.job_search.lettre.repertoire import sujet_libelle
 from orchestrator.job_search.lettre.service import reset_pending, run_lettre
+from orchestrator.job_search.lettre.stockage import a_des_lettres_a_reprendre
 from orchestrator.job_search.pdf.coordonnees import (
     Coordonnees,
     CoordonneesManquantesError,
@@ -194,9 +195,8 @@ def _set_decision(
 
 
 def carte_lettre_for_offer(conn, offer_id: int, lettre_row=None) -> dict:
-    """Statut affiché et boutons de la carte Lettre pour une offre (EXE-195) —
-    rassemble les ingrédients (décision, statut de génération, fiche) et
-    délègue le calcul à `orchestrator.job_search.pieces.carte_lettre`."""
+    """Carte Lettre d'une offre (EXE-195, EXE-206) : ingrédients en base,
+    calcul délégué à `orchestrator.job_search.pieces.carte_lettre`."""
     if lettre_row is None:
         lettre_row = conn.execute(
             "SELECT * FROM lettres WHERE offer_id = ?", (offer_id,)
@@ -216,9 +216,8 @@ def carte_lettre_for_offer(conn, offer_id: int, lettre_row=None) -> dict:
         generation_en_cours,
         fiche_row["statut"] if fiche_row is not None else None,
         fiche_row["error_message"] if fiche_row is not None else None,
-        lettre_error_message=lettre_row["error_message"]
-        if lettre_row is not None
-        else None,
+        lettre_error_message=lettre_row["error_message"] if lettre_row else None,
+        lettres_a_reprendre=a_des_lettres_a_reprendre(conn, offer_id),
     )
 
 

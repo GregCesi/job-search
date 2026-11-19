@@ -27,11 +27,13 @@ DECISION_SANS_LETTRE = "sans_lettre"
 BOUTON_GENERER = "generer"
 BOUTON_NE_PAS_FAIRE = "ne_pas_faire"
 BOUTON_REVENIR = "revenir"
+BOUTON_PARTIR_DE_MES_LETTRES = "partir_de_mes_lettres"
 
 _LIBELLES_BOUTONS = {
     BOUTON_GENERER: "Générer la lettre",
     BOUTON_NE_PAS_FAIRE: "Ne pas faire de lettre pour cette annonce",
     BOUTON_REVENIR: "Revenir sur ce choix",
+    BOUTON_PARTIR_DE_MES_LETTRES: "Partir d'une de mes lettres",
 }
 
 CARTE_A_DECIDER = "a_decider"
@@ -46,6 +48,8 @@ RAISON_GENERATION_EN_COURS = (
     "La lettre est en cours de génération : impossible de choisir "
     "« Ne pas faire de lettre pour cette annonce »."
 )
+
+RAISON_AUCUNE_LETTRE_A_REPRENDRE = "Aucune lettre marquée Prête à reprendre"
 
 RAISON_GENERATION_INTERROMPUE = (
     "Génération interrompue (API redémarrée). Relancer la lettre."
@@ -120,6 +124,7 @@ def carte_lettre(
     fiche_error_message: str | None,
     *,
     lettre_error_message: str | None = None,
+    lettres_a_reprendre: bool = False,
 ) -> dict:
     """Statut affiché et boutons de la carte Lettre (EXE-195, critères 2-13 ;
     état « en erreur » ajouté par EXE-201, critères 1-5) — calcul 100% Python
@@ -131,7 +136,11 @@ def carte_lettre(
     API redémarrée) rendent tous deux « en erreur », avec « Générer la
     lettre » actif pour relancer (EXE-201, critères 1-4). Distinct du cas où
     la lettre n'a jamais tourné (`statut == "aucune"`) et où c'est la fiche
-    qui a échoué pendant l'attente (critère 5 d'EXE-195, inchangé)."""
+    qui a échoué pendant l'attente (critère 5 d'EXE-195, inchangé).
+
+    « Partir d'une de mes lettres » (EXE-206, critères 1 à 3) : visible tant que
+    la lettre est à décider, actif seulement s'il existe une lettre marquée
+    Prête sur une autre offre (`lettres_a_reprendre`)."""
     message = None
     if decision == DECISION_SANS_LETTRE:
         statut = CARTE_SANS_LETTRE
@@ -167,6 +176,14 @@ def carte_lettre(
                 BOUTON_GENERER,
                 visible=decision == DECISION_A_DECIDER or en_erreur,
                 actif=decision == DECISION_A_DECIDER or en_erreur,
+            ),
+            _bouton(
+                BOUTON_PARTIR_DE_MES_LETTRES,
+                visible=decision == DECISION_A_DECIDER,
+                actif=decision == DECISION_A_DECIDER and lettres_a_reprendre,
+                raison=RAISON_AUCUNE_LETTRE_A_REPRENDRE
+                if decision == DECISION_A_DECIDER and not lettres_a_reprendre
+                else None,
             ),
             _bouton(
                 BOUTON_NE_PAS_FAIRE,

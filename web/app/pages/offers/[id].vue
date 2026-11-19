@@ -614,8 +614,7 @@
               <p v-if="lettreCarte.message" class="text-sm text-red-600">{{ lettreCarte.message }}</p>
               <p v-else-if="lettreCarte.statut === 'demandee'" class="text-sm text-gray-400 italic">La lettre partira dès que la fiche entreprise sera terminée.</p>
               <div v-if="lettreCarte.statut === 'a_decider'" class="flex items-center gap-1 text-xs" role="radiogroup" aria-label="Modèle de la lettre">
-                <button
-                  type="button"
+                <button type="button"
                   @click="modeleLettre = 'sonnet'"
                   :class="modeleLettre === 'sonnet' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'"
                   class="px-2 py-1 rounded"
@@ -637,6 +636,7 @@
                   class="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
                 >{{ lettreBusy ? 'Lancement…' : bouton.libelle }}</button>
               </div>
+              <LettreReprise v-if="mesLettresOuvertes" :lettre-url="lettreUrl()" @copiee="lettreCopiee" />
               <p v-if="lettreActionError" class="text-xs text-red-600">{{ lettreActionError }}</p>
             </div>
 
@@ -2388,7 +2388,16 @@ async function revenirLettre() {
   }
 }
 
+// EXE-206 : « Partir d'une de mes lettres » ouvre la liste ; la copie faite,
+// la lettre, son historique et la carte sont relus, sans recharger la page.
+const mesLettresOuvertes = ref(false)
+async function lettreCopiee() {
+  mesLettresOuvertes.value = false
+  await Promise.all([chargerLettre(), chargerLettreVersions(), chargerPieces()])
+}
+
 function actionLettreCarte(bouton: BoutonLettre['bouton']) {
+  if (bouton === 'partir_de_mes_lettres') return (mesLettresOuvertes.value = !mesLettresOuvertes.value)
   if (bouton === 'generer') return genererLettre()
   if (bouton === 'ne_pas_faire') return nePasFaireLettre()
   return revenirLettre()

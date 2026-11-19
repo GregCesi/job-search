@@ -291,11 +291,19 @@ export type LettreCarteStatut =
   | 'en_erreur'
 
 export interface BoutonLettre {
-  bouton: 'generer' | 'ne_pas_faire' | 'revenir'
+  bouton: 'generer' | 'ne_pas_faire' | 'revenir' | 'partir_de_mes_lettres'
   visible: boolean
   actif: boolean
   libelle: string
   raison: string | null
+}
+
+// EXE-206 : une de mes lettres marquées Prêtes sur une autre offre.
+export interface MaLettre {
+  offer_id: number
+  entreprise: string | null
+  intitule: string
+  marque_pret_at: string
 }
 
 export interface LettreCarte {
