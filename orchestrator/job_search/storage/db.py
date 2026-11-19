@@ -203,6 +203,19 @@ def init_db(conn: sqlite3.Connection) -> None:
             UNIQUE(offer_id)
         );
 
+        CREATE TABLE IF NOT EXISTS lettres_en (
+            id               INTEGER PRIMARY KEY,
+            offer_id         INTEGER NOT NULL REFERENCES offers(id),
+            texte            TEXT NOT NULL, -- texte anglais courant (EXE-209)
+            texte_fr_source  TEXT NOT NULL, -- texte français envoyé au modèle
+            origine          TEXT NOT NULL, -- modele|moi
+            modele           TEXT NOT NULL, -- modèle de la dernière traduction
+            appel_json       TEXT,          -- trace de la dernière traduction
+            created_at       TEXT NOT NULL, -- date de la dernière traduction
+            updated_at       TEXT NOT NULL, -- date du dernier enregistrement
+            UNIQUE(offer_id)
+        );
+
         CREATE TABLE IF NOT EXISTS ajouts (
             id               INTEGER PRIMARY KEY,
             url              TEXT,  -- NULL : texte collé sans URL (EXE-82)

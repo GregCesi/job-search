@@ -54,6 +54,44 @@ def format_date_fr(d: date) -> str:
     return f"{jour} {_MOIS_FR[d.month - 1]} {d.year}"
 
 
+_MONTHS_EN = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+]
+
+# EXE-209, H4 : seule Bruxelles se traduit ; toute autre ville reste telle
+# qu'elle est écrite dans mes coordonnées.
+_VILLES_EN = {"Bruxelles": "Brussels"}
+
+
+def format_date_en(d: date) -> str:
+    """« 2 November 2026 » (EXE-209, H4 : usage britannique)."""
+    return f"{d.day} {_MONTHS_EN[d.month - 1]} {d.year}"
+
+
+def _date_et_objet(ville: str, intitule: str, d: date, langue: str) -> tuple[str, str]:
+    if langue == "en":
+        ville_en = _VILLES_EN.get(ville.strip(), ville)
+        return (
+            f"{ville_en}, {format_date_en(d)}",
+            f"Subject: Application for the position of {intitule}",
+        )
+    return (
+        f"{ville}, le {format_date_fr(d)}",
+        f"Objet : candidature au poste de {intitule}",
+    )
+
+
 def _paragraphs(texte: str) -> list[str]:
     blocs = re.split(r"\n\s*\n", texte)
     return [b.strip("\n") for b in blocs if b.strip()]
@@ -66,8 +104,12 @@ def build_lettre_html(
     entreprise: str | None = None,
     location: str | None = None,
     aujourdhui: date | None = None,
+    langue: str = "fr",
 ) -> str:
+    """`langue="en"` (EXE-209) : ligne de date et objet en anglais ; le reste
+    de la page est le même. Le français ne change pas (critère 12)."""
     d = aujourdhui or date.today()
+    date_ligne, objet = _date_et_objet(coordonnees.ville, intitule, d, langue)
     paragraphs_html = "\n".join(
         f"  <p>{html_lib.escape(p)}</p>" for p in _paragraphs(texte)
     )
@@ -117,8 +159,8 @@ def build_lettre_html(
       <div>{html_lib.escape(coordonnees.ville)}</div>
     </div>{entreprise_bloc}
   </div>
-  <div class="date-line">{html_lib.escape(coordonnees.ville)}, le {format_date_fr(d)}</div>
-  <div class="objet">Objet : candidature au poste de {html_lib.escape(intitule)}</div>
+  <div class="date-line">{html_lib.escape(date_ligne)}</div>
+  <div class="objet">{html_lib.escape(objet)}</div>
 {paragraphs_html}
   <div class="signature">{nom}</div>
 </body>

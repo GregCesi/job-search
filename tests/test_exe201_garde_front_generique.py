@@ -90,36 +90,32 @@ EXCEPTIONS: dict[tuple[str, int], str] = {
     ): "PieceReadyToggle (marquer Prêt), pas un geste de suivi.",
     (
         "pages/offers/[id].vue",
-        506,
+        507,
     ): "PieceReadyToggle (marquer Prêt), pas un geste de suivi.",
     (
         "pages/offers/[id].vue",
-        507,
+        508,
     ): "PieceReadyToggle (marquer Prêt), pas un geste de suivi.",
     # Frise d'avancement de génération de la pièce (À faire/En cours/Prête) —
     # distincte de la frise de candidature (retenue/envoyée/entretien/…) que
     # l'API rend par `etapes_affichees`/`etapes_acquises`.
     (
         "pages/offers/[id].vue",
-        544,
+        545,
     ): "Surligne l'étape courante du mini-stepper de génération de la pièce, pas la frise de candidature.",
     (
         "pages/offers/[id].vue",
-        891,
+        894,
     ): "Surligne l'étape courante du mini-stepper de génération de la pièce, pas la frise de candidature.",
     # Carte Lettre : contenu de section, pas permission d'un bouton (cf.
     # docstring du module ci-dessus).
     (
         "pages/offers/[id].vue",
-        587,
+        588,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     (
         "pages/offers/[id].vue",
-        603,
-    ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
-    (
-        "pages/offers/[id].vue",
-        607,
+        604,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     (
         "pages/offers/[id].vue",
@@ -127,14 +123,18 @@ EXCEPTIONS: dict[tuple[str, int], str] = {
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     (
         "pages/offers/[id].vue",
-        636,
+        609,
+    ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
+    (
+        "pages/offers/[id].vue",
+        637,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     # Section « en erreur » de l'onglet Lettre (EXE-202, critères 1-4) :
     # même nature que les cinq lignes ci-dessus, choix de la section de
     # contenu à afficher, pas d'un bouton.
     (
         "pages/offers/[id].vue",
-        656,
+        657,
     ): "Choix de la section de contenu de la carte Lettre, pas d'un bouton.",
     # `isRetenue` : affiche/masque des sections génériques de la page (URL
     # employeur, placeholders « réservé à une offre retenue », polling
@@ -142,15 +142,15 @@ EXCEPTIONS: dict[tuple[str, int], str] = {
     # pas gardé par `isRetenue`), ni la carte Lettre, ni la frise.
     (
         "pages/offers/[id].vue",
-        1268,
+        1271,
     ): "Visibilité de sections génériques de la page, pas des 4 catégories interdites.",
     (
         "pages/offers/[id].vue",
-        1706,
+        1709,
     ): "toggleCvPret : calcule le prochain état du marquage Prêt, pas un bouton de geste.",
     (
         "pages/offers/[id].vue",
-        1718,
+        1721,
     ): "toggleLettrePret : calcule le prochain état du marquage Prêt, pas un bouton de geste.",
 }
 

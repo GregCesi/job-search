@@ -62,6 +62,8 @@ MAIL_CONSIGNE_PATH = REPO_ROOT / "data" / "lettre" / "mail_consigne.md"
 # cwd dédié à la génération du mail (EXE-176) : même raison que les autres cwd
 # par type d'appel — jamais mêlé à une session de la fiche, du CV ou de la lettre.
 MAIL_CWD = Path.home() / ".cache" / "job-search" / "mail_cwd"
+# cwd dédié à la traduction anglaise de la lettre (EXE-209) : même raison.
+LETTRE_EN_CWD = Path.home() / ".cache" / "job-search" / "lettre_en_cwd"
 # Répertoire de la lettre (EXE-146, H5) : textes types, posture, sujets interdits —
 # hors git, posé à part comme les autres fichiers de data/lettre/.
 REPERTOIRE_LETTRE_PATH = REPO_ROOT / "data" / "lettre" / "repertoire.yaml"

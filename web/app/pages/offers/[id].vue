@@ -430,6 +430,7 @@
             :disabled="(apercuCard === 'CV' ? pieces.cv.statut : pieces.lettre.statut) === 'a_faire'"
             @toggle="apercuCard === 'CV' ? toggleCvPret() : toggleLettrePret()"
           />
+          <LettreApercuLangue v-if="apercuCard === 'Lettre de motivation'" :lettre-url="lettreUrl()" @html="lettreApercuEnHtml = $event" />
           <div v-if="apercuCard === 'CV' && cv?.en_html" class="flex items-center gap-0.5 rounded-lg border border-gray-200 p-0.5 text-xs font-medium">
             <button @click="cvLangue = 'fr'" :class="cvLangue === 'fr' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">FR</button>
             <button @click="cvLangue = 'en'" :class="cvLangue === 'en' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">EN</button>
@@ -478,9 +479,9 @@
             @load="resizeFrame(cvFrame)"
           />
           <iframe
-            v-else-if="apercuCard === 'Lettre de motivation' && lettreMiseEnPageHtml"
+            v-else-if="apercuCard === 'Lettre de motivation' && (lettreApercuEnHtml ?? lettreMiseEnPageHtml)"
             ref="lettreFrame"
-            :srcdoc="lettreMiseEnPageHtml"
+            :srcdoc="(lettreApercuEnHtml ?? lettreMiseEnPageHtml)!"
             class="border-0 bg-white"
             style="width: 210mm"
             title="Aperçu de la lettre"
@@ -685,7 +686,9 @@
                 </div>
               </div>
 
+              <LettreAnglaise v-model:langue="lettreLangue" :lettre-url="lettreUrl()" :texte-fr="lettre.texte" />
               <textarea
+                v-show="lettreLangue === 'fr'"
                 ref="texteEditRef"
                 v-model="texteEdit"
                 :disabled="lettre.regeneration_en_cours"
@@ -694,7 +697,7 @@
                 @input="autoGrowTexte"
               />
 
-              <div class="flex items-center gap-2">
+              <div v-show="lettreLangue === 'fr'" class="flex items-center gap-2">
                 <button
                   @click="sauvegarderTexte"
                   :disabled="lettre.regeneration_en_cours"
@@ -2569,6 +2572,8 @@ function openCard(title: string) {
 // ── Aperçu plein écran du CV et de la lettre (EXE-129) ──────────────────────
 const apercuCard = ref<string | null>(null)
 const lettreMiseEnPageHtml = ref<string | null>(null)
+const lettreApercuEnHtml = ref<string | null>(null) // EXE-209 : page anglaise de l'aperçu
+const lettreLangue = ref<'fr' | 'en'>('fr') // EXE-209 : langue affichée dans la carte
 const lettreMiseEnPageError = ref<string | null>(null)
 const cvFrame = ref<HTMLIFrameElement | null>(null)
 const lettreFrame = ref<HTMLIFrameElement | null>(null)
