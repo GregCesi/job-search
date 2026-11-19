@@ -434,22 +434,16 @@
             <button @click="cvLangue = 'fr'" :class="cvLangue === 'fr' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">FR</button>
             <button @click="cvLangue = 'en'" :class="cvLangue === 'en' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'" class="px-2 py-1 rounded">EN</button>
           </div>
-          <div v-if="apercuCard === 'CV' && cv?.statut === 'done'" class="flex items-center gap-0.5 rounded-lg border border-gray-200 p-0.5 text-xs font-medium">
-            <button
-              @click="changerCvProfil('base')"
-              :disabled="cvProfilBusy || cv.profil_affiche === 'base'"
-              :class="cv.profil_affiche === 'base' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'"
-              class="px-2 py-1 rounded disabled:opacity-50"
-            >Profil base</button>
-            <button
-              @click="changerCvProfil('claude')"
-              :disabled="cvProfilBusy || cv.profil_affiche === 'claude'"
-              :class="cv.profil_affiche === 'claude' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'"
-              class="px-2 py-1 rounded disabled:opacity-50"
-            >Profil Claude</button>
-          </div>
         </div>
         <div class="flex items-center gap-4">
+          <!-- EXE-207 : le PDF du CV se télécharge depuis l'aperçu, sans passer
+               par Modifier. La bascule de profil (Profil base, Profil Claude) ne
+               vit plus que dans Modifier, en tête de l'overlay ci-dessous. -->
+          <CvPdfBoutons
+            v-if="apercuCard === 'CV' && cv?.statut === 'done'"
+            :anglais="!!cv.en_html"
+            @telecharger="telechargerCvPdf"
+          />
           <button @click="modifierDepuisApercu" class="text-sm text-indigo-600 hover:underline">Modifier</button>
           <button @click="fermerApercu" class="text-gray-400 hover:text-gray-600" aria-label="Fermer l'aperçu">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -459,6 +453,10 @@
         </div>
       </div>
       <p v-if="apercuCard === 'CV' && cv?.statut === 'done'" class="px-6 py-1.5 text-xs text-gray-500 border-b border-gray-100 flex-shrink-0">{{ cv.profil_phrase }}</p>
+      <p
+        v-if="apercuCard === 'CV' && cvPdfError"
+        class="px-6 py-1.5 text-xs text-red-600 flex-shrink-0"
+      >{{ cvPdfError }}</p>
       <div class="flex-1 overflow-hidden flex">
         <div v-if="offer" class="flex-1 min-w-0 h-full overflow-y-auto border-r border-gray-100 p-6">
           <OfferSidePanel
@@ -492,7 +490,9 @@
       </div>
     </div>
 
-    <!-- Overlay -->
+    <!-- Overlay : la vue Modifier d'une carte. Pour le CV, elle seule porte la
+         bascule de profil (EXE-207) ; ses boutons PDF restent ceux de la carte
+         « CV prêt » plus bas. -->
     <div
       v-if="activeCard"
       class="fixed inset-0 z-50 bg-white flex flex-col"
