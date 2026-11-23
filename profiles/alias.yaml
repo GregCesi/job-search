@@ -26,6 +26,9 @@ aliases:
   javascript:    [js]
   vue:           [vuejs, vue.js]
   react:         [react.js, reactjs]
+  reactnative:   [react native]        # TCK-367 : rejeu du jeu de référence
+  nuxt:          [nuxtjs, nuxt.js]     # TCK-367 : le profil écrit nuxt, les offres nuxtjs / nuxt.js
+  tailwind:      [tailwindcss, tailwind css]   # TCK-367 : idem pour tailwind
 
   # --- Bases de données ---
   postgresql:    [postgres]
@@ -35,6 +38,7 @@ aliases:
 
   # --- Frameworks / libs IA ---
   llamaindex:    [llama_index]
+  litellm:       [lite llm]            # TCK-367 : rejeu du jeu de référence
 
   # --- .NET ---
   dotnet:        [.net, net]

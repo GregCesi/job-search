@@ -93,6 +93,17 @@ python -m orchestrator.job_search.reference.ajouter --ids 123,456     # ajoute d
 python -m orchestrator.job_search.reference.rejouer --model llama3    # rejoue les entrées relues, écrit un rapport + un run MLflow (expérience « reference »)
 ```
 
+#### Règles d'annotation
+
+Écrites le 23 novembre 2026 (TCK-367), après une relecture complète du jeu. L'attendu se rédige avant de regarder la sortie du modèle : relire une extraction déjà faite revient à la valider.
+
+- **Langue exigée** : seulement si l'offre l'écrit. La langue de rédaction de l'annonce est détectée en Python (`ad_language`), sans modèle.
+- **Termes génériques** (api, database, ai, ml, automatisation) : retirés si un terme concret de la même offre les couvre, gardés sinon. Une offre sans aucune techno sort en `no_tech`.
+- **Alternatives** (« A ou B », « X (A, B) ») : chaque élément au niveau de l'exigence. Le schéma ne sait pas dire « l'un des deux » ; c'est une limite connue, qui pénalise un candidat qui n'en a qu'un.
+- **Importance** : `core` pour ce que l'offre met au centre (titre, « expert », « solide maîtrise », premier élément du must have) ; `required` pour ce qui est exigé sans insistance ; `nice_to_have` seulement si l'offre le dit (« nice to have », « un plus », « souhaité », « preferred »). Avec les poids du calcul (3, 2 et 0,5), c'est la frontière entre `required` et `nice_to_have` qui coûte le plus cher.
+
+Une techno qui ne rejoint pas son nom dans le profil est un manque d'alias : il se corrige dans `profiles/alias.yaml` dès qu'il est vu.
+
 ## Le profil
 
 `profiles/example.yaml` montre le format : compétences notées sur deux échelles (niveau réel et envie), zones géographiques, types de contrat, plafond de séniorité. Le barème de niveau est dans `docs/bareme-niveau.md`. `profiles/alias.yaml` unifie les écritures d'une même techno (« JS », « JavaScript »…).
