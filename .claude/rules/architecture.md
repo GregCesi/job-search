@@ -131,3 +131,13 @@ Le lancement au geste de retenir n'est pas touché : la phrase « Aucun appel de
 _Jeu d'évaluation figé ajouté le 7 octobre 2026 : le premier banc lisait les fiches de l'application, et tester la nouvelle recherche d'entreprise a obligé à retirer deux fiches de la base._
 
 _Écrit le 7 octobre 2026, TCK-251 : la lettre écrite en un seul appel a été jugée non envoyable le 5 octobre 2026, et deux lettres écrites à la main sur une deuxième offre ont été rejetées faute d'un répertoire des textes de Grégoire._
+
+## Exception encadrée : traduction de la lettre (EXE-209)
+
+Un quatrième appel de modèle existe hors extraction, à côté de ceux de la fiche entreprise, du CV et de la lettre : la traduction anglaise d'une lettre écrite. Il part **uniquement** de mon clic sur « Générer la version anglaise » ou « Régénérer la version anglaise », sur une offre `retenue`. Jamais du geste de retenir, jamais d'un démarrage de l'API, jamais de la génération ni de l'enregistrement de la lettre française, jamais d'un changement de `profile.yaml` ni d'un rescore.
+
+- Un seul appel par clic, à Sonnet par `claude-agent-sdk`, sans outil (`tools`, `allowed_tools` et `disallowed_tools` déclarés, cf. stack.md). Jamais de modèle local.
+- La traduction vit dans sa propre table d'interaction, `lettres_en`. Elle n'écrit jamais dans `lettres`, `lettre_versions` ni `offers` : le texte français, sa marque Prête et son historique ne changent pas.
+- Le lancement au geste de retenir n'est pas touché : la phrase « Aucun appel de modèle ne s'ajoute aux trois existants » reste vraie pour lui.
+
+_Écrit le 23 novembre 2026, TCK-316 : décision de Grégoire du 2 novembre 2026 (EXE-209, H2), livrée au jet 57._
