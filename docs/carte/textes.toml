@@ -283,76 +283,97 @@ fichiers = [
 
 [[bloc]]
 id = "ecrans"
+colonne = 0
+ligne = 0
 nom = "Écrans"
 role = "Pages, composants et stores Nuxt sous web/app/ : ils affichent les offres et appellent l'API."
 lien = "systeme/ecrans"
 
 [[bloc]]
 id = "api"
+colonne = 1
+ligne = 0
 nom = "API"
 role = "Routes FastAPI sous api/, sur le port 8000 : elles rendent les offres, reçoivent les gestes et lancent les pièces."
 lien = "systemes"
 
 [[bloc]]
 id = "coeur"
+colonne = 2
+ligne = 0
 nom = "Cœur métier"
 role = "Code Python sous orchestrator/job_search/ : run du matin, scoring, suivi des candidatures, fiche, CV et lettre."
 lien = "systemes"
 
 [[bloc]]
 id = "base"
+colonne = 3
+ligne = 0
 nom = "Base"
 role = "Fichier SQLite data/job_search.sqlite, partagé par l'API et le cœur métier."
 lien = "tables"
 
 [[bloc]]
 id = "modeles"
+colonne = 3
+ligne = 1
 nom = "Modèles"
 role = "Ollama en local pour l'extraction des faits ; Claude par claude-agent-sdk pour la fiche, le CV, la lettre et sa traduction."
 
 [[bloc]]
 id = "sources"
+colonne = 1
+ligne = 1
 nom = "Sources d'offres"
 role = "France Travail, Remotive, fichiers Indeed et sources belges, chacune derrière l'interface Source."
 
 [[bloc]]
 id = "profils"
+colonne = 2
+ligne = 1
 nom = "Profils"
 role = "Fichiers YAML sous profiles/ : le profil cible et la table d'alias des technos."
 
 [[fleche_bloc]]
 de = "ecrans"
 vers = "api"
+court = "appels HTTP"
 libelle = "appels HTTP à l'adresse de l'API (runtimeConfig.public.apiBase)"
 
 [[fleche_bloc]]
 de = "api"
 vers = "coeur"
+court = "importe le métier"
 libelle = "les routes importent les fonctions de orchestrator/"
 
 [[fleche_bloc]]
 de = "api"
 vers = "base"
+court = "lit et écrit"
 libelle = "des routes lisent et écrivent les tables elles-mêmes"
 
 [[fleche_bloc]]
 de = "coeur"
 vers = "base"
+court = "lit et écrit"
 libelle = "le run, le recalcul, le suivi et les pièces lisent et écrivent les tables"
 
 [[fleche_bloc]]
 de = "coeur"
 vers = "modeles"
+court = "extrait et rédige"
 libelle = "extraction des faits par Ollama ; fiche, CV, lettre et traduction par claude-agent-sdk"
 
 [[fleche_bloc]]
 de = "coeur"
 vers = "sources"
+court = "fetch() des offres"
 libelle = "le run appelle fetch() de chaque source, qui rend des JobOffer"
 
 [[fleche_bloc]]
 de = "coeur"
 vers = "profils"
+court = "lit le profil"
 libelle = "load_profile lit le profil ; load_alias_table lit la table d'alias"
 
 # ── Parcours (EXE-215) ───────────────────────────────────────────────────────
@@ -536,3 +557,29 @@ phrase = "appliquer_geste lit l'état stocké, obtient l'état d'arrivée par et
 [[parcours.etape]]
 table = "historique_gestes"
 phrase = "La ligne ajoutée porte le geste, l'état de départ et d'arrivée, la date d'effet et la date d'enregistrement ; annule_at reste vide."
+
+# ── Place des blocs sur le dessin (EXE-216) ──────────────────────────────────
+# [colonne, ligne] de chaque système au niveau 2 de la carte. « ecrans » est le
+# bloc des écrans du front ; « base » est le bloc qui s'allume pendant un
+# parcours quand une étape porte sur une table. Un système absent d'ici prend
+# la première place libre.
+
+[positions]
+ecrans = [0, 1]
+base = [0, 3]
+offres = [1, 0]
+ajout = [1, 1]
+a_postuler = [1, 2]
+observation = [1, 3]
+fiche = [2, 0]
+cv = [2, 1]
+lettre = [2, 2]
+banc = [2, 3]
+mail = [3, 0]
+pieces = [3, 1]
+suivi = [3, 2]
+reference = [3, 3]
+run = [4, 0]
+scoring = [4, 1]
+sources = [4, 2]
+socle = [4, 3]

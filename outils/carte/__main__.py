@@ -96,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     changements = [] if ancien is None else comparer(ancien, nouveau)
     carte.donnees["parcours"] = parcours
     carte.donnees["ensemble"] = ensemble(textes)
+    carte.donnees["positions"] = textes.positions
     carte.donnees["depuis"] = {"premier": ancien is None, "changements": changements}
     ecrire_page(carte.donnees, sortie)
     ecrire_releve(nouveau, chemin_releve)

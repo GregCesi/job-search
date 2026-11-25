@@ -46,6 +46,7 @@ class Textes:
     blocs: list[dict] = field(default_factory=list)
     fleches_blocs: list[dict] = field(default_factory=list)
     parcours: list[dict] = field(default_factory=list)
+    positions: dict[str, list[int]] = field(default_factory=dict)
 
 
 def _est_init_vide(texte: str) -> bool:
@@ -129,6 +130,9 @@ def charger_textes(chemin: Path) -> Textes:
         blocs=list(brut.get("bloc", [])),
         fleches_blocs=list(brut.get("fleche_bloc", [])),
         parcours=list(brut.get("parcours", [])),
+        positions={
+            str(k): [int(n) for n in v] for k, v in brut.get("positions", {}).items()
+        },
     )
 
 

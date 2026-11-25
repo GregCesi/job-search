@@ -5,6 +5,10 @@ tables, couches et appels directs à la base (critères 1 à 4, 6 à 11, 14, 15,
 
 Ni le front ni l'API ne sont lancés. La page est générée dans un dossier
 temporaire, par la commande lancée en sous-processus (`tests/carte_terrains.py`).
+
+Réécrits par EXE-216 pour la carte dessinée : le texte d'un fichier, d'une route
+ou d'une table est dans le panneau (`#panneau`), les trois autres onglets dans
+`.page`. Ce que chaque test affirme ne change pas.
 """
 
 from __future__ import annotations
@@ -14,6 +18,8 @@ import re
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from tests.carte_navigateur import bloc, cliquer_coin
+from tests.carte_navigateur import section as _section_de
 from tests.carte_terrains import (
     PAS_DE_PHRASE,
     REPO,
@@ -78,12 +84,11 @@ def _ancre_route(route_id):
 
 
 def _section(page, titre):
-    entete = page.get_by_role("heading", name=re.compile("^" + re.escape(titre) + " "))
-    return page.locator("#vue section.liens", has=entete)
+    return _section_de(page, titre, "#panneau, .page")
 
 
 def _vue(page):
-    return page.locator("#vue")
+    return page.locator("#panneau, .page")
 
 
 class TestLesRoutes:
@@ -100,24 +105,24 @@ class TestLesRoutes:
         _ouvrir(page, page_essai)
         page.get_by_role("searchbox", name="Rechercher").fill("/choses")
         page.locator("#resultats").get_by_role("link", name=GET_CHOSE).click()
-        expect(page.locator("#vue h2.route")).to_have_text(GET_CHOSE)
+        expect(_vue(page).locator("h2.route")).to_have_text(GET_CHOSE)
 
     def test_critere3_fichier_et_fonction_qui_la_servent(self, page_essai, page):
         _ouvrir(page, page_essai, _ancre_route(GET_CHOSE))
-        servie = page.locator("#vue .servie-par")
+        servie = _vue(page).locator(".servie-par")
         expect(servie).to_contain_text("api/choses.py")
         expect(servie).to_contain_text("lire_chose")
         servie.get_by_role("link", name="api/choses.py").click()
-        expect(page.locator("#vue h2.chemin")).to_have_text("api/choses.py")
+        expect(_vue(page).locator("h2.chemin")).to_have_text("api/choses.py")
 
     def test_critere4_acces_a_la_base(self, page_essai, page):
         _ouvrir(page, page_essai, _ancre_route(GET_CHOSE))
-        expect(page.locator("#vue .acces-base")).to_have_text(
+        expect(_vue(page).locator(".acces-base")).to_have_text(
             "Accès à la base : délègue"
         )
         _aller(page, _ancre_route(DELETE_CHOSE))
-        expect(page.locator("#vue h2.route")).to_have_text(DELETE_CHOSE)
-        expect(page.locator("#vue .acces-base")).to_have_text(
+        expect(_vue(page).locator("h2.route")).to_have_text(DELETE_CHOSE)
+        expect(_vue(page).locator(".acces-base")).to_have_text(
             "Accès à la base : base directe"
         )
 
@@ -125,8 +130,8 @@ class TestLesRoutes:
 class TestLesEcrans:
     def test_critere6_systeme_ecrans(self, page_vraie, page):
         _ouvrir(page, page_vraie, "#/systemes")
-        page.locator("article.systeme").get_by_role("link", name="Écrans").click()
-        expect(_vue(page).locator("li.fichier")).to_have_count(
+        cliquer_coin(page, bloc(page, "data-systeme", "ecrans"))
+        expect(page.locator("#dessin g.bloc[data-fichier]")).to_have_count(
             len(fichiers_front_du_disque(REPO))
         )
 
@@ -137,8 +142,8 @@ class TestLesEcrans:
         sans = []
         for chemin in chemins:
             _aller(page, "#/fichier/" + chemin)
-            expect(page.locator("#vue h2.chemin")).to_have_text(chemin)
-            texte = page.locator("#vue .phrase").inner_text().strip()
+            expect(_vue(page).locator("h2.chemin")).to_have_text(chemin)
+            texte = _vue(page).locator(".phrase").inner_text().strip()
             if not texte or texte == PAS_DE_PHRASE:
                 sans.append(chemin)
         assert sans == []
@@ -160,13 +165,13 @@ class TestLesEcrans:
         _section(page, "Stores qu'il importe").get_by_role(
             "link", name="web/app/stores/choses.ts"
         ).click()
-        expect(page.locator("#vue h2.chemin")).to_have_text("web/app/stores/choses.ts")
+        expect(_vue(page).locator("h2.chemin")).to_have_text("web/app/stores/choses.ts")
         page.go_back()
-        expect(page.locator("#vue h2.chemin")).to_have_text("web/app/pages/choses.vue")
+        expect(_vue(page).locator("h2.chemin")).to_have_text("web/app/pages/choses.vue")
         _section(page, "Composants qu'il utilise").get_by_role(
             "link", name="web/app/components/ChoseCarte.vue"
         ).click()
-        expect(page.locator("#vue h2.chemin")).to_have_text(
+        expect(_vue(page).locator("h2.chemin")).to_have_text(
             "web/app/components/ChoseCarte.vue"
         )
 
@@ -178,7 +183,7 @@ class TestLesEcrans:
 
     def test_critere14_vue_a_verifier(self, page_essai, page):
         _ouvrir(page, page_essai)
-        page.get_by_role("link", name="À vérifier").first.click()
+        page.locator("nav.onglets").get_by_role("link", name="À vérifier").click()
         expect(_section(page, "Appel sans route trouvée")).to_contain_text(
             "${base}/inconnu"
         )
@@ -194,7 +199,7 @@ class TestLesEcrans:
 
     def test_critere15_la_page_d_une_offre_appelle_geste(self, page_vraie, page):
         _ouvrir(page, page_vraie, "#/fichier/web/app/pages/offers/[id].vue")
-        expect(page.locator("#vue h2.chemin")).to_have_text(
+        expect(_vue(page).locator("h2.chemin")).to_have_text(
             "web/app/pages/offers/[id].vue"
         )
         expect(
@@ -206,8 +211,9 @@ class TestLesEcrans:
 
 class TestLesTables:
     def test_critere16_liste_des_tables(self, page_essai, page):
-        _ouvrir(page, page_essai)
-        page.get_by_role("link", name="Tables").first.click()
+        _ouvrir(page, page_essai, "#/tables")
+        expect(page.locator("#dessin g.bloc[data-table]")).to_have_count(1)
+        expect(bloc(page, "data-table", "choses")).to_be_visible()
         expect(_vue(page).locator("li.table")).to_have_count(1)
         expect(_vue(page).locator("li.table")).to_contain_text("choses")
 
@@ -240,7 +246,7 @@ class TestLesTables:
 
     def test_critere21_systemes_qui_ecrivent(self, page_essai, page):
         _ouvrir(page, page_essai, "#/table/choses")
-        expect(page.locator("#vue .ecrivains")).to_have_text(
+        expect(_vue(page).locator(".ecrivains")).to_have_text(
             "2 systèmes écrivent cette table"
         )
 
@@ -252,7 +258,7 @@ class TestLesTables:
 
     def test_critere23_cvs_ecrite_par_le_service_du_cv(self, page_vraie, page):
         _ouvrir(page, page_vraie, "#/table/cvs")
-        expect(page.locator("#vue h2.table")).to_have_text("cvs")
+        expect(_vue(page).locator("h2.table")).to_have_text("cvs")
         expect(
             _section(page, "Fichiers qui l'écrivent").get_by_role(
                 "link", name="orchestrator/job_search/cv/service.py"
@@ -275,17 +281,21 @@ class TestLesCouchesEtLaBase:
         self, page_essai, page, chemin, couche, appels
     ):
         _ouvrir(page, page_essai, "#/fichier/" + chemin)
-        expect(page.locator("#vue .couche")).to_have_text(f"Couche : {couche}")
-        expect(page.locator("#vue .appels-base")).to_have_text(
+        expect(_vue(page).locator(".couche")).to_have_text(f"Couche : {couche}")
+        expect(_vue(page).locator(".appels-base")).to_have_text(
             f"Appels directs à la base : {appels}"
         )
 
     def test_critere26_accueil(self, page_essai, page):
         _ouvrir(page, page_essai)
-        expect(page.locator("#vue .total-base")).to_have_text(
+        expect(_vue(page).locator(".total-base")).to_contain_text(
             "4 appels directs à la base hors stockage, dans 3 fichiers"
         )
-        expect(page.locator("#vue ol.base-fichiers li")).to_have_text(
+        page.locator("nav.onglets").get_by_role("link", name="La base").click()
+        expect(page.locator(".page .total-base")).to_have_text(
+            "4 appels directs à la base hors stockage, dans 3 fichiers"
+        )
+        expect(page.locator(".page ol.base-fichiers li")).to_have_text(
             [
                 re.compile(r"orchestrator/b_choses\.py.*2"),
                 re.compile(r"api/choses\.py.*1"),

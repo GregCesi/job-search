@@ -2,6 +2,11 @@
 carte, ouverte depuis le disque, sans serveur et réseau coupé : vue d'ensemble
 (critères 1 à 6), parcours (7 à 13, 20) et « Depuis la dernière carte » (24,
 26, 31), plus le total hors stockage sur la vue d'ouverture (33).
+
+Réécrits par EXE-216 pour la carte dessinée : la vue d'ensemble est un dessin de
+blocs et de flèches, un parcours se suit par la barre « Suivre un parcours » et
+sa carte d'étape, « Depuis la dernière carte » est un onglet. Ce que chaque test
+affirme ne change pas.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ import re
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from tests.carte_navigateur import attendre_dessin, bloc, cliquer_coin, panneau
 from tests.carte_terrains import (
     REPO,
     lancer_carte,
@@ -39,9 +45,9 @@ FLECHES = [
 RETENIR = "Je retiens une offre : son CV est généré et rangé en base"
 COUCHES = {"écran", "route", "métier", "stockage", "table"}
 TITRE_DU_GENRE = {
-    "fichier": "#vue h2.chemin",
-    "route": "#vue h2.route",
-    "table": "#vue h2.table",
+    "fichier": "#panneau h2.chemin",
+    "route": "#panneau h2.route",
+    "table": "#panneau h2.table",
 }
 
 
@@ -81,83 +87,82 @@ def _ouvrir(page, sortie, ancre=""):
     return page
 
 
-def _vue(page):
-    return page.locator("#vue")
-
-
 def _bloc(page, nom):
-    return (
-        _vue(page)
-        .locator("article.bloc-ensemble")
-        .filter(has=page.get_by_role("heading", name=nom, exact=True))
+    return page.locator("#dessin g.bloc[data-bloc]").filter(
+        has=page.locator(f'text.nom[data-nom="{nom}"]')
     )
 
 
 class TestLaVueDEnsemble:
     def test_critere1_sept_blocs_avec_leur_role(self, page_vraie, page):
         _ouvrir(page, page_vraie)
-        blocs = _vue(page).locator("article.bloc-ensemble")
-        expect(blocs.locator("h3")).to_have_text(BLOCS)
+        noms = page.locator("#dessin g.bloc[data-bloc] text.nom")
+        assert [n.get_attribute("data-nom") for n in noms.all()] == BLOCS
         for nom in BLOCS:
-            role = _bloc(page, nom).locator(".role").inner_text().strip()
-            assert role, nom
+            _bloc(page, nom).hover()
+            expect(panneau(page).locator("h2")).to_have_text(nom)
+            assert panneau(page).locator(".role").inner_text().strip(), nom
 
     def test_critere2_sept_fleches_avec_libelle(self, page_vraie, page):
         _ouvrir(page, page_vraie)
-        fleches = _vue(page).locator("li.fleche-ensemble")
+        fleches = page.locator("#dessin path.fl[data-de]")
         expect(fleches).to_have_count(7)
         lues = []
         for i in range(7):
             f = fleches.nth(i)
-            lues.append((f.get_attribute("data-de"), f.get_attribute("data-vers")))
-            assert f.locator(".libelle").inner_text().strip(" ·")
+            de, vers = f.get_attribute("data-de"), f.get_attribute("data-vers")
+            lues.append((de, vers))
+            page.locator(
+                f'#dessin text.etiq-court[data-de="{de}"][data-vers="{vers}"]'
+            ).hover()
+            assert panneau(page).locator(".libelle-long").inner_text().strip()
         assert sorted(lues) == sorted(FLECHES)
 
     def test_critere3_bloc_ecrans(self, page_vraie, page):
         _ouvrir(page, page_vraie)
-        _bloc(page, "Écrans").get_by_role("link", name="Écrans").click()
-        expect(_vue(page).locator("h2").first).to_have_text("Écrans")
-        expect(_vue(page).locator("li.fichier").first).to_be_visible()
+        cliquer_coin(page, _bloc(page, "Écrans"))
+        expect(panneau(page).locator("h2").first).to_contain_text("Écrans")
+        expect(page.locator("#dessin g.bloc[data-fichier]").first).to_be_visible()
 
     @pytest.mark.parametrize("nom", ["API", "Cœur métier"])
     def test_critere4_blocs_api_et_coeur(self, page_vraie, page, nom):
         _ouvrir(page, page_vraie)
-        _bloc(page, nom).get_by_role("link", name=nom, exact=True).click()
-        expect(page.get_by_role("heading", name="Systèmes", exact=True)).to_be_visible()
-        expect(_vue(page).locator("article.systeme").first).to_be_visible()
+        cliquer_coin(page, _bloc(page, nom))
+        expect(panneau(page).locator("h2").first).to_have_text("Les systèmes")
+        expect(page.locator("#dessin g.bloc[data-systeme]").first).to_be_visible()
 
     def test_critere5_bloc_base(self, page_vraie, page):
         _ouvrir(page, page_vraie)
-        _bloc(page, "Base").get_by_role("link", name="Base", exact=True).click()
-        expect(page.locator("#vue h2").first).to_have_text("Tables")
-        expect(_vue(page).locator("li.table", has_text="cvs")).to_be_visible()
+        cliquer_coin(page, _bloc(page, "Base"))
+        expect(panneau(page).locator("h2").first).to_have_text("Les tables")
+        expect(bloc(page, "data-table", "cvs")).to_be_visible()
 
     def test_critere6_les_systemes_et_retour(self, page_vraie, page):
         _ouvrir(page, page_vraie)
-        _vue(page).get_by_role("link", name="Les systèmes", exact=True).click()
-        expect(page.get_by_role("heading", name="Systèmes", exact=True)).to_be_visible()
+        cliquer_coin(page, _bloc(page, "API"))
+        expect(panneau(page).locator("h2").first).to_have_text("Les systèmes")
         page.get_by_role("navigation", name="Fil d'Ariane").get_by_role(
-            "link", name="Carte"
+            "link", name="La carte"
         ).click()
-        expect(_vue(page).locator("article.bloc-ensemble")).to_have_count(7)
+        expect(page.locator("#dessin g.bloc[data-bloc]")).to_have_count(7)
 
     def test_critere33_total_hors_stockage_a_l_ouverture(self, page_vraie, page):
         total = lire_donnees(page_vraie)["base"]["hors_stockage"]
         _ouvrir(page, page_vraie)
-        expect(_vue(page).locator(".total-base")).to_contain_text(
+        expect(panneau(page).locator(".total-base")).to_contain_text(
             f"{total} appels directs à la base hors stockage"
         )
 
 
 def _ouvrir_parcours(page, nom):
-    page.locator("ul.liste-parcours").get_by_role("link", name=nom, exact=True).click()
-    expect(page.locator("#vue h2.parcours-nom")).to_have_text(nom)
+    page.locator("#parcours-barre").get_by_role("button", name=nom, exact=True).click()
+    expect(panneau(page).locator("h2.parcours-nom")).to_have_text(nom)
 
 
 class TestSuivreUnParcours:
     def test_critere7_quatre_parcours_proposes(self, page_vraie, page):
         _ouvrir(page, page_vraie)
-        expect(page.locator("ul.liste-parcours li a")).to_have_text(
+        expect(page.locator("#parcours-barre button")).to_have_text(
             [
                 RETENIR,
                 "Le run : d'une source à une offre classée",
@@ -170,37 +175,37 @@ class TestSuivreUnParcours:
         n = len(lire_donnees(page_vraie)["parcours"][0]["etapes"])
         _ouvrir(page, page_vraie)
         _ouvrir_parcours(page, RETENIR)
-        expect(page.locator("#vue .numero")).to_have_text(f"Étape 1 sur {n}")
-        expect(page.locator("#vue .element a")).to_have_text(
+        expect(page.locator("#etape .num")).to_have_text(f"Étape 1 sur {n}")
+        expect(page.locator("#etape .element")).to_have_text(
             "web/app/pages/offers/[id].vue"
         )
-        assert page.locator("#vue .phrase-etape").inner_text().strip()
+        assert page.locator("#etape .phrase-etape").inner_text().strip()
 
     def test_criteres9_10_suivant_et_precedent(self, page_vraie, page):
         _ouvrir(page, page_vraie)
         _ouvrir_parcours(page, RETENIR)
-        page.get_by_role("link", name="Suivant", exact=True).click()
-        expect(page.locator("#vue .numero")).to_contain_text("Étape 2 sur")
-        page.get_by_role("link", name="Précédent", exact=True).click()
-        expect(page.locator("#vue .numero")).to_contain_text("Étape 1 sur")
+        page.get_by_role("button", name="Après", exact=True).click()
+        expect(page.locator("#etape .num")).to_contain_text("Étape 2 sur")
+        page.get_by_role("button", name="Avant", exact=True).click()
+        expect(page.locator("#etape .num")).to_contain_text("Étape 1 sur")
 
     def test_critere11_couche_de_l_etape(self, page_vraie, page):
         _ouvrir(page, page_vraie)
         _ouvrir_parcours(page, RETENIR)
-        expect(page.locator("#vue .couche-etape")).to_have_text("Couche : écran")
+        expect(page.locator("#etape .couche-etape")).to_have_text("Couche : écran")
 
     def test_critere12_clic_sur_l_element(self, page_vraie, page):
         _ouvrir(page, page_vraie)
         _ouvrir_parcours(page, RETENIR)
-        page.locator("#vue .element a").click()
-        expect(page.locator("#vue h2.chemin")).to_have_text(
+        page.locator("#etape .element").click()
+        expect(panneau(page).locator("h2.chemin")).to_have_text(
             "web/app/pages/offers/[id].vue"
         )
 
     def test_critere13_parcours_sur_la_page_d_un_fichier(self, page_vraie, page):
         _ouvrir(page, page_vraie, "#/fichier/orchestrator/job_search/cv/service.py")
         entete = page.get_by_role("heading", name=re.compile("^Parcours qui passent"))
-        section = page.locator("#vue section.liens", has=entete)
+        section = page.locator("#panneau section.liens", has=entete)
         expect(section.get_by_role("link", name=RETENIR)).to_be_visible()
 
     def test_critere20_chaque_etape_mene_a_un_element(self, page_vraie, page):
@@ -211,27 +216,30 @@ class TestSuivreUnParcours:
             page.evaluate("a => { location.hash = a }", "#/")
             _ouvrir_parcours(page, p["nom"])
             for n, etape in enumerate(p["etapes"], 1):
-                expect(page.locator("#vue .numero")).to_contain_text(f"Étape {n} sur")
-                couche = page.locator("#vue .couche-etape").inner_text()
+                expect(page.locator("#etape .num")).to_contain_text(f"Étape {n} sur")
+                couche = page.locator("#etape .couche-etape").inner_text()
                 assert couche.removeprefix("Couche : ") in COUCHES, couche
-                lien = page.locator("#vue .element a")
+                lien = page.locator("#etape .element")
                 expect(lien).to_have_text(etape["element"])
                 lien.click()
                 expect(page.locator(TITRE_DU_GENRE[etape["genre"]])).to_have_text(
                     etape["element"]
                 )
                 page.go_back()
+                attendre_dessin(page, "les systèmes")
                 if n < len(p["etapes"]):
-                    page.get_by_role("link", name="Suivant", exact=True).click()
+                    page.get_by_role("button", name="Après", exact=True).click()
                 vues += 1
         assert vues == sum(len(p["etapes"]) for p in donnees["parcours"])
 
 
 def _etat_depuis(page, sortie):
     _ouvrir(page, sortie)
-    _vue(page).get_by_role("link", name="Depuis la dernière carte").click()
-    expect(page.locator("#vue h2").first).to_have_text("Depuis la dernière carte")
-    return _vue(page)
+    page.locator("nav.onglets").get_by_role(
+        "link", name="Depuis la dernière carte"
+    ).click()
+    expect(page.locator(".page h2").first).to_have_text("Depuis la dernière carte")
+    return page.locator(".page")
 
 
 class TestDepuisLaDerniereCarte:

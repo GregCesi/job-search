@@ -69,18 +69,27 @@ def parcours_de_la_carte(textes: Textes, donnees: dict) -> tuple[list[dict], lis
 
 
 def ensemble(textes: Textes) -> dict:
-    """Les blocs de la vue d'ensemble et leurs flèches, tels qu'écrits."""
+    """Les blocs de la vue d'ensemble et leurs flèches, tels qu'écrits, avec la
+    place de chaque bloc sur le dessin (colonne, ligne) et le libellé court de
+    chaque flèche (EXE-216). Une place absente vaut -1 : la page en choisit une."""
     blocs = [
         {
             "id": str(b["id"]),
             "nom": str(b["nom"]),
             "role": str(b.get("role", "")),
             "lien": str(b.get("lien", "")),
+            "colonne": int(b.get("colonne", -1)),
+            "ligne": int(b.get("ligne", -1)),
         }
         for b in textes.blocs
     ]
     fleches = [
-        {"de": str(f["de"]), "vers": str(f["vers"]), "libelle": str(f["libelle"])}
+        {
+            "de": str(f["de"]),
+            "vers": str(f["vers"]),
+            "libelle": str(f["libelle"]),
+            "court": str(f.get("court", "")),
+        }
         for f in textes.fleches_blocs
     ]
     return {"blocs": blocs, "fleches": fleches}

@@ -2,6 +2,10 @@
 carte, ouverte depuis le disque, sans serveur et réseau coupé (critères 4, 5,
 7, 10 à 18, 21 à 25, 27).
 
+Réécrits par EXE-216 pour la carte dessinée : les systèmes et les fichiers sont
+des blocs du dessin (`#dessin`), le texte d'un fichier est dans le panneau
+(`#panneau`). Ce que chaque test affirme ne change pas.
+
 Ni le front ni l'API ne sont lancés. La page est générée dans un dossier
 temporaire, par la commande lancée en sous-processus (`tests/carte_terrains.py`).
 """
@@ -14,6 +18,7 @@ import subprocess
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from tests.carte_navigateur import bloc, cliquer_coin, fleche, panneau, section
 from tests.carte_terrains import (
     PAS_DE_PHRASE,
     REPO,
@@ -80,18 +85,9 @@ def onglet(navigateur):
     o.contexte.close()
 
 
-def _vue(page):
-    return page.locator("#vue")
-
-
 def _ouvrir_fichier(page, chemin):
     page.evaluate("c => { location.hash = '#/fichier/' + c }", chemin)
-    expect(page.locator("#vue h2.chemin")).to_have_text(chemin)
-
-
-def _section(page, titre):
-    entete = page.get_by_role("heading", name=re.compile("^" + re.escape(titre) + " "))
-    return page.locator("section.liens", has=entete)
+    expect(panneau(page).locator("h2.chemin")).to_have_text(chemin)
 
 
 class TestLaPage:
@@ -99,7 +95,7 @@ class TestLaPage:
         res, sortie = page_vraie
         assert res.returncode == 0, res.stdout + res.stderr
         page = onglet.ouvrir(sortie, "#/systemes")
-        expect(page.get_by_role("heading", name="Systèmes", exact=True)).to_be_visible()
+        expect(page.locator("#dessin g.bloc[data-systeme]").first).to_be_visible()
         _ouvrir_fichier(page, "orchestrator/job_search/cv/service.py")
         assert onglet.erreurs == []
         assert onglet.requetes_hors_disque == []
@@ -124,26 +120,31 @@ class TestLesSystemes:
         res, sortie = page_essai
         assert res.returncode == 0, res.stdout + res.stderr
         page = onglet.ouvrir(sortie, "#/systemes")
-        carte_a = page.locator("article.systeme", has_text="Système A")
-        expect(carte_a).to_contain_text("Rôle du système A.")
+        carte_a = bloc(page, "data-systeme", "a")
+        expect(carte_a).to_contain_text("Système A")
         expect(carte_a).to_contain_text("2 fichiers")
+        carte_a.hover()
+        expect(panneau(page).locator(".role")).to_have_text("Rôle du système A.")
 
     def test_critere10_fleche_de_a_vers_b(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/systemes")
-        fleches = page.locator("li.fleche")
+        fleches = page.locator("#dessin path.fl[data-de=a], #dessin path.fl[data-de=b]")
         expect(fleches).to_have_count(1)
         expect(fleches.first).to_have_attribute("data-de", "a")
         expect(fleches.first).to_have_attribute("data-vers", "b")
-        expect(fleches.first).to_contain_text("1 import")
+        expect(fleche(page, "a", "b").locator("title")).to_contain_text("1 import")
 
     def test_critere11_clic_systeme_montre_ses_fichiers(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/systemes")
-        page.get_by_role("link", name="Système A").first.click()
-        ligne = _vue(page).locator("li.fichier", has_text="api/a1.py")
-        expect(ligne).to_contain_text("Première phrase de a1.")
-        expect(_vue(page).locator("li.fichier", has_text="api/a2.py")).to_contain_text(
+        cliquer_coin(page, bloc(page, "data-systeme", "a"))
+        expect(bloc(page, "data-fichier", "api/a1.py")).to_be_visible()
+        fichiers = section(page, "Ses fichiers")
+        expect(fichiers.locator("li", has_text="api/a1.py")).to_contain_text(
+            "Première phrase de a1."
+        )
+        expect(fichiers.locator("li", has_text="api/a2.py")).to_contain_text(
             PAS_DE_PHRASE
         )
 
@@ -152,52 +153,52 @@ class TestUnFichier:
     def test_critere12_phrase_et_lignes(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/systeme/a")
-        _vue(page).get_by_role("link", name="api/a1.py").click()
-        expect(page.locator("#vue h2.chemin")).to_have_text("api/a1.py")
-        expect(page.locator(".phrase")).to_have_text("Première phrase de a1.")
-        expect(page.locator(".lignes")).to_have_text("5 lignes")
+        cliquer_coin(page, bloc(page, "data-fichier", "api/a1.py"))
+        expect(panneau(page).locator("h2.chemin")).to_have_text("api/a1.py")
+        expect(panneau(page).locator(".phrase")).to_have_text("Première phrase de a1.")
+        expect(panneau(page).locator(".lignes")).to_have_text("5 lignes")
 
     def test_critere13_ce_qu_il_importe(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/fichier/api/a1.py")
-        expect(_section(page, "Ce qu'il importe")).to_contain_text("orchestrator/b1.py")
+        expect(section(page, "Ce qu'il importe")).to_contain_text("orchestrator/b1.py")
 
     def test_critere14_qui_l_importe(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/fichier/orchestrator/b1.py")
-        expect(_section(page, "Qui l'importe")).to_contain_text("api/a1.py")
+        expect(section(page, "Qui l'importe")).to_contain_text("api/a1.py")
 
     def test_critere15_les_tests_qui_l_importent(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/fichier/api/a1.py")
-        expect(_section(page, "Les tests qui l'importent")).to_contain_text(
+        expect(section(page, "Les tests qui l'importent")).to_contain_text(
             "tests/test_a1.py"
         )
 
     def test_critere16_aucun_test(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/fichier/orchestrator/b2.py")
-        expect(_section(page, "Les tests qui l'importent")).to_contain_text(
+        expect(section(page, "Les tests qui l'importent")).to_contain_text(
             "Aucun test ne l'importe directement."
         )
 
     def test_critere17_clic_dans_une_liste(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/fichier/api/a1.py")
-        _section(page, "Ce qu'il importe").get_by_role(
+        section(page, "Ce qu'il importe").get_by_role(
             "link", name="orchestrator/b1.py"
         ).click()
-        expect(page.locator("#vue h2.chemin")).to_have_text("orchestrator/b1.py")
+        expect(panneau(page).locator("h2.chemin")).to_have_text("orchestrator/b1.py")
 
     def test_critere18_service_du_cv(self, page_vraie, onglet):
         _, sortie = page_vraie
         page = onglet.ouvrir(sortie)
         _ouvrir_fichier(page, "orchestrator/job_search/cv/service.py")
-        expect(_section(page, "Ce qu'il importe")).to_contain_text(
+        expect(section(page, "Ce qu'il importe")).to_contain_text(
             "orchestrator/job_search/cv/skills.py"
         )
-        expect(_section(page, "Qui l'importe")).to_contain_text("api/cv.py")
-        expect(_section(page, "Les tests qui l'importent")).to_contain_text(
+        expect(section(page, "Qui l'importe")).to_contain_text("api/cv.py")
+        expect(section(page, "Les tests qui l'importent")).to_contain_text(
             "tests/test_cv_service.py"
         )
 
@@ -206,13 +207,13 @@ class TestLesPhrases:
     def test_critere19_premiere_phrase_seule(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/fichier/api/a1.py")
-        expect(page.locator(".phrase")).to_have_text("Première phrase de a1.")
+        expect(panneau(page).locator(".phrase")).to_have_text("Première phrase de a1.")
 
     def test_critere21_pas_de_phrase(self, page_essai, onglet):
         res, sortie = page_essai
         assert "signalé : fichier sans phrase : api/a2.py" in res.stdout
         page = onglet.ouvrir(sortie, "#/fichier/api/a2.py")
-        expect(page.locator(".phrase")).to_have_text(PAS_DE_PHRASE)
+        expect(panneau(page).locator(".phrase")).to_have_text(PAS_DE_PHRASE)
 
     def test_critere22_aucun_fichier_sans_phrase(self, page_vraie, onglet):
         _, sortie = page_vraie
@@ -222,7 +223,7 @@ class TestLesPhrases:
         sans = []
         for chemin in chemins:
             _ouvrir_fichier(page, chemin)
-            texte = page.locator(".phrase").inner_text().strip()
+            texte = panneau(page).locator(".phrase").inner_text().strip()
             if not texte or texte == PAS_DE_PHRASE:
                 sans.append(chemin)
         assert sans == []
@@ -236,7 +237,7 @@ class TestSeDeplacer:
         page.locator("#resultats").get_by_role(
             "link", name="orchestrator/job_search/cv/skills.py"
         ).click()
-        expect(page.locator("#vue h2.chemin")).to_have_text(
+        expect(panneau(page).locator("h2.chemin")).to_have_text(
             "orchestrator/job_search/cv/skills.py"
         )
 
@@ -244,21 +245,21 @@ class TestSeDeplacer:
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/fichier/api/a1.py")
         ariane = page.get_by_role("navigation", name="Fil d'Ariane")
-        expect(ariane).to_contain_text("Carte")
+        expect(ariane).to_contain_text("La carte")
         expect(ariane).to_contain_text("Système A")
         expect(ariane).to_contain_text("api/a1.py")
         ariane.get_by_role("link", name="Système A").click()
-        expect(_vue(page).locator("li.fichier", has_text="api/a1.py")).to_be_visible()
-        expect(_vue(page).locator("li.fichier")).to_have_count(2)
+        expect(bloc(page, "data-fichier", "api/a1.py")).to_be_visible()
+        expect(page.locator("#dessin g.bloc[data-fichier]")).to_have_count(2)
 
     def test_critere25_recharger_garde_le_fichier(self, page_essai, onglet):
         _, sortie = page_essai
         page = onglet.ouvrir(sortie, "#/systemes")
-        page.get_by_role("link", name="Système B").first.click()
-        _vue(page).get_by_role("link", name="orchestrator/b1.py").click()
-        expect(page.locator("#vue h2.chemin")).to_have_text("orchestrator/b1.py")
+        cliquer_coin(page, bloc(page, "data-systeme", "b"))
+        cliquer_coin(page, bloc(page, "data-fichier", "orchestrator/b1.py"))
+        expect(panneau(page).locator("h2.chemin")).to_have_text("orchestrator/b1.py")
         page.reload()
-        expect(page.locator("#vue h2.chemin")).to_have_text("orchestrator/b1.py")
+        expect(panneau(page).locator("h2.chemin")).to_have_text("orchestrator/b1.py")
 
 
 class TestAutres:
@@ -268,9 +269,8 @@ class TestAutres:
         res = lancer_carte(racine)
         assert res.returncode == 0, res.stdout + res.stderr
         page = onglet.ouvrir(racine / "docs" / "carte" / "index.html", "#/systemes")
-        autres = page.locator("article.systeme", has_text="Autres (à ranger)")
+        autres = bloc(page, "data-systeme", "autres")
+        expect(autres).to_contain_text("Autres (à ranger)")
         expect(autres).to_contain_text("1 fichier")
-        autres.get_by_role("link", name="Autres (à ranger)").click()
-        expect(
-            _vue(page).locator("li.fichier", has_text="orchestrator/nouveau.py")
-        ).to_be_visible()
+        cliquer_coin(page, autres)
+        expect(bloc(page, "data-fichier", "orchestrator/nouveau.py")).to_be_visible()
