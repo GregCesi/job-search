@@ -181,7 +181,6 @@ technos:
     - generative
     - copilot studio
     - claude
-    - gpt
     - mistral
     - ollama
     - hugging
@@ -209,7 +208,6 @@ domaines:
     - backend
     - data_science
     - data_engineering
-    - devops
   developpeur:
     - fullstack
     - backend
