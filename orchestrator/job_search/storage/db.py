@@ -579,6 +579,22 @@ def migrate_fiches_entreprise_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _ajouter_colonne(
+    conn: sqlite3.Connection, table: str, col: str, col_type: str
+) -> None:
+    """Ajoute une colonne, sans erreur si un autre démarrage vient de l'ajouter.
+
+    Deux démarrages simultanés lisent la même liste de colonnes, puis ajoutent
+    tous deux celles qui manquent : le second recevait « duplicate column name »
+    et s'arrêtait. Constaté le 25 novembre 2026 au contrôle après merge du jet 60.
+    """
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" not in str(exc):
+            raise
+
+
 def migrate_offers_schema(conn: sqlite3.Connection) -> None:
     """Apply incremental column additions/removals to an existing offers table."""
     existing = {row[1] for row in conn.execute("PRAGMA table_info(offers)").fetchall()}
@@ -629,7 +645,7 @@ def migrate_offers_schema(conn: sqlite3.Connection) -> None:
     ]
     for col, col_type in add_cols:
         if col not in existing:
-            conn.execute(f"ALTER TABLE offers ADD COLUMN {col} {col_type}")
+            _ajouter_colonne(conn, "offers", col, col_type)
 
     # Renommage seen → seen_candidat (chantier vue candidat)
     if "seen" in existing and "seen_candidat" not in existing:
