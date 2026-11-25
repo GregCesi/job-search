@@ -102,3 +102,131 @@ def fichiers_du_disque(racine: Path) -> list[str]:
                     continue
             trouves.append(p.relative_to(racine).as_posix())
     return sorted(trouves)
+
+
+# ── Dépôt d'essai étendu (EXE-214) : la chaîne de l'écran à la table ──────────
+#
+# Le dépôt d'essai d'EXE-213 reste tel quel pour ses tests ; celui-ci lui ajoute
+# une table `choses`, ses routes, ses lectures et écritures, et un front.
+
+TEXTES_ESSAI_ETENDU = TEXTES_ESSAI.replace(
+    'fichiers = ["api/a1.py", "api/a2.py"]',
+    'fichiers = ["api/a1.py", "api/a2.py", "api/choses.py", '
+    '"orchestrator/a_metier.py", "orchestrator/storage/choses.py"]',
+).replace(
+    'fichiers = ["orchestrator/b1.py", "orchestrator/b2.py"]',
+    'fichiers = ["orchestrator/b1.py", "orchestrator/b2.py", '
+    '"orchestrator/b_choses.py"]',
+) + (
+    "\n[phrases]\n"
+    '"web/app/pages/choses.vue" = "Affiche les choses."\n'
+    '"web/app/stores/choses.ts" = "Charge une chose depuis l\'API."\n'
+    '"web/app/components/ChoseCarte.vue" = "Montre une chose."\n'
+    '"web/app/components/ChoseSuite.vue" = "Demande la suite d\'une chose."\n'
+)
+
+FICHIERS_ESSAI_ETENDU = {
+    **FICHIERS_ESSAI,
+    "docs/carte/textes.toml": TEXTES_ESSAI_ETENDU,
+    "api/choses.py": (
+        '"""Routes des choses."""\n\n'
+        "from fastapi import APIRouter\n\n"
+        "from orchestrator import a_metier\n\n"
+        'router = APIRouter(prefix="/choses")\n\n\n'
+        '@router.get("/{chose_id}")\n'
+        "def lire_chose(chose_id: int):\n"
+        "    return a_metier.lire(chose_id)\n\n\n"
+        '@router.delete("/{chose_id}")\n'
+        "def supprimer_chose(chose_id: int, conn=None):\n"
+        '    conn.execute("DELETE FROM choses WHERE id = ?", (chose_id,))\n'
+    ),
+    "orchestrator/a_metier.py": (
+        '"""Règle des choses."""\n\n\n'
+        "def lire(chose_id, conn=None):\n"
+        "    return conn.execute(\n"
+        '        "SELECT nom FROM choses WHERE id = ?", (chose_id,)\n'
+        "    ).fetchone()\n"
+    ),
+    "orchestrator/storage/__init__.py": "",
+    "orchestrator/storage/choses.py": (
+        '"""Stockage des choses."""\n\n\n'
+        "def creer(conn):\n"
+        '    conn.execute("CREATE TABLE IF NOT EXISTS choses (id INTEGER, nom TEXT)")\n'
+        "\n\n"
+        "def ajouter(conn, nom):\n"
+        '    conn.execute("INSERT INTO choses (nom) VALUES (?)", (nom,))\n'
+    ),
+    "orchestrator/b_choses.py": (
+        '"""Renomme les choses."""\n\n\n'
+        "def renommer(conn, nom):\n"
+        '    conn.execute("UPDATE choses SET nom = ?", (nom,))\n'
+        "\n\n"
+        "def tout_lire(conn, nom_de_table):\n"
+        '    return conn.execute(f"SELECT * FROM {nom_de_table}").fetchall()\n'
+    ),
+    "web/app/pages/choses.vue": (
+        "<template>\n"
+        "  <div>\n"
+        "    <ChoseCarte />\n"
+        "  </div>\n"
+        "</template>\n\n"
+        '<script setup lang="ts">\n'
+        "import { useChosesStore } from '~/stores/choses'\n\n"
+        "const choses = useChosesStore()\n"
+        "</script>\n"
+    ),
+    "web/app/stores/choses.ts": (
+        "import { defineStore } from 'pinia'\n\n"
+        "export const useChosesStore = defineStore('choses', () => {\n"
+        "  const base = useRuntimeConfig().public.apiBase\n"
+        "  async function charger(id: number) {\n"
+        "    return await $fetch(`${base}/choses/${id}`)\n"
+        "  }\n"
+        "  return { charger }\n"
+        "})\n"
+    ),
+    "web/app/components/ChoseCarte.vue": (
+        "<template>\n"
+        "  <p>Une chose</p>\n"
+        "</template>\n\n"
+        '<script setup lang="ts">\n'
+        "const config = useRuntimeConfig()\n"
+        "const base = config.public.apiBase\n"
+        "async function charger() {\n"
+        "  return await $fetch(`${base}/inconnu`)\n"
+        "}\n"
+        "</script>\n"
+    ),
+    "web/app/components/ChoseSuite.vue": (
+        "<template>\n"
+        "  <p>La suite</p>\n"
+        "</template>\n\n"
+        '<script setup lang="ts">\n'
+        "const props = defineProps<{ adresse: string }>()\n"
+        "async function suite() {\n"
+        "  return await $fetch(`${props.adresse}/suite`, { method: 'POST' })\n"
+        "}\n"
+        "</script>\n"
+    ),
+}
+
+
+def poser_depot_essai_etendu(racine: Path) -> Path:
+    for rel, contenu in FICHIERS_ESSAI_ETENDU.items():
+        chemin = racine / rel
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_text(contenu, encoding="utf-8")
+    return racine
+
+
+def fichiers_front_du_disque(racine: Path) -> list[str]:
+    """Fichiers .vue et .ts de web/app/, hors node_modules et .nuxt."""
+    trouves = []
+    for p in sorted((racine / "web" / "app").rglob("*")):
+        parts = p.relative_to(racine).parts
+        if p.suffix not in (".vue", ".ts") or not p.is_file():
+            continue
+        if "node_modules" in parts or ".nuxt" in parts:
+            continue
+        trouves.append(p.relative_to(racine).as_posix())
+    return sorted(trouves)

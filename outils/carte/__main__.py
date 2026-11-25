@@ -1,7 +1,8 @@
 """`python -m outils.carte` : régénère la carte du code, depuis la racine du dépôt.
 
-Rend 0 et imprime les signalements (fichier non rangé, fichier sans phrase),
-une ligne de résumé, puis, en dernière ligne, le chemin de la page écrite.
+Rend 0 et imprime les signalements (fichier non rangé, fichier sans phrase,
+appel sans route trouvée, adresse illisible, table illisible), deux lignes de
+résumé, puis, en dernière ligne, le chemin de la page écrite.
 Rend 1, sans écrire la page, si le fichier de textes contredit le disque.
 
 Usage : .venv/bin/python -m outils.carte [--racine R] [--textes T] [--sortie S]
@@ -16,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from outils.carte.assemblage import assembler
+from outils.carte.chaine import completer
 from outils.carte.graphe import imports_directs
 from outils.carte.lecture import (
     ErreurTextes,
@@ -75,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         "commit": _commit_court(racine),
     }
     carte = assembler(fichiers, textes, imports_directs(racine), racine, entete)
+    completer(carte, racine, textes)
     ecrire_page(carte.donnees, sortie)
 
     for signalement in carte.signalements:
@@ -83,6 +86,14 @@ def main(argv: list[str] | None = None) -> int:
         f"Carte : {_pluriel(carte.nb_fichiers, 'fichier')}, "
         f"{_pluriel(carte.nb_fleches, 'flèche')} entre fichiers, "
         f"{_pluriel(carte.nb_systemes, 'système')}."
+    )
+    d = carte.donnees
+    print(
+        f"Chaîne : {_pluriel(len(d['fichiers_front']), 'écran')}, "
+        f"{_pluriel(len(d['routes']), 'route')}, "
+        f"{_pluriel(len(d['tables']), 'table')}, "
+        f"{_pluriel(d['base']['hors_stockage'], 'appel direct', 'appels directs')} "
+        "à la base hors stockage."
     )
     print(sortie)
     return 0

@@ -91,6 +91,18 @@
   section.liens li { padding: 2px 0; word-break: break-all; }
   section.liens .vide { color: var(--doux); margin: 0; font-size: 14px; }
   .bloc { margin: 18px 0; }
+  nav.vues { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 4px; font-size: 14px; }
+  .total-base { font-size: 16px; margin: 4px 0 8px; }
+  ol.base-fichiers { margin: 6px 0 0; padding-left: 22px; }
+  ol.base-fichiers li, ul.routes li, ul.tables li { padding: 2px 0; font-size: 14px; }
+  ol.base-fichiers a, ul.routes a, .route-id, h2.route { font-family: var(--mono); }
+  ol.base-fichiers .n { color: var(--doux); }
+  ul.routes, ul.tables { list-style: none; padding: 0; margin: 10px 0; }
+  h2.route, h2.table { font-size: 18px; word-break: break-all; }
+  .couche, .appels-base, .servie-par, .acces-base, .ecrivains { color: var(--doux); font-size: 13px; margin: 0; }
+  .ecrivains { font-size: 15px; color: var(--encre); margin: 6px 0; }
+  section.liens .note { color: var(--doux); font-family: inherit; font-size: 13px; }
+  section.liens .non-relie { color: var(--alerte); font-family: inherit; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -98,8 +110,8 @@
   <h1>Carte du code de job-search</h1>
   <span id="meta"></span>
   <div id="recherche">
-    <input type="search" id="champ" aria-label="Rechercher un fichier"
-           placeholder="Rechercher un fichier (nom, chemin ou phrase)" autocomplete="off">
+    <input type="search" id="champ" aria-label="Rechercher un fichier, une route ou une table"
+           placeholder="Rechercher un fichier, une route ou une table" autocomplete="off">
     <ul id="resultats"></ul>
   </div>
 </header>
@@ -114,7 +126,12 @@
   var systemes = D.systemes.slice();
   var autres = { id: D.autres_systeme.id, nom: D.autres_systeme.nom,
                  role: D.autres_systeme.role, fichiers: D.autres };
-  var tous = systemes.concat([autres]);
+  var FRONT = D.fichiers_front || {};
+  var ROUTES = D.routes || {};
+  var TABLES = D.tables || {};
+  var AV = D.a_verifier || {};
+  var tous = (D.ecrans ? [D.ecrans] : []).concat(systemes, [autres]);
+  function F(c) { return D.fichiers[c] || FRONT[c]; }
   var parId = {};
   tous.forEach(function (s) { parId[s.id] = s; });
 
@@ -131,6 +148,10 @@
   function pluriel(n, mot) { return n + " " + mot + (n === 1 ? "" : "s"); }
   function lienSysteme(s) { return el("a", { href: "#/systeme/" + encodeURIComponent(s.id), texte: s.nom }); }
   function lienFichier(c) { return el("a", { href: "#/fichier/" + c, texte: c }); }
+  function lienRoute(id) { return el("a", { href: "#/route/" + encodeURIComponent(id), texte: id }); }
+  function lienTable(n) { return el("a", { href: "#/table/" + encodeURIComponent(n), texte: n }); }
+  function texte(s) { return document.createTextNode(s); }
+  function compteAppels(n) { return n + (n === 1 ? " appel direct" : " appels directs"); }
 
   function ariane(etapes) {
     var nav = document.querySelector("nav.ariane");
@@ -170,14 +191,36 @@
     ]);
     if (D.fleches.length) blocFleches.appendChild(listeFleches(D.fleches));
     else blocFleches.appendChild(el("p", { classe: "vide", texte: "Aucune flèche entre systèmes." }));
-    return [el("h2", { texte: "Systèmes" }), grille, blocFleches];
+    return blocChaine().concat([el("h2", { texte: "Systèmes" }), grille, blocFleches]);
+  }
+
+  function nbAVerifier() {
+    return ["appels_sans_route", "adresses", "routes_sans_appel", "tables_illisibles"]
+      .reduce(function (n, k) { return n + (AV[k] || []).length; }, 0);
+  }
+
+  function blocChaine() {
+    var base = D.base || { hors_stockage: 0, fichiers: [] };
+    var nav = el("nav", { classe: "vues", "aria-label": "Vues" }, [
+      el("a", { href: "#/routes", texte: "Routes" }), texte(Object.keys(ROUTES).length + " · "),
+      el("a", { href: "#/tables", texte: "Tables" }), texte(Object.keys(TABLES).length + " · "),
+      el("a", { href: "#/a-verifier", texte: "À vérifier" }), texte(String(nbAVerifier()))
+    ]);
+    var ol = el("ol", { classe: "base-fichiers" }, base.fichiers.map(function (cn) {
+      return el("li", {}, [lienFichier(cn[0]), el("span", { classe: "n", texte: " · " + compteAppels(cn[1]) })]);
+    }));
+    return [nav, el("section", { classe: "bloc" }, [
+      el("h2", { texte: "La base" }),
+      el("p", { classe: "total-base", texte: compteAppels(base.hors_stockage) + " à la base hors stockage, dans " + pluriel(base.fichiers.length, "fichier") }),
+      ol
+    ])];
   }
 
   function vueSysteme(s) {
     ariane([{ texte: "Carte", href: "#/" }, { texte: s.nom }]);
     var ul = el("ul", { classe: "fichiers" });
     s.fichiers.forEach(function (c) {
-      var f = D.fichiers[c];
+      var f = F(c);
       var sans = f.phrase === SANS_PHRASE;
       ul.appendChild(el("li", { classe: "fichier" + (sans ? " sans-phrase" : "") }, [
         lienFichier(c), el("span", { classe: "phrase-courte", texte: f.phrase })
@@ -205,20 +248,142 @@
     return el("section", { classe: "liens" }, [el("h3", { texte: titre + " (" + chemins.length + ")" }), contenu]);
   }
 
-  function vueFichier(c) {
-    var f = D.fichiers[c];
-    var s = parId[f.systeme];
+  function sectionListe(titre, items, vide, rendu) {
+    var contenu = items.length
+      ? el("ul", {}, items.map(function (x) { return el("li", {}, rendu(x)); }))
+      : el("p", { classe: "vide", texte: vide });
+    return el("section", { classe: "liens" }, [el("h3", { texte: titre + " (" + items.length + ")" }), contenu]);
+  }
+
+  function enteteFichier(c, f, s) {
     ariane([{ texte: "Carte", href: "#/" }, { texte: s.nom, href: "#/systeme/" + encodeURIComponent(s.id) }, { texte: c }]);
     return [
       el("h2", { classe: "chemin", texte: c }),
       el("p", { classe: "phrase" + (f.phrase === SANS_PHRASE ? " sans-phrase" : ""), texte: f.phrase }),
       el("p", { classe: "lignes", texte: pluriel(f.lignes, "ligne") }),
-      el("p", { classe: "systeme-du-fichier" }, [document.createTextNode("Système : "), lienSysteme(s)]),
+      el("p", { classe: "systeme-du-fichier" }, [texte("Système : "), lienSysteme(s)])
+    ];
+  }
+
+  function etatAppel(a) {
+    if (!a.lisible) return [el("span", { classe: "non-relie", texte: " · adresse illisible" })];
+    if (!a.routes.length) return [el("span", { classe: "non-relie", texte: " · appel sans route trouvée" })];
+    return a.routes.reduce(function (acc, id) { return acc.concat([texte(" → "), lienRoute(id)]); }, []);
+  }
+
+  function vueFichierFront(c, f) {
+    return enteteFichier(c, f, parId[f.systeme]).concat([
+      el("div", { classe: "colonnes bloc" }, [
+        sectionListe("Routes qu'il appelle", f.routes, "Il n'appelle aucune route de la carte.", function (id) { return [lienRoute(id)]; }),
+        sectionListe("Stores qu'il importe", f.stores, "Il n'importe aucun store.", function (x) { return [lienFichier(x)]; }),
+        sectionListe("Composants qu'il utilise", f.composants, "Il n'utilise aucun composant.", function (x) { return [lienFichier(x)]; })
+      ]),
+      el("div", { classe: "bloc" }, [
+        sectionListe("Ses appels à l'API", f.appels, "Aucun appel à l'API dans ce fichier.", function (a) {
+          return [el("span", { classe: "route-id", texte: a.methode + " " + a.adresse }),
+                  el("span", { classe: "note", texte: " · ligne " + a.ligne })].concat(etatAppel(a));
+        })
+      ])
+    ]);
+  }
+
+  function vueFichier(c) {
+    if (FRONT[c]) return vueFichierFront(c, FRONT[c]);
+    var f = D.fichiers[c];
+    var s = parId[f.systeme];
+    var chaine = f.couche === undefined ? [] : [
+      el("p", { classe: "couche", texte: "Couche : " + f.couche }),
+      el("p", { classe: "appels-base", texte: "Appels directs à la base : " + f.appels_base }),
+      el("div", { classe: "colonnes bloc" }, [
+        sectionListe("Routes qu'il déclare", f.routes, "Il ne déclare aucune route.", function (id) {
+          return [lienRoute(id), el("span", { classe: "note", texte: " · " + ROUTES[id].fonction })];
+        }),
+        sectionListe("Tables qu'il lit", f.tables_lues, "Il ne lit aucune table.", function (n) { return [lienTable(n)]; }),
+        sectionListe("Tables qu'il écrit", f.tables_ecrites, "Il n'écrit aucune table.", function (n) { return [lienTable(n)]; })
+      ])
+    ];
+    return enteteFichier(c, f, s).concat(chaine, [
       el("div", { classe: "colonnes bloc" }, [
         sectionLiens("Ce qu'il importe", f.importe, "Il n'importe aucun fichier de la carte.", true),
         sectionLiens("Qui l'importe", f.importe_par, "Aucun fichier de la carte ne l'importe.", true),
         sectionLiens("Les tests qui l'importent", f.tests, "Aucun test ne l'importe directement.", false)
       ])
+    ]);
+  }
+
+  function vueRoutes() {
+    ariane([{ texte: "Carte", href: "#/" }, { texte: "Routes" }]);
+    var ids = Object.keys(ROUTES).sort();
+    return [el("h2", { texte: "Routes" }), el("p", { classe: "compte", texte: pluriel(ids.length, "route") }),
+      el("ul", { classe: "routes" }, ids.map(function (id) {
+        return el("li", { classe: "route" }, [lienRoute(id), el("span", { classe: "note", texte: " · " + ROUTES[id].fichier })]);
+      }))];
+  }
+
+  function vueRoute(id) {
+    var r = ROUTES[id];
+    ariane([{ texte: "Carte", href: "#/" }, { texte: "Routes", href: "#/routes" }, { texte: id }]);
+    return [
+      el("h2", { classe: "route", texte: id }),
+      el("p", { classe: "servie-par" }, [texte("Servie par "), lienFichier(r.fichier),
+        texte(", fonction " + r.fonction + " (ligne " + r.ligne + ")")]),
+      el("p", { classe: "acces-base", texte: "Accès à la base : " + r.base }),
+      el("div", { classe: "colonnes bloc" }, [
+        sectionListe("Appelée par", r.appelee_par, "Aucun appel trouvé dans le front.", function (x) { return [lienFichier(x)]; })
+      ])
+    ];
+  }
+
+  function vueTables() {
+    ariane([{ texte: "Carte", href: "#/" }, { texte: "Tables" }]);
+    var noms = Object.keys(TABLES).sort();
+    return [el("h2", { texte: "Tables" }), el("p", { classe: "compte", texte: pluriel(noms.length, "table") + ", créées par le code" }),
+      el("ul", { classe: "tables" }, noms.map(function (n) {
+        var t = TABLES[n];
+        return el("li", { classe: "table" }, [lienTable(n), el("span", { classe: "note",
+          texte: " · lue par " + pluriel(t.lue_par.length, "fichier") + ", écrite par " + pluriel(t.ecrite_par.length, "fichier") })]);
+      }))];
+  }
+
+  function fichierEtSysteme(c) {
+    var s = parId[F(c).systeme];
+    return [lienFichier(c), texte(" · "), lienSysteme(s)];
+  }
+
+  function vueTable(n) {
+    var t = TABLES[n];
+    var ecrivains = {};
+    t.ecrite_par.forEach(function (c) { ecrivains[F(c).systeme] = true; });
+    var nb = Object.keys(ecrivains).length;
+    ariane([{ texte: "Carte", href: "#/" }, { texte: "Tables", href: "#/tables" }, { texte: n }]);
+    return [
+      el("h2", { classe: "table", texte: n }),
+      el("p", { classe: "ecrivains", texte: nb + (nb === 1 ? " système écrit" : " systèmes écrivent") + " cette table" }),
+      el("div", { classe: "colonnes bloc" }, [
+        sectionListe("Fichiers qui la lisent", t.lue_par, "Aucun fichier ne la lit.", fichierEtSysteme),
+        sectionListe("Fichiers qui l'écrivent", t.ecrite_par, "Aucun fichier ne l'écrit.", fichierEtSysteme)
+      ])
+    ];
+  }
+
+  function appelNonRelie(a) {
+    return [lienFichier(a.fichier), el("span", { classe: "note", texte: " · ligne " + a.ligne + " · " }),
+            el("span", { classe: "route-id", texte: a.methode + " " + a.adresse })];
+  }
+
+  function vueAVerifier() {
+    ariane([{ texte: "Carte", href: "#/" }, { texte: "À vérifier" }]);
+    return [
+      el("h2", { texte: "À vérifier" }),
+      el("p", { classe: "compte", texte: "Ce que les règles de lecture de la carte n'ont pas su relier." }),
+      el("div", { classe: "bloc" }, [sectionListe("Appel sans route trouvée", AV.appels_sans_route || [], "Aucun.", appelNonRelie)]),
+      el("div", { classe: "bloc" }, [sectionListe("Adresse illisible", AV.adresses || [], "Aucune.", appelNonRelie)]),
+      el("div", { classe: "bloc" }, [sectionListe("Aucun appel trouvé dans le front", AV.routes_sans_appel || [], "Aucune route.", function (id) {
+        return [lienRoute(id), el("span", { classe: "note", texte: " · " + ROUTES[id].fichier })];
+      })]),
+      el("div", { classe: "bloc" }, [sectionListe("Table illisible", AV.tables_illisibles || [], "Aucune.", function (e) {
+        return [el("a", { href: "#/fichier/" + e.fichier, texte: e.fichier + ":" + e.ligne })];
+      })])
     ];
   }
 
@@ -226,7 +391,12 @@
     var h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
     var vue = document.getElementById("vue");
     var parts;
-    if (h.indexOf("fichier/") === 0 && D.fichiers[h.slice(8)]) parts = vueFichier(h.slice(8));
+    if (h.indexOf("fichier/") === 0 && F(h.slice(8))) parts = vueFichier(h.slice(8));
+    else if (h.indexOf("route/") === 0 && ROUTES[h.slice(6)]) parts = vueRoute(h.slice(6));
+    else if (h.indexOf("table/") === 0 && TABLES[h.slice(6)]) parts = vueTable(h.slice(6));
+    else if (h === "routes") parts = vueRoutes();
+    else if (h === "tables") parts = vueTables();
+    else if (h === "a-verifier") parts = vueAVerifier();
     else if (h.indexOf("systeme/") === 0 && parId[h.slice(8)]) parts = vueSysteme(parId[h.slice(8)]);
     else parts = vueCarte();
     vue.textContent = "";
@@ -242,13 +412,22 @@
     var q = champ.value.trim().toLowerCase();
     resultats.textContent = "";
     if (!q) return;
-    Object.keys(D.fichiers).sort().filter(function (c) {
-      return c.toLowerCase().indexOf(q) !== -1 || D.fichiers[c].phrase.toLowerCase().indexOf(q) !== -1;
-    }).slice(0, 30).forEach(function (c) {
-      var a = lienFichier(c);
-      a.appendChild(el("small", { texte: D.fichiers[c].phrase, "aria-hidden": "true" }));
-      a.setAttribute("aria-label", c);
-      resultats.appendChild(el("li", {}, [a]));
+    var trouves = [];
+    Object.keys(D.fichiers).concat(Object.keys(FRONT)).sort().forEach(function (c) {
+      if (c.toLowerCase().indexOf(q) !== -1 || F(c).phrase.toLowerCase().indexOf(q) !== -1)
+        trouves.push({ lien: lienFichier(c), nom: c, note: F(c).phrase });
+    });
+    Object.keys(ROUTES).sort().forEach(function (id) {
+      if (id.toLowerCase().indexOf(q) !== -1)
+        trouves.push({ lien: lienRoute(id), nom: id, note: "Route · " + ROUTES[id].fichier });
+    });
+    Object.keys(TABLES).sort().forEach(function (n) {
+      if (n.toLowerCase().indexOf(q) !== -1) trouves.push({ lien: lienTable(n), nom: n, note: "Table" });
+    });
+    trouves.slice(0, 40).forEach(function (r) {
+      r.lien.appendChild(el("small", { texte: r.note, "aria-hidden": "true" }));
+      r.lien.setAttribute("aria-label", r.nom);
+      resultats.appendChild(el("li", {}, [r.lien]));
     });
   }
   champ.addEventListener("input", chercher);
@@ -260,7 +439,9 @@
 
   document.getElementById("meta").textContent =
     "Générée le " + D.genere_le + " · commit " + D.commit + " · " +
-    pluriel(Object.keys(D.fichiers).length, "fichier") + " · " + pluriel(systemes.length, "système");
+    pluriel(Object.keys(D.fichiers).length, "fichier") + " · " + pluriel(systemes.length, "système") +
+    " · " + pluriel(Object.keys(FRONT).length, "écran") + " · " + pluriel(Object.keys(ROUTES).length, "route") +
+    " · " + pluriel(Object.keys(TABLES).length, "table");
   window.addEventListener("hashchange", afficher);
   afficher();
 })();
