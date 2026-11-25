@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from orchestrator.job_search.storage.db import init_db
 
+from .a_postuler import router as a_postuler_router
 from .ajouts import router as ajouts_router
 from .avancement import router as avancement_router
 from .cv import router as cv_router
@@ -70,6 +71,7 @@ app.include_router(expiration_router)
 app.include_router(ajouts_router)
 app.include_router(reference_router)
 app.include_router(avancement_router)
+app.include_router(a_postuler_router)
 
 
 @app.get("/health")

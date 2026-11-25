@@ -1,0 +1,234 @@
+# a_postuler.yaml — mots de la règle des files « À postuler » et « À étudier »
+# (EXE-210, TCK-389). Suivi par git. Changer un mot ici change les files sans
+# toucher au code : le code ne porte que l'ordre des règles, jamais leurs mots.
+#
+# Comparaisons sans casse. « mot entier » : le terme n'est ni précédé ni suivi
+# d'une lettre ou d'un chiffre. « sous-chaîne » : le terme peut être dans un mot.
+
+lieu:
+  # Une commune acceptée (mot entier) fait entrer l'offre. Testée avant les
+  # lieux refusés : « louvain-la-neuve » entre, « louvain » seul sort.
+  communes_acceptees:
+    - bruxelles
+    - brussels
+    - brussel
+    - ixelles
+    - schaerbeek
+    - etterbeek
+    - anderlecht
+    - uccle
+    - evere
+    - woluwe
+    - saint-gilles
+    - forest
+    - jette
+    - molenbeek
+    - auderghem
+    - watermael
+    - koekelberg
+    - ganshoren
+    - berchem-sainte-agathe
+    - saint-josse
+    - zaventem
+    - diegem
+    - machelen
+    - vilvoorde
+    - louvain-la-neuve
+    - ottignies
+    - wavre
+    - waterloo
+    - nivelles
+    - braine-l'alleud
+    - la hulpe
+    - rixensart
+    - genval
+    - mont-saint-guibert
+    - tubize
+    - charleroi
+    - gosselies
+    - namur
+    - gembloux
+  # Mot entier. « louvain » ne touche pas « louvain-la-neuve », déjà accepté.
+  lieux_refuses:
+    - gand
+    - ghent
+    - gent
+    - anvers
+    - antwerpen
+    - antwerp
+    - leuven
+    - louvain
+    - bruges
+    - brugge
+    - malines
+    - mechelen
+    - hasselt
+    - courtrai
+    - kortrijk
+    - ostende
+    - oostende
+    - alost
+    - aalst
+    - genk
+    - liège
+    - liege
+    - luik
+  # Sous-chaîne : sans commune acceptée ni lieu refusé, l'offre entre avec la
+  # marque « lieu non précisé ».
+  pays_non_precis:
+    - belgique
+    - belgium
+
+# Valeur exacte du contrat, sans casse.
+contrats_refuses:
+  - selfemployed
+  - freelance
+  - lib
+
+# Mots du titre, au mot entier.
+titre:
+  stage:
+    - stage
+    - stagiaire
+    - alternance
+    - alternant
+    - apprentissage
+    - apprenti
+    - internship
+    - intern
+    - trainee
+  senior:
+    - senior
+    - sr
+    - lead
+    - principal
+    - architect
+    - architecte
+  formateur:
+    - formateur
+    - formatrice
+    - trainer
+    - enseignant
+    - teacher
+    - professeur
+  robotique:
+    - robot
+    - robotique
+    - robotics
+    - plc
+    - automaticien
+    - mécatronique
+  cloud_reseau:
+    - cloud
+    - devops
+    - sre
+    - réseau
+    - réseaux
+    - network
+    - sysadmin
+    - infrastructure
+    - administrateur système
+    - system administrator
+    - system engineer
+    - ingénieur système
+  analyse:
+    - analyst
+    - analyste
+    - analist
+  # Sous-chaîne : titre d'automatisation (famille « IA et automatisation »,
+  # avec un domaine technique).
+  automatisation:
+    - automatis
+    - automatiz
+    - automation
+    - rpa
+
+neerlandais:
+  # Sous-chaîne, dans les langues extraites et dans la description.
+  mots:
+    - nederlands
+    - néerlandais
+    - dutch
+    - flemish
+    - flamand
+  # Sous-chaîne, dans la même phrase de la description que le mot néerlandais.
+  tournures_atout:
+    - atout
+    - un plus
+    - a plus
+    - asset
+    - nice to have
+    - bonus
+    - advantage
+    - avantage
+    - pluspunt
+    - souhaité
+
+technos:
+  # Nom extrait de la techno, en core ou required.
+  ia_sous_chaine:
+    - llm
+    - langchain
+    - langgraph
+    - llamaindex
+    - crewai
+    - embedding
+    - vector
+    - prompt
+    - openai
+    - genai
+    - gen ai
+    - generative
+    - copilot studio
+    - claude
+    - gpt
+    - mistral
+    - ollama
+    - hugging
+    - agent
+  ia_mot_entier:
+    - rag
+    - mcp
+  automatisation_sous_chaine:
+    - n8n
+    - zapier
+    - power automate
+    - power apps
+    - uipath
+    - blue prism
+    - automation anywhere
+  automatisation_mot_entier:
+    - make
+    - rpa
+
+domaines:
+  ia:
+    - ai_engineering
+  techniques:
+    - fullstack
+    - backend
+    - data_science
+    - data_engineering
+    - devops
+  developpeur:
+    - fullstack
+    - backend
+  data:
+    - data_science
+    - data_engineering
+
+# Niveaux extraits du premier groupe de l'ordre (avant les autres).
+niveaux_premier_groupe:
+  - junior
+  - intermediate
+
+# Tranche récente : jours entiers depuis la récupération, bornes incluses.
+jours_recents: 14
+
+# Marqueurs retirés du titre avant la comparaison des doublons.
+marqueurs_titre:
+  - h/f/x
+  - h/f
+  - f/h
+  - m/w/x
+  - m/f

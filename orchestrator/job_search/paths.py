@@ -31,6 +31,10 @@ PROFILE_PATH = REPO_ROOT / "profiles" / "gregoire.yaml"
 VUE_CANDIDAT_PATH = REPO_ROOT / "profiles" / "vue_candidat.yaml"
 ALIAS_PATH = REPO_ROOT / "profiles" / "alias.yaml"
 INTERMEDIAIRES_PATH = REPO_ROOT / "profiles" / "intermediaires.yaml"
+# Mots de la règle des files « À postuler » et « À étudier » (EXE-210, H3/H4) :
+# suivi par git, à part du profil personnel, dont les files ne lisent que les
+# compétences.
+A_POSTULER_PATH = REPO_ROOT / "profiles" / "a_postuler.yaml"
 FICHE_COMMAND_PATH = REPO_ROOT / ".claude" / "commands" / "fiche-entreprise.md"
 # cwd stable des sessions Claude Agent SDK de la fiche entreprise : `resume` retrouve une session
 # par son répertoire de travail, run_fiche et la route explain doivent donc partager le même.

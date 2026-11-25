@@ -24,7 +24,11 @@ class HorsPerimetreCause(str, Enum):
 # Valeurs contract_type / nature_contract éliminatoires
 _CONTRAT_TYPES_GATE = {"Internship", "MIS"}
 _NATURE_CONTRACTS_GATE = {"Cont. professionnalisation", "Contrat apprentissage"}
-_CONTRAT_TITRE_RE = re.compile(r"alternance|stage|apprentissage|intern", re.IGNORECASE)
+# « intern » au mot entier (EXE-210, critères 58-59) : « Internal » n'est pas un
+# stage. « Internship », lu jusqu'ici par la sous-chaîne, reste un stage.
+_CONTRAT_TITRE_RE = re.compile(
+    r"alternance|stage|apprentissage|\bintern(?:ship)?\b", re.IGNORECASE
+)
 
 
 # Compat : ancien nom pour les imports existants qui référencent le type
