@@ -3,8 +3,9 @@
 Seules deux routes appellent le SDK : POST /fiche (génération, action explicite) et
 POST /fiche/points/{idx}/explain (reprise de session). PATCH ne touche que la base.
 
-Retenir une offre lance aussi la fiche (TCK-281, EXE-127) : `launch_fiche` est le
-point d'entrée idempotent partagé entre la route et la cascade de `api/cascade.py`.
+Retenir une offre ne lance plus la fiche (EXE-212) : `launch_fiche` est le point
+d'entrée idempotent partagé entre cette route et « Générer la lettre »
+(`api/lettre.py::create_lettre`, quand aucune fiche n'existe).
 Sa fin enchaîne la lettre (`launch_lettre_if_ready`) sur les points qu'elle désigne
 elle-même — jamais sur un changement de profil ou de verdict ultérieur. Elle
 recalcule aussi le profil du CV (`recalc_profile_after_fiche`, EXE-184) si la
