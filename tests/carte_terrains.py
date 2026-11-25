@@ -61,12 +61,19 @@ def poser_depot_essai(racine: Path) -> Path:
 
 
 def lancer_carte(
-    racine: Path, sortie: Path | None = None
+    racine: Path, sortie: Path | None = None, releve: Path | None = None
 ) -> subprocess.CompletedProcess:
-    """Lance `python -m outils.carte` depuis `racine`, comme à la main."""
+    """Lance `python -m outils.carte` depuis `racine`, comme à la main.
+
+    Avec `sortie` et sans `releve`, le relevé (EXE-215) s'écrit à côté du dossier
+    de la page, jamais dans `docs/carte/` du dépôt."""
     cmd = [sys.executable, "-m", "outils.carte"]
     if sortie is not None:
         cmd += ["--sortie", str(sortie)]
+        if releve is None:
+            releve = sortie.parent.parent / f"{sortie.parent.name}-graphe.json"
+    if releve is not None:
+        cmd += ["--releve", str(releve)]
     env = dict(os.environ, PYTHONPATH=str(REPO))
     return subprocess.run(
         cmd, cwd=racine, env=env, capture_output=True, text=True, timeout=120

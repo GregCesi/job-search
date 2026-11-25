@@ -98,7 +98,7 @@ class TestLaPage:
     def test_critere4_un_seul_fichier_hors_ligne_sans_erreur(self, page_vraie, onglet):
         res, sortie = page_vraie
         assert res.returncode == 0, res.stdout + res.stderr
-        page = onglet.ouvrir(sortie)
+        page = onglet.ouvrir(sortie, "#/systemes")
         expect(page.get_by_role("heading", name="Systèmes", exact=True)).to_be_visible()
         _ouvrir_fichier(page, "orchestrator/job_search/cv/service.py")
         assert onglet.erreurs == []
@@ -123,14 +123,14 @@ class TestLesSystemes:
     def test_critere7_la_page_s_ouvre_sur_les_systemes(self, page_essai, onglet):
         res, sortie = page_essai
         assert res.returncode == 0, res.stdout + res.stderr
-        page = onglet.ouvrir(sortie)
+        page = onglet.ouvrir(sortie, "#/systemes")
         carte_a = page.locator("article.systeme", has_text="Système A")
         expect(carte_a).to_contain_text("Rôle du système A.")
         expect(carte_a).to_contain_text("2 fichiers")
 
     def test_critere10_fleche_de_a_vers_b(self, page_essai, onglet):
         _, sortie = page_essai
-        page = onglet.ouvrir(sortie)
+        page = onglet.ouvrir(sortie, "#/systemes")
         fleches = page.locator("li.fleche")
         expect(fleches).to_have_count(1)
         expect(fleches.first).to_have_attribute("data-de", "a")
@@ -139,7 +139,7 @@ class TestLesSystemes:
 
     def test_critere11_clic_systeme_montre_ses_fichiers(self, page_essai, onglet):
         _, sortie = page_essai
-        page = onglet.ouvrir(sortie)
+        page = onglet.ouvrir(sortie, "#/systemes")
         page.get_by_role("link", name="Système A").first.click()
         ligne = _vue(page).locator("li.fichier", has_text="api/a1.py")
         expect(ligne).to_contain_text("Première phrase de a1.")
@@ -253,7 +253,7 @@ class TestSeDeplacer:
 
     def test_critere25_recharger_garde_le_fichier(self, page_essai, onglet):
         _, sortie = page_essai
-        page = onglet.ouvrir(sortie)
+        page = onglet.ouvrir(sortie, "#/systemes")
         page.get_by_role("link", name="Système B").first.click()
         _vue(page).get_by_role("link", name="orchestrator/b1.py").click()
         expect(page.locator("#vue h2.chemin")).to_have_text("orchestrator/b1.py")
@@ -267,7 +267,7 @@ class TestAutres:
         (racine / "orchestrator" / "nouveau.py").write_text('"""Neuf."""\n')
         res = lancer_carte(racine)
         assert res.returncode == 0, res.stdout + res.stderr
-        page = onglet.ouvrir(racine / "docs" / "carte" / "index.html")
+        page = onglet.ouvrir(racine / "docs" / "carte" / "index.html", "#/systemes")
         autres = page.locator("article.systeme", has_text="Autres (à ranger)")
         expect(autres).to_contain_text("1 fichier")
         autres.get_by_role("link", name="Autres (à ranger)").click()

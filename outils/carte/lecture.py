@@ -43,6 +43,9 @@ class Systeme:
 class Textes:
     systemes: list[Systeme]
     phrases: dict[str, str]
+    blocs: list[dict] = field(default_factory=list)
+    fleches_blocs: list[dict] = field(default_factory=list)
+    parcours: list[dict] = field(default_factory=list)
 
 
 def _est_init_vide(texte: str) -> bool:
@@ -120,7 +123,13 @@ def charger_textes(chemin: Path) -> Textes:
         for s in brut.get("systeme", [])
     ]
     phrases = {str(k): str(v) for k, v in brut.get("phrases", {}).items()}
-    return Textes(systemes=systemes, phrases=phrases)
+    return Textes(
+        systemes=systemes,
+        phrases=phrases,
+        blocs=list(brut.get("bloc", [])),
+        fleches_blocs=list(brut.get("fleche_bloc", [])),
+        parcours=list(brut.get("parcours", [])),
+    )
 
 
 def verifier_textes(textes: Textes, racine: Path) -> list[str]:

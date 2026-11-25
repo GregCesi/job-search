@@ -124,7 +124,7 @@ class TestLesRoutes:
 
 class TestLesEcrans:
     def test_critere6_systeme_ecrans(self, page_vraie, page):
-        _ouvrir(page, page_vraie)
+        _ouvrir(page, page_vraie, "#/systemes")
         page.locator("article.systeme").get_by_role("link", name="Écrans").click()
         expect(_vue(page).locator("li.fichier")).to_have_count(
             len(fichiers_front_du_disque(REPO))

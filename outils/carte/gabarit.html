@@ -103,6 +103,28 @@
   .ecrivains { font-size: 15px; color: var(--encre); margin: 6px 0; }
   section.liens .note { color: var(--doux); font-family: inherit; font-size: 13px; }
   section.liens .non-relie { color: var(--alerte); font-family: inherit; font-size: 13px; }
+  .ensemble {
+    display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    margin: 12px 0 20px;
+  }
+  article.bloc-ensemble {
+    background: var(--carte); border: 1px solid var(--trait); border-radius: 8px;
+    padding: 12px 14px; border-left: 4px solid var(--accent);
+  }
+  article.bloc-ensemble h3 a { color: var(--encre); }
+  article.bloc-ensemble .role { font-size: 14px; margin: 0; }
+  ul.fleches-ensemble, ul.liste-parcours, ul.changements { list-style: none; padding: 0; margin: 8px 0 0; }
+  li.fleche-ensemble, ul.liste-parcours li, ul.changements li {
+    padding: 4px 0; border-bottom: 1px dashed var(--trait); font-size: 14px;
+  }
+  li.fleche-ensemble .libelle { color: var(--doux); }
+  ul.changements li { font-family: var(--mono); font-size: 13px; }
+  .etape { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 14px 18px; margin: 12px 0; }
+  .numero, .couche-etape, .regle { color: var(--doux); font-size: 13px; margin: 0 0 6px; }
+  .element { margin: 0 0 6px; }
+  .element a, .element .fonction { font-family: var(--mono); font-size: 14px; }
+  .phrase-etape { font-size: 16px; margin: 8px 0; }
+  nav.pas { display: flex; gap: 18px; margin: 10px 0; font-size: 15px; }
 </style>
 </head>
 <body>
@@ -130,6 +152,9 @@
   var ROUTES = D.routes || {};
   var TABLES = D.tables || {};
   var AV = D.a_verifier || {};
+  var PARCOURS = D.parcours || [];
+  var ENSEMBLE = D.ensemble || { blocs: [], fleches: [] };
+  var DEPUIS = D.depuis || { premier: true, changements: [] };
   var tous = (D.ecrans ? [D.ecrans] : []).concat(systemes, [autres]);
   function F(c) { return D.fichiers[c] || FRONT[c]; }
   var parId = {};
@@ -176,7 +201,7 @@
   }
 
   function vueCarte() {
-    ariane([{ texte: "Carte" }]);
+    ariane([{ texte: "Carte", href: "#/" }, { texte: "Les systèmes" }]);
     var grille = el("div", { classe: "grille" });
     tous.forEach(function (s) {
       grille.appendChild(el("article", { classe: "systeme" + (s.id === autres.id ? " autres" : "") }, [
@@ -217,7 +242,7 @@
   }
 
   function vueSysteme(s) {
-    ariane([{ texte: "Carte", href: "#/" }, { texte: s.nom }]);
+    ariane([{ texte: "Carte", href: "#/" }, { texte: "Les systèmes", href: "#/systemes" }, { texte: s.nom }]);
     var ul = el("ul", { classe: "fichiers" });
     s.fichiers.forEach(function (c) {
       var f = F(c);
@@ -256,7 +281,8 @@
   }
 
   function enteteFichier(c, f, s) {
-    ariane([{ texte: "Carte", href: "#/" }, { texte: s.nom, href: "#/systeme/" + encodeURIComponent(s.id) }, { texte: c }]);
+    ariane([{ texte: "Carte", href: "#/" }, { texte: "Les systèmes", href: "#/systemes" },
+            { texte: s.nom, href: "#/systeme/" + encodeURIComponent(s.id) }, { texte: c }]);
     return [
       el("h2", { classe: "chemin", texte: c }),
       el("p", { classe: "phrase" + (f.phrase === SANS_PHRASE ? " sans-phrase" : ""), texte: f.phrase }),
@@ -271,8 +297,21 @@
     return a.routes.reduce(function (acc, id) { return acc.concat([texte(" → "), lienRoute(id)]); }, []);
   }
 
+  function parcoursDuFichier(c) {
+    var items = [];
+    PARCOURS.forEach(function (p) {
+      for (var i = 0; i < p.etapes.length; i++) {
+        var e = p.etapes[i];
+        if (e.genre === "fichier" && e.element === c) { items.push({ p: p, n: i + 1 }); break; }
+      }
+    });
+    return el("div", { classe: "bloc" }, [sectionListe("Parcours qui passent par lui", items, "Aucun parcours ne passe par lui.", function (x) {
+      return [el("a", { href: "#/parcours/" + x.p.id + "/" + x.n, texte: x.p.nom }), el("span", { classe: "note", texte: " · étape " + x.n })];
+    })]);
+  }
+
   function vueFichierFront(c, f) {
-    return enteteFichier(c, f, parId[f.systeme]).concat([
+    return enteteFichier(c, f, parId[f.systeme]).concat([parcoursDuFichier(c),
       el("div", { classe: "colonnes bloc" }, [
         sectionListe("Routes qu'il appelle", f.routes, "Il n'appelle aucune route de la carte.", function (id) { return [lienRoute(id)]; }),
         sectionListe("Stores qu'il importe", f.stores, "Il n'importe aucun store.", function (x) { return [lienFichier(x)]; }),
@@ -302,7 +341,7 @@
         sectionListe("Tables qu'il écrit", f.tables_ecrites, "Il n'écrit aucune table.", function (n) { return [lienTable(n)]; })
       ])
     ];
-    return enteteFichier(c, f, s).concat(chaine, [
+    return enteteFichier(c, f, s).concat(chaine, [parcoursDuFichier(c),
       el("div", { classe: "colonnes bloc" }, [
         sectionLiens("Ce qu'il importe", f.importe, "Il n'importe aucun fichier de la carte.", true),
         sectionLiens("Qui l'importe", f.importe_par, "Aucun fichier de la carte ne l'importe.", true),
@@ -387,18 +426,94 @@
     ];
   }
 
+  function nomBloc(id) {
+    var b = ENSEMBLE.blocs.filter(function (x) { return x.id === id; })[0];
+    return b ? b.nom : id;
+  }
+
+  function vueEnsemble() {
+    ariane([{ texte: "Carte" }]);
+    var blocs = el("div", { classe: "ensemble" }, ENSEMBLE.blocs.map(function (b) {
+      var titre = b.lien ? el("a", { href: "#/" + b.lien, texte: b.nom }) : el("span", { texte: b.nom });
+      return el("article", { classe: "bloc-ensemble", "data-bloc": b.id }, [el("h3", {}, [titre]), el("p", { classe: "role", texte: b.role })]);
+    }));
+    var fleches = el("ul", { classe: "fleches-ensemble" }, ENSEMBLE.fleches.map(function (f) {
+      return el("li", { classe: "fleche-ensemble", "data-de": f.de, "data-vers": f.vers }, [
+        el("strong", { texte: nomBloc(f.de) + " → " + nomBloc(f.vers) }),
+        el("span", { classe: "libelle", texte: " · " + f.libelle })
+      ]);
+    }));
+    var parcours = el("ul", { classe: "liste-parcours" }, PARCOURS.map(function (p) {
+      return el("li", {}, [el("a", { href: "#/parcours/" + p.id + "/1", texte: p.nom }),
+        el("span", { classe: "note", texte: " · " + pluriel(p.etapes.length, "étape") })]);
+    }));
+    var liens = el("nav", { classe: "vues", "aria-label": "Autres vues" }, [
+      el("a", { href: "#/systemes", texte: "Les systèmes" }), texte(" · "),
+      el("a", { href: "#/depuis", texte: "Depuis la dernière carte" })
+    ]);
+    return [el("h2", { texte: "Vue d'ensemble" }), blocs,
+      el("section", { classe: "bloc" }, [el("h3", { texte: "Ce qui relie les blocs" }), fleches]),
+      el("section", { classe: "bloc" }, [el("h2", { texte: "Parcours" }), parcours]),
+      liens].concat(blocChaine());
+  }
+
+  function lienElement(e) {
+    if (e.genre === "route") return lienRoute(e.element);
+    if (e.genre === "table") return lienTable(e.element);
+    return lienFichier(e.element);
+  }
+
+  function vueParcours(p, n) {
+    var e = p.etapes[n - 1];
+    ariane([{ texte: "Carte", href: "#/" }, { texte: p.nom }]);
+    var element = el("p", { classe: "element" }, [lienElement(e)]);
+    if (e.fonction) element.appendChild(el("span", { classe: "fonction", texte: " · fonction " + e.fonction }));
+    var etape = el("div", { classe: "etape" }, [
+      el("p", { classe: "numero", texte: "Étape " + n + " sur " + p.etapes.length }),
+      element,
+      el("p", { classe: "couche-etape", texte: "Couche : " + e.couche }),
+      el("p", { classe: "phrase-etape", texte: e.phrase })
+    ]);
+    if (e.regle) etape.appendChild(el("p", { classe: "regle", texte: "Règle : " + e.regle }));
+    var pas = el("nav", { classe: "pas", "aria-label": "Étapes" });
+    if (n > 1) pas.appendChild(el("a", { href: "#/parcours/" + p.id + "/" + (n - 1), texte: "Précédent" }));
+    if (n < p.etapes.length) pas.appendChild(el("a", { href: "#/parcours/" + p.id + "/" + (n + 1), texte: "Suivant" }));
+    return [el("h2", { classe: "parcours-nom", texte: p.nom }), etape, pas];
+  }
+
+  function trouverParcours(h) {
+    var m = /^parcours\/([^/]+)\/(\d+)$/.exec(h);
+    if (!m) return null;
+    var p = PARCOURS.filter(function (x) { return x.id === m[1]; })[0];
+    var n = parseInt(m[2], 10);
+    return p && n >= 1 && n <= p.etapes.length ? { p: p, n: n } : null;
+  }
+
+  function vueDepuis() {
+    ariane([{ texte: "Carte", href: "#/" }, { texte: "Depuis la dernière carte" }]);
+    var corps;
+    if (DEPUIS.premier) corps = el("p", { classe: "depuis-etat", texte: "Premier relevé." });
+    else if (!DEPUIS.changements.length) corps = el("p", { classe: "depuis-etat", texte: "Rien n'a changé depuis la dernière carte." });
+    else corps = el("ul", { classe: "changements" }, DEPUIS.changements.map(function (c) { return el("li", { texte: c }); }));
+    return [el("h2", { texte: "Depuis la dernière carte" }), corps];
+  }
+
   function afficher() {
     var h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
     var vue = document.getElementById("vue");
     var parts;
-    if (h.indexOf("fichier/") === 0 && F(h.slice(8))) parts = vueFichier(h.slice(8));
+    var pas = trouverParcours(h);
+    if (pas) parts = vueParcours(pas.p, pas.n);
+    else if (h === "systemes") parts = vueCarte();
+    else if (h === "depuis") parts = vueDepuis();
+    else if (h.indexOf("fichier/") === 0 && F(h.slice(8))) parts = vueFichier(h.slice(8));
     else if (h.indexOf("route/") === 0 && ROUTES[h.slice(6)]) parts = vueRoute(h.slice(6));
     else if (h.indexOf("table/") === 0 && TABLES[h.slice(6)]) parts = vueTable(h.slice(6));
     else if (h === "routes") parts = vueRoutes();
     else if (h === "tables") parts = vueTables();
     else if (h === "a-verifier") parts = vueAVerifier();
     else if (h.indexOf("systeme/") === 0 && parId[h.slice(8)]) parts = vueSysteme(parId[h.slice(8)]);
-    else parts = vueCarte();
+    else parts = vueEnsemble();
     vue.textContent = "";
     champ.value = "";
     resultats.textContent = "";

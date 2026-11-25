@@ -276,3 +276,263 @@ fichiers = [
 "web/app/stores/pieceNotifications.ts" = "Interroge GET /avancement à intervalles et produit les notifications d'avancement des pièces des offres retenues."
 "web/app/stores/traces.ts" = "Charge les traces d'extraction et leurs versions, et enregistre la note portée sur une trace."
 "web/app/utils/categorie.ts" = "Donne le libellé et la couleur d'affichage d'une catégorie d'offre."
+
+# ── Vue d'ensemble (EXE-215) ─────────────────────────────────────────────────
+# Sept blocs, de l'écran à la base, et les flèches qui les relient. `lien` est
+# la vue où mène le clic sur le bloc ; un bloc sans `lien` ne mène nulle part.
+
+[[bloc]]
+id = "ecrans"
+nom = "Écrans"
+role = "Pages, composants et stores Nuxt sous web/app/ : ils affichent les offres et appellent l'API."
+lien = "systeme/ecrans"
+
+[[bloc]]
+id = "api"
+nom = "API"
+role = "Routes FastAPI sous api/, sur le port 8000 : elles rendent les offres, reçoivent les gestes et lancent les pièces."
+lien = "systemes"
+
+[[bloc]]
+id = "coeur"
+nom = "Cœur métier"
+role = "Code Python sous orchestrator/job_search/ : run du matin, scoring, suivi des candidatures, fiche, CV et lettre."
+lien = "systemes"
+
+[[bloc]]
+id = "base"
+nom = "Base"
+role = "Fichier SQLite data/job_search.sqlite, partagé par l'API et le cœur métier."
+lien = "tables"
+
+[[bloc]]
+id = "modeles"
+nom = "Modèles"
+role = "Ollama en local pour l'extraction des faits ; Claude par claude-agent-sdk pour la fiche, le CV, la lettre et sa traduction."
+
+[[bloc]]
+id = "sources"
+nom = "Sources d'offres"
+role = "France Travail, Remotive, fichiers Indeed et sources belges, chacune derrière l'interface Source."
+
+[[bloc]]
+id = "profils"
+nom = "Profils"
+role = "Fichiers YAML sous profiles/ : le profil cible et la table d'alias des technos."
+
+[[fleche_bloc]]
+de = "ecrans"
+vers = "api"
+libelle = "appels HTTP à l'adresse de l'API (runtimeConfig.public.apiBase)"
+
+[[fleche_bloc]]
+de = "api"
+vers = "coeur"
+libelle = "les routes importent les fonctions de orchestrator/"
+
+[[fleche_bloc]]
+de = "api"
+vers = "base"
+libelle = "des routes lisent et écrivent les tables elles-mêmes"
+
+[[fleche_bloc]]
+de = "coeur"
+vers = "base"
+libelle = "le run, le recalcul, le suivi et les pièces lisent et écrivent les tables"
+
+[[fleche_bloc]]
+de = "coeur"
+vers = "modeles"
+libelle = "extraction des faits par Ollama ; fiche, CV, lettre et traduction par claude-agent-sdk"
+
+[[fleche_bloc]]
+de = "coeur"
+vers = "sources"
+libelle = "le run appelle fetch() de chaque source, qui rend des JobOffer"
+
+[[fleche_bloc]]
+de = "coeur"
+vers = "profils"
+libelle = "load_profile lit le profil ; load_alias_table lit la table d'alias"
+
+# ── Parcours (EXE-215) ───────────────────────────────────────────────────────
+# Une étape cite un fichier, une route ou une table de la carte, et peut nommer
+# une fonction et renvoyer à une règle. Sa phrase dit ce que le code fait à cet
+# endroit.
+
+[[parcours]]
+id = "retenir"
+nom = "Je retiens une offre : son CV est généré et rangé en base"
+
+[[parcours.etape]]
+fichier = "web/app/pages/offers/[id].vue"
+phrase = "La page d'une offre monte TriGestes, qui affiche les gestes de tri que l'API déclare permis pour l'offre, dont « Retenir »."
+
+[[parcours.etape]]
+fichier = "web/app/components/TriGestes.vue"
+fonction = "appliquer"
+phrase = "Au clic sur « Retenir », appliquer passe le geste retenir au store des offres par appliquerGeste."
+
+[[parcours.etape]]
+fichier = "web/app/stores/offers.ts"
+fonction = "appliquerGeste"
+phrase = "appliquerGeste envoie le geste à l'API en POST sur /offers/{id}/geste, puis relit l'offre."
+
+[[parcours.etape]]
+route = "POST /offers/{offer_id}/geste"
+fonction = "appliquer_geste_route"
+phrase = "appliquer_geste_route fait écrire le geste par suivi_storage.appliquer_geste, qui refuse un geste absent de la table des transitions. Quand le geste est retenir, elle appelle cascade.launch_pieces."
+
+[[parcours.etape]]
+fichier = "api/cascade.py"
+fonction = "launch_pieces"
+phrase = "launch_pieces appelle cv_api.launch_cv : le geste de retenir lance le CV seul."
+
+[[parcours.etape]]
+fichier = "api/cv.py"
+fonction = "launch_cv"
+phrase = "launch_cv ne lance rien si le CV de l'offre est en cours ou déjà fait. Sinon elle remet sa ligne de cvs en attente et lance en tâche de fond _generate, qui appelle run_cv."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/cv/service.py"
+fonction = "run_cv"
+phrase = "run_cv lit l'offre et ses technos exigées, le profil, la table d'alias et le CV de référence, dont il tire les groupes de compétences."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/cv/skills.py"
+fonction = "compute_permitted_additions"
+phrase = "compute_permitted_additions calcule en Python les ajouts permis : technos exigées par l'offre, au niveau du seuil dans le profil, absentes du CV de référence. Le modèle ne reçoit que cette liste."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/cv/service.py"
+fonction = "run_cv"
+phrase = "Si l'offre nomme des technos mais qu'aucun ajout n'est permis, run_cv n'appelle pas le modèle. Sinon il envoie à Claude, par claude-agent-sdk et sans outil, le prompt bâti sur les groupes du CV de référence et les ajouts permis."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/cv/skills.py"
+fonction = "filter_model_groups"
+phrase = "filter_model_groups garde les items d'origine dans leurs groupes et n'y ajoute que les ajouts permis que le modèle a placés, sous leur libellé exact. Tout autre item rendu par le modèle est ignoré."
+
+[[parcours.etape]]
+table = "cvs"
+phrase = "run_cv passe la ligne de l'offre à statut done, avec le HTML du CV, ses groupes, les ajouts permis, le coût et la session de l'appel."
+
+[[parcours]]
+id = "run"
+nom = "Le run : d'une source à une offre classée"
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/run.py"
+fonction = "main"
+phrase = "main charge le profil et crée une FranceTravailSource par code INSEE des zones actives, plus Remotive, Indeed et les sources belges selon les options et les zones. Il appelle fetch() de chacune."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/sources/france_travail.py"
+fonction = "fetch"
+phrase = "fetch interroge l'API France Travail mot-clé par mot-clé, et _map traduit chaque offre native en JobOffer."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/storage/dedup.py"
+fonction = "filter_new"
+phrase = "filter_new écarte les offres déjà en base, par source et identifiant ou par empreinte, et les doublons du même lot."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/ingestion.py"
+fonction = "register_offer"
+phrase = "register_offer applique les filtres durs du profil sans appel de modèle, puis enregistre l'offre par save_offer : filtrée, texte manquant, ou en attente d'extraction."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/ingestion.py"
+fonction = "run_tri"
+phrase = "_tri_phase de run.py passe chaque offre en attente à run_tri, qui fait lire l'offre par le modèle de tri. Une offre classée parfait ou rêve, illisible ou sans techno attend une seconde lecture par le modèle de précision."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/scoring/extractor.py"
+fonction = "extract_facts"
+phrase = "extract_facts demande à Ollama les faits de l'offre : séniorité, technos exigées, domaine, niveau de rôle, langues. Sans réponse lisible après trois tentatives, elle rend None et aucun fait n'est enregistré."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/ingestion.py"
+fonction = "_score"
+phrase = "_score calcule en Python la désirabilité et l'atteignabilité sur ces faits, puis les causes hors périmètre."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/scoring/categorize.py"
+fonction = "categorize"
+phrase = "categorize range l'offre en parfait, rêve, atteignable ou hors en croisant un seuil de désirabilité et un seuil d'atteignabilité."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/storage/offers.py"
+fonction = "save_offer"
+phrase = "save_offer écrit l'offre dans offers, et la met à jour si sa source et son identifiant y sont déjà."
+
+[[parcours.etape]]
+table = "offers"
+phrase = "La ligne de l'offre porte ses faits extraits (extracted_facts_json), sa catégorie et ses technos couvertes et manquantes."
+
+[[parcours]]
+id = "profil"
+nom = "Je change mon profil : tout se reclasse sans appeler un modèle"
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/rescore.py"
+fonction = "main"
+phrase = "main charge le profil par load_profile et la table d'alias, puis lit les offres déjà extraites : celles sans catégorie par défaut, toutes avec --force."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/rescore.py"
+fonction = "main"
+regle = ".claude/rules/architecture.md, section 4"
+phrase = "Pour chaque offre, main relit les faits rangés dans extracted_facts_json. Il n'appelle extract_facts qu'avec --re-extract ou --re-extract-stale, ou quand l'offre n'a pas de faits lisibles."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/scoring/desirability.py"
+fonction = "compute_desirability"
+phrase = "compute_desirability multiplie le gradient du domaine de l'offre par l'envie moyenne du profil pour ses technos."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/scoring/attainability.py"
+fonction = "compute_attainability"
+phrase = "compute_attainability prend le minimum de la couverture technique et de l'accès au rôle, moins un malus de séniorité."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/scoring/categorize.py"
+fonction = "categorize"
+phrase = "Quand l'offre n'a aucune cause hors périmètre, main la range par categorize sur les deux scores recalculés."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/storage/offers.py"
+fonction = "save_offer"
+phrase = "Sauf avec --dry-run, main écrit le résultat par save_offer."
+
+[[parcours.etape]]
+table = "offers"
+phrase = "La ligne de l'offre reçoit sa nouvelle catégorie ou ses causes hors périmètre, et ses technos couvertes et manquantes."
+
+[[parcours]]
+id = "envoyee"
+nom = "Je marque une candidature envoyée"
+
+[[parcours.etape]]
+fichier = "web/app/pages/offers/[id].vue"
+fonction = "marquerEnvoyee"
+phrase = "Le bouton « Confirmer l'envoi », montré quand l'API déclare le geste marquer_envoyee permis, appelle marquerEnvoyee. Elle envoie PUT /offers/{id}/envoyee avec la date d'envoi, puis relit les pièces et l'offre."
+
+[[parcours.etape]]
+route = "PUT /offers/{offer_id}/envoyee"
+fonction = "set_envoyee"
+phrase = "set_envoyee vérifie que l'offre est retenue, puis demande le geste marquer_envoyee à suivi_storage.appliquer_geste. Un geste refusé rend une erreur 409, sauf si l'offre est déjà à l'étape envoyée ou au-delà."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/suivi/etats.py"
+fonction = "appliquer"
+phrase = "appliquer cherche le geste dans TRANSITIONS depuis l'état de l'offre : depuis retenue, marquer_envoyee mène à candidature_envoyee. Ailleurs, elle lève GesteRefuse."
+
+[[parcours.etape]]
+fichier = "orchestrator/job_search/suivi/storage.py"
+fonction = "appliquer_geste"
+phrase = "appliquer_geste lit l'état stocké, obtient l'état d'arrivée par etats.appliquer, écrit cet état dans etats_offre et ajoute une ligne à historique_gestes."
+
+[[parcours.etape]]
+table = "historique_gestes"
+phrase = "La ligne ajoutée porte le geste, l'état de départ et d'arrivée, la date d'effet et la date d'enregistrement ; annule_at reste vide."

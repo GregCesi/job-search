@@ -1,0 +1,1964 @@
+{
+ "appels_base": {
+  "api/ajouts.py": 2,
+  "api/avancement.py": 8,
+  "api/cv.py": 10,
+  "api/expiration.py": 4,
+  "api/export.py": 2,
+  "api/fiche.py": 10,
+  "api/lettre.py": 27,
+  "api/mail.py": 4,
+  "api/offers.py": 12,
+  "api/pieces.py": 10,
+  "api/traces.py": 6,
+  "api/traces_reader.py": 1,
+  "orchestrator/job_search/ajout/service.py": 2,
+  "orchestrator/job_search/cv/profil.py": 1,
+  "orchestrator/job_search/cv/service.py": 23,
+  "orchestrator/job_search/expiration/service.py": 3,
+  "orchestrator/job_search/fiche/__main__.py": 1,
+  "orchestrator/job_search/fiche/cascade.py": 2,
+  "orchestrator/job_search/fiche/service.py": 4,
+  "orchestrator/job_search/ingestion.py": 6,
+  "orchestrator/job_search/lettre/boucle.py": 2,
+  "orchestrator/job_search/lettre/jeu.py": 1,
+  "orchestrator/job_search/lettre/service.py": 24,
+  "orchestrator/job_search/lettre/stockage.py": 3,
+  "orchestrator/job_search/lettre_en/stockage.py": 4,
+  "orchestrator/job_search/mail/generation.py": 4,
+  "orchestrator/job_search/pdf/filename.py": 2,
+  "orchestrator/job_search/reference/dataset.py": 1,
+  "orchestrator/job_search/rescore.py": 1,
+  "orchestrator/job_search/run.py": 10,
+  "orchestrator/job_search/storage/a_postuler.py": 2,
+  "orchestrator/job_search/storage/db.py": 46,
+  "orchestrator/job_search/storage/dedup.py": 2,
+  "orchestrator/job_search/storage/offers.py": 2,
+  "orchestrator/job_search/storage/reviews.py": 2,
+  "orchestrator/job_search/suivi/reprise.py": 5,
+  "orchestrator/job_search/suivi/storage.py": 16,
+  "orchestrator/job_search/verdict.py": 2
+ },
+ "fichiers": [
+  "api/a_postuler.py",
+  "api/ajouts.py",
+  "api/avancement.py",
+  "api/cascade.py",
+  "api/cv.py",
+  "api/db.py",
+  "api/expiration.py",
+  "api/export.py",
+  "api/fiche.py",
+  "api/lettre.py",
+  "api/lettre_en.py",
+  "api/lettre_reprise.py",
+  "api/mail.py",
+  "api/main.py",
+  "api/offers.py",
+  "api/pieces.py",
+  "api/reference.py",
+  "api/schemas.py",
+  "api/traces.py",
+  "api/traces_reader.py",
+  "api/view_profile.py",
+  "orchestrator/job_search/a_postuler/__init__.py",
+  "orchestrator/job_search/a_postuler/calcul.py",
+  "orchestrator/job_search/a_postuler/regles.py",
+  "orchestrator/job_search/ajout/__init__.py",
+  "orchestrator/job_search/ajout/identification.py",
+  "orchestrator/job_search/ajout/service.py",
+  "orchestrator/job_search/avancement.py",
+  "orchestrator/job_search/calibration/disagreement.py",
+  "orchestrator/job_search/cv/config.py",
+  "orchestrator/job_search/cv/corrections.py",
+  "orchestrator/job_search/cv/profil.py",
+  "orchestrator/job_search/cv/prompt.py",
+  "orchestrator/job_search/cv/service.py",
+  "orchestrator/job_search/cv/skills.py",
+  "orchestrator/job_search/cv/translation_en.py",
+  "orchestrator/job_search/digest/formatter.py",
+  "orchestrator/job_search/expiration/service.py",
+  "orchestrator/job_search/fiche/__main__.py",
+  "orchestrator/job_search/fiche/cascade.py",
+  "orchestrator/job_search/fiche/intermediaires.py",
+  "orchestrator/job_search/fiche/prompt.py",
+  "orchestrator/job_search/fiche/service.py",
+  "orchestrator/job_search/ingestion.py",
+  "orchestrator/job_search/lettre/__init__.py",
+  "orchestrator/job_search/lettre/banc.py",
+  "orchestrator/job_search/lettre/boucle.py",
+  "orchestrator/job_search/lettre/jeu.py",
+  "orchestrator/job_search/lettre/redaction.py",
+  "orchestrator/job_search/lettre/repertoire.py",
+  "orchestrator/job_search/lettre/service.py",
+  "orchestrator/job_search/lettre/stockage.py",
+  "orchestrator/job_search/lettre_en/__init__.py",
+  "orchestrator/job_search/lettre_en/carte.py",
+  "orchestrator/job_search/lettre_en/stockage.py",
+  "orchestrator/job_search/lettre_en/traduction.py",
+  "orchestrator/job_search/mail/__init__.py",
+  "orchestrator/job_search/mail/candidature.py",
+  "orchestrator/job_search/mail/generation.py",
+  "orchestrator/job_search/matching/profile.py",
+  "orchestrator/job_search/paths.py",
+  "orchestrator/job_search/pdf/__init__.py",
+  "orchestrator/job_search/pdf/coordonnees.py",
+  "orchestrator/job_search/pdf/filename.py",
+  "orchestrator/job_search/pdf/lettre_html.py",
+  "orchestrator/job_search/pdf/render.py",
+  "orchestrator/job_search/pieces.py",
+  "orchestrator/job_search/pieces_state.py",
+  "orchestrator/job_search/reference/__init__.py",
+  "orchestrator/job_search/reference/ajouter.py",
+  "orchestrator/job_search/reference/dataset.py",
+  "orchestrator/job_search/reference/metrics.py",
+  "orchestrator/job_search/reference/rejouer.py",
+  "orchestrator/job_search/reference/replay.py",
+  "orchestrator/job_search/reference/report.py",
+  "orchestrator/job_search/rescore.py",
+  "orchestrator/job_search/run.py",
+  "orchestrator/job_search/scoring/ad_language.py",
+  "orchestrator/job_search/scoring/aliases.py",
+  "orchestrator/job_search/scoring/attainability.py",
+  "orchestrator/job_search/scoring/categorize.py",
+  "orchestrator/job_search/scoring/desirability.py",
+  "orchestrator/job_search/scoring/extractor.py",
+  "orchestrator/job_search/scoring/filters.py",
+  "orchestrator/job_search/scoring/hors_perimetre.py",
+  "orchestrator/job_search/scoring/tracing.py",
+  "orchestrator/job_search/sources/_clean.py",
+  "orchestrator/job_search/sources/actiris.py",
+  "orchestrator/job_search/sources/base.py",
+  "orchestrator/job_search/sources/eures.py",
+  "orchestrator/job_search/sources/fingerprint.py",
+  "orchestrator/job_search/sources/forem.py",
+  "orchestrator/job_search/sources/france_travail.py",
+  "orchestrator/job_search/sources/indeed_file.py",
+  "orchestrator/job_search/sources/manual.py",
+  "orchestrator/job_search/sources/remotive.py",
+  "orchestrator/job_search/storage/a_postuler.py",
+  "orchestrator/job_search/storage/db.py",
+  "orchestrator/job_search/storage/dedup.py",
+  "orchestrator/job_search/storage/offers.py",
+  "orchestrator/job_search/storage/reviews.py",
+  "orchestrator/job_search/suivi/etats.py",
+  "orchestrator/job_search/suivi/reprise.py",
+  "orchestrator/job_search/suivi/storage.py",
+  "orchestrator/job_search/tracking/extraction_stats.py",
+  "orchestrator/job_search/tracking/lettre_tracing.py",
+  "orchestrator/job_search/tracking/mlflow_tracking.py",
+  "orchestrator/job_search/verdict.py",
+  "web/app/app.vue",
+  "web/app/components/APostulerTable.vue",
+  "web/app/components/AjoutForm.vue",
+  "web/app/components/AjoutNotifications.vue",
+  "web/app/components/CandidateMenu.vue",
+  "web/app/components/CvPdfBoutons.vue",
+  "web/app/components/CvProfilBascule.vue",
+  "web/app/components/ExportPopover.vue",
+  "web/app/components/FiltersPanel.vue",
+  "web/app/components/LettreAnglaise.vue",
+  "web/app/components/LettreApercuLangue.vue",
+  "web/app/components/LettreReprise.vue",
+  "web/app/components/NotificationToast.vue",
+  "web/app/components/NotificationsPanel.vue",
+  "web/app/components/OfferDetail.vue",
+  "web/app/components/OfferSidePanel.vue",
+  "web/app/components/OffersTable.vue",
+  "web/app/components/PieceReadyToggle.vue",
+  "web/app/components/TriGestes.vue",
+  "web/app/components/VerdictBadge.vue",
+  "web/app/pages/index.vue",
+  "web/app/pages/offers/[id].vue",
+  "web/app/pages/operateur.vue",
+  "web/app/pages/reference.vue",
+  "web/app/pages/traces.vue",
+  "web/app/stores/aPostuler.ts",
+  "web/app/stores/ajouts.ts",
+  "web/app/stores/notificationsPanel.ts",
+  "web/app/stores/offers.ts",
+  "web/app/stores/pieceNotifications.ts",
+  "web/app/stores/traces.ts",
+  "web/app/utils/categorie.ts"
+ ],
+ "fleches": [
+  [
+   "api/a_postuler.py",
+   "api/db.py"
+  ],
+  [
+   "api/a_postuler.py",
+   "orchestrator/job_search/a_postuler/calcul.py"
+  ],
+  [
+   "api/a_postuler.py",
+   "orchestrator/job_search/a_postuler/regles.py"
+  ],
+  [
+   "api/a_postuler.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "api/a_postuler.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "api/a_postuler.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "api/a_postuler.py",
+   "orchestrator/job_search/storage/a_postuler.py"
+  ],
+  [
+   "api/a_postuler.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/ajouts.py",
+   "api/db.py"
+  ],
+  [
+   "api/ajouts.py",
+   "orchestrator/job_search/ajout/service.py"
+  ],
+  [
+   "api/ajouts.py",
+   "orchestrator/job_search/sources/manual.py"
+  ],
+  [
+   "api/avancement.py",
+   "api/cv.py"
+  ],
+  [
+   "api/avancement.py",
+   "api/db.py"
+  ],
+  [
+   "api/avancement.py",
+   "api/fiche.py"
+  ],
+  [
+   "api/avancement.py",
+   "api/lettre.py"
+  ],
+  [
+   "api/avancement.py",
+   "orchestrator/job_search/avancement.py"
+  ],
+  [
+   "api/avancement.py",
+   "orchestrator/job_search/lettre/redaction.py"
+  ],
+  [
+   "api/avancement.py",
+   "orchestrator/job_search/mail/candidature.py"
+  ],
+  [
+   "api/avancement.py",
+   "orchestrator/job_search/pdf/filename.py"
+  ],
+  [
+   "api/avancement.py",
+   "orchestrator/job_search/pieces_state.py"
+  ],
+  [
+   "api/avancement.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/cascade.py",
+   "api/cv.py"
+  ],
+  [
+   "api/cv.py",
+   "api/db.py"
+  ],
+  [
+   "api/cv.py",
+   "orchestrator/job_search/cv/corrections.py"
+  ],
+  [
+   "api/cv.py",
+   "orchestrator/job_search/cv/profil.py"
+  ],
+  [
+   "api/cv.py",
+   "orchestrator/job_search/cv/service.py"
+  ],
+  [
+   "api/cv.py",
+   "orchestrator/job_search/pdf/coordonnees.py"
+  ],
+  [
+   "api/cv.py",
+   "orchestrator/job_search/pdf/filename.py"
+  ],
+  [
+   "api/cv.py",
+   "orchestrator/job_search/pdf/render.py"
+  ],
+  [
+   "api/cv.py",
+   "orchestrator/job_search/pieces_state.py"
+  ],
+  [
+   "api/cv.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/db.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "api/expiration.py",
+   "api/db.py"
+  ],
+  [
+   "api/expiration.py",
+   "api/schemas.py"
+  ],
+  [
+   "api/expiration.py",
+   "orchestrator/job_search/expiration/service.py"
+  ],
+  [
+   "api/expiration.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/export.py",
+   "api/db.py"
+  ],
+  [
+   "api/export.py",
+   "api/offers.py"
+  ],
+  [
+   "api/export.py",
+   "orchestrator/job_search/calibration/disagreement.py"
+  ],
+  [
+   "api/export.py",
+   "orchestrator/job_search/scoring/attainability.py"
+  ],
+  [
+   "api/export.py",
+   "orchestrator/job_search/scoring/desirability.py"
+  ],
+  [
+   "api/export.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "api/export.py",
+   "orchestrator/job_search/storage/reviews.py"
+  ],
+  [
+   "api/export.py",
+   "orchestrator/job_search/suivi/etats.py"
+  ],
+  [
+   "api/export.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/fiche.py",
+   "api/db.py"
+  ],
+  [
+   "api/fiche.py",
+   "api/lettre.py"
+  ],
+  [
+   "api/fiche.py",
+   "orchestrator/job_search/cv/service.py"
+  ],
+  [
+   "api/fiche.py",
+   "orchestrator/job_search/fiche/intermediaires.py"
+  ],
+  [
+   "api/fiche.py",
+   "orchestrator/job_search/fiche/service.py"
+  ],
+  [
+   "api/fiche.py",
+   "orchestrator/job_search/lettre/repertoire.py"
+  ],
+  [
+   "api/fiche.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "api/fiche.py",
+   "orchestrator/job_search/pieces_state.py"
+  ],
+  [
+   "api/fiche.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/lettre.py",
+   "api/db.py"
+  ],
+  [
+   "api/lettre.py",
+   "api/fiche.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/avancement.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/lettre/redaction.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/lettre/repertoire.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/lettre/service.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/lettre/stockage.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/pdf/coordonnees.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/pdf/filename.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/pdf/lettre_html.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/pdf/render.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/pieces.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/pieces_state.py"
+  ],
+  [
+   "api/lettre.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "api/db.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "api/lettre.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "orchestrator/job_search/lettre_en/carte.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "orchestrator/job_search/lettre_en/stockage.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "orchestrator/job_search/lettre_en/traduction.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "orchestrator/job_search/pdf/coordonnees.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "orchestrator/job_search/pdf/filename.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "orchestrator/job_search/pdf/lettre_html.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "orchestrator/job_search/pdf/render.py"
+  ],
+  [
+   "api/lettre_en.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/lettre_reprise.py",
+   "api/db.py"
+  ],
+  [
+   "api/lettre_reprise.py",
+   "api/lettre.py"
+  ],
+  [
+   "api/lettre_reprise.py",
+   "orchestrator/job_search/lettre/stockage.py"
+  ],
+  [
+   "api/lettre_reprise.py",
+   "orchestrator/job_search/pieces_state.py"
+  ],
+  [
+   "api/lettre_reprise.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/mail.py",
+   "api/db.py"
+  ],
+  [
+   "api/mail.py",
+   "orchestrator/job_search/mail/candidature.py"
+  ],
+  [
+   "api/mail.py",
+   "orchestrator/job_search/mail/generation.py"
+  ],
+  [
+   "api/mail.py",
+   "orchestrator/job_search/pdf/coordonnees.py"
+  ],
+  [
+   "api/mail.py",
+   "orchestrator/job_search/pdf/filename.py"
+  ],
+  [
+   "api/mail.py",
+   "orchestrator/job_search/pieces.py"
+  ],
+  [
+   "api/mail.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/main.py",
+   "api/a_postuler.py"
+  ],
+  [
+   "api/main.py",
+   "api/ajouts.py"
+  ],
+  [
+   "api/main.py",
+   "api/avancement.py"
+  ],
+  [
+   "api/main.py",
+   "api/cv.py"
+  ],
+  [
+   "api/main.py",
+   "api/db.py"
+  ],
+  [
+   "api/main.py",
+   "api/expiration.py"
+  ],
+  [
+   "api/main.py",
+   "api/export.py"
+  ],
+  [
+   "api/main.py",
+   "api/fiche.py"
+  ],
+  [
+   "api/main.py",
+   "api/lettre.py"
+  ],
+  [
+   "api/main.py",
+   "api/lettre_en.py"
+  ],
+  [
+   "api/main.py",
+   "api/lettre_reprise.py"
+  ],
+  [
+   "api/main.py",
+   "api/mail.py"
+  ],
+  [
+   "api/main.py",
+   "api/offers.py"
+  ],
+  [
+   "api/main.py",
+   "api/pieces.py"
+  ],
+  [
+   "api/main.py",
+   "api/reference.py"
+  ],
+  [
+   "api/main.py",
+   "api/traces.py"
+  ],
+  [
+   "api/main.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "api/offers.py",
+   "api/cascade.py"
+  ],
+  [
+   "api/offers.py",
+   "api/db.py"
+  ],
+  [
+   "api/offers.py",
+   "api/schemas.py"
+  ],
+  [
+   "api/offers.py",
+   "api/view_profile.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/pieces.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/scoring/attainability.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/scoring/desirability.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/sources/fingerprint.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/suivi/etats.py"
+  ],
+  [
+   "api/offers.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/pieces.py",
+   "api/db.py"
+  ],
+  [
+   "api/pieces.py",
+   "api/lettre.py"
+  ],
+  [
+   "api/pieces.py",
+   "api/schemas.py"
+  ],
+  [
+   "api/pieces.py",
+   "orchestrator/job_search/pieces.py"
+  ],
+  [
+   "api/pieces.py",
+   "orchestrator/job_search/suivi/etats.py"
+  ],
+  [
+   "api/pieces.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "api/reference.py",
+   "api/db.py"
+  ],
+  [
+   "api/reference.py",
+   "orchestrator/job_search/reference/dataset.py"
+  ],
+  [
+   "api/reference.py",
+   "orchestrator/job_search/scoring/extractor.py"
+  ],
+  [
+   "api/reference.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "api/traces.py",
+   "api/db.py"
+  ],
+  [
+   "api/traces.py",
+   "api/schemas.py"
+  ],
+  [
+   "api/traces.py",
+   "api/traces_reader.py"
+  ],
+  [
+   "api/traces_reader.py",
+   "api/db.py"
+  ],
+  [
+   "api/traces_reader.py",
+   "api/schemas.py"
+  ],
+  [
+   "api/traces_reader.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "api/view_profile.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "api/view_profile.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/a_postuler/calcul.py",
+   "orchestrator/job_search/a_postuler/regles.py"
+  ],
+  [
+   "orchestrator/job_search/a_postuler/calcul.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/a_postuler/calcul.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/a_postuler/calcul.py",
+   "orchestrator/job_search/scoring/attainability.py"
+  ],
+  [
+   "orchestrator/job_search/a_postuler/calcul.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/a_postuler/calcul.py",
+   "orchestrator/job_search/suivi/etats.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/identification.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/identification.py",
+   "orchestrator/job_search/scoring/tracing.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/service.py",
+   "orchestrator/job_search/ajout/identification.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/service.py",
+   "orchestrator/job_search/ingestion.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/service.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/service.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/service.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/service.py",
+   "orchestrator/job_search/sources/manual.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/service.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/ajout/service.py",
+   "orchestrator/job_search/storage/dedup.py"
+  ],
+  [
+   "orchestrator/job_search/avancement.py",
+   "orchestrator/job_search/lettre/boucle.py"
+  ],
+  [
+   "orchestrator/job_search/calibration/disagreement.py",
+   "orchestrator/job_search/storage/reviews.py"
+  ],
+  [
+   "orchestrator/job_search/cv/corrections.py",
+   "orchestrator/job_search/cv/skills.py"
+  ],
+  [
+   "orchestrator/job_search/cv/profil.py",
+   "orchestrator/job_search/cv/skills.py"
+  ],
+  [
+   "orchestrator/job_search/cv/profil.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/cv/prompt.py",
+   "orchestrator/job_search/cv/skills.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/cv/config.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/cv/corrections.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/cv/profil.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/cv/prompt.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/cv/skills.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/cv/translation_en.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/cv/service.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/cv/skills.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/cv/skills.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/cv/translation_en.py",
+   "orchestrator/job_search/cv/skills.py"
+  ],
+  [
+   "orchestrator/job_search/digest/formatter.py",
+   "orchestrator/job_search/storage/offers.py"
+  ],
+  [
+   "orchestrator/job_search/expiration/service.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/__main__.py",
+   "orchestrator/job_search/fiche/cascade.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/__main__.py",
+   "orchestrator/job_search/fiche/prompt.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/__main__.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/cascade.py",
+   "orchestrator/job_search/fiche/intermediaires.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/intermediaires.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/prompt.py",
+   "orchestrator/job_search/fiche/cascade.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/prompt.py",
+   "orchestrator/job_search/lettre/repertoire.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/prompt.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/service.py",
+   "orchestrator/job_search/fiche/cascade.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/service.py",
+   "orchestrator/job_search/fiche/prompt.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/service.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/fiche/service.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/scoring/ad_language.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/scoring/attainability.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/scoring/categorize.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/scoring/desirability.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/scoring/extractor.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/scoring/filters.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/scoring/hors_perimetre.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/storage/offers.py"
+  ],
+  [
+   "orchestrator/job_search/ingestion.py",
+   "orchestrator/job_search/tracking/extraction_stats.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/banc.py",
+   "orchestrator/job_search/lettre/boucle.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/banc.py",
+   "orchestrator/job_search/lettre/redaction.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/banc.py",
+   "orchestrator/job_search/lettre/repertoire.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/banc.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/banc.py",
+   "orchestrator/job_search/tracking/mlflow_tracking.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/boucle.py",
+   "orchestrator/job_search/lettre/redaction.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/boucle.py",
+   "orchestrator/job_search/lettre/repertoire.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/boucle.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/jeu.py",
+   "orchestrator/job_search/fiche/cascade.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/jeu.py",
+   "orchestrator/job_search/fiche/service.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/jeu.py",
+   "orchestrator/job_search/lettre/redaction.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/jeu.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/jeu.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/jeu.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/repertoire.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/service.py",
+   "orchestrator/job_search/lettre/boucle.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/service.py",
+   "orchestrator/job_search/lettre/redaction.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/service.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/service.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/service.py",
+   "orchestrator/job_search/tracking/lettre_tracing.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/stockage.py",
+   "orchestrator/job_search/lettre/redaction.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/stockage.py",
+   "orchestrator/job_search/lettre/service.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/stockage.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/stockage.py",
+   "orchestrator/job_search/pdf/filename.py"
+  ],
+  [
+   "orchestrator/job_search/lettre/stockage.py",
+   "orchestrator/job_search/pieces.py"
+  ],
+  [
+   "orchestrator/job_search/lettre_en/stockage.py",
+   "orchestrator/job_search/lettre_en/traduction.py"
+  ],
+  [
+   "orchestrator/job_search/lettre_en/stockage.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/lettre_en/traduction.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/mail/candidature.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/mail/generation.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/mail/generation.py",
+   "orchestrator/job_search/pdf/coordonnees.py"
+  ],
+  [
+   "orchestrator/job_search/matching/profile.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/pdf/coordonnees.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/pdf/filename.py",
+   "orchestrator/job_search/fiche/intermediaires.py"
+  ],
+  [
+   "orchestrator/job_search/pdf/filename.py",
+   "orchestrator/job_search/pdf/coordonnees.py"
+  ],
+  [
+   "orchestrator/job_search/pdf/lettre_html.py",
+   "orchestrator/job_search/pdf/coordonnees.py"
+  ],
+  [
+   "orchestrator/job_search/pieces.py",
+   "orchestrator/job_search/suivi/etats.py"
+  ],
+  [
+   "orchestrator/job_search/reference/ajouter.py",
+   "orchestrator/job_search/reference/dataset.py"
+  ],
+  [
+   "orchestrator/job_search/reference/ajouter.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/reference/dataset.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/reference/dataset.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/reference/metrics.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/reference/metrics.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/reference/metrics.py",
+   "orchestrator/job_search/scoring/attainability.py"
+  ],
+  [
+   "orchestrator/job_search/reference/metrics.py",
+   "orchestrator/job_search/scoring/categorize.py"
+  ],
+  [
+   "orchestrator/job_search/reference/metrics.py",
+   "orchestrator/job_search/scoring/desirability.py"
+  ],
+  [
+   "orchestrator/job_search/reference/metrics.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/reference/rejouer.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/reference/rejouer.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/reference/rejouer.py",
+   "orchestrator/job_search/reference/dataset.py"
+  ],
+  [
+   "orchestrator/job_search/reference/rejouer.py",
+   "orchestrator/job_search/reference/replay.py"
+  ],
+  [
+   "orchestrator/job_search/reference/rejouer.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/reference/rejouer.py",
+   "orchestrator/job_search/scoring/extractor.py"
+  ],
+  [
+   "orchestrator/job_search/reference/replay.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/reference/replay.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/reference/replay.py",
+   "orchestrator/job_search/reference/dataset.py"
+  ],
+  [
+   "orchestrator/job_search/reference/replay.py",
+   "orchestrator/job_search/reference/metrics.py"
+  ],
+  [
+   "orchestrator/job_search/reference/replay.py",
+   "orchestrator/job_search/reference/report.py"
+  ],
+  [
+   "orchestrator/job_search/reference/replay.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/reference/replay.py",
+   "orchestrator/job_search/scoring/extractor.py"
+  ],
+  [
+   "orchestrator/job_search/reference/replay.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/reference/replay.py",
+   "orchestrator/job_search/tracking/mlflow_tracking.py"
+  ],
+  [
+   "orchestrator/job_search/reference/report.py",
+   "orchestrator/job_search/reference/metrics.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "api/view_profile.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/scoring/attainability.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/scoring/categorize.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/scoring/desirability.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/scoring/extractor.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/scoring/filters.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/scoring/hors_perimetre.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/rescore.py",
+   "orchestrator/job_search/storage/offers.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/digest/formatter.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/ingestion.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/scoring/categorize.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/scoring/extractor.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/sources/actiris.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/sources/eures.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/sources/forem.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/sources/france_travail.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/sources/indeed_file.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/sources/remotive.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/storage/dedup.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/storage/offers.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/tracking/extraction_stats.py"
+  ],
+  [
+   "orchestrator/job_search/run.py",
+   "orchestrator/job_search/tracking/mlflow_tracking.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/attainability.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/attainability.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/attainability.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/desirability.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/desirability.py",
+   "orchestrator/job_search/scoring/aliases.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/desirability.py",
+   "orchestrator/job_search/scoring/attainability.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/desirability.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/extractor.py",
+   "orchestrator/job_search/scoring/tracing.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/extractor.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/filters.py",
+   "orchestrator/job_search/matching/profile.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/filters.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/hors_perimetre.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/scoring/tracing.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/sources/actiris.py",
+   "orchestrator/job_search/sources/_clean.py"
+  ],
+  [
+   "orchestrator/job_search/sources/actiris.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/sources/actiris.py",
+   "orchestrator/job_search/sources/fingerprint.py"
+  ],
+  [
+   "orchestrator/job_search/sources/eures.py",
+   "orchestrator/job_search/sources/_clean.py"
+  ],
+  [
+   "orchestrator/job_search/sources/eures.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/sources/eures.py",
+   "orchestrator/job_search/sources/fingerprint.py"
+  ],
+  [
+   "orchestrator/job_search/sources/forem.py",
+   "orchestrator/job_search/sources/_clean.py"
+  ],
+  [
+   "orchestrator/job_search/sources/forem.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/sources/forem.py",
+   "orchestrator/job_search/sources/fingerprint.py"
+  ],
+  [
+   "orchestrator/job_search/sources/france_travail.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/sources/france_travail.py",
+   "orchestrator/job_search/sources/fingerprint.py"
+  ],
+  [
+   "orchestrator/job_search/sources/indeed_file.py",
+   "orchestrator/job_search/sources/_clean.py"
+  ],
+  [
+   "orchestrator/job_search/sources/indeed_file.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/sources/indeed_file.py",
+   "orchestrator/job_search/sources/fingerprint.py"
+  ],
+  [
+   "orchestrator/job_search/sources/manual.py",
+   "orchestrator/job_search/sources/_clean.py"
+  ],
+  [
+   "orchestrator/job_search/sources/manual.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/sources/manual.py",
+   "orchestrator/job_search/sources/fingerprint.py"
+  ],
+  [
+   "orchestrator/job_search/sources/remotive.py",
+   "orchestrator/job_search/sources/_clean.py"
+  ],
+  [
+   "orchestrator/job_search/sources/remotive.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/sources/remotive.py",
+   "orchestrator/job_search/sources/fingerprint.py"
+  ],
+  [
+   "orchestrator/job_search/storage/a_postuler.py",
+   "orchestrator/job_search/a_postuler/calcul.py"
+  ],
+  [
+   "orchestrator/job_search/storage/db.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/storage/db.py",
+   "orchestrator/job_search/suivi/reprise.py"
+  ],
+  [
+   "orchestrator/job_search/storage/dedup.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/storage/offers.py",
+   "orchestrator/job_search/scoring/categorize.py"
+  ],
+  [
+   "orchestrator/job_search/storage/offers.py",
+   "orchestrator/job_search/sources/base.py"
+  ],
+  [
+   "orchestrator/job_search/suivi/reprise.py",
+   "orchestrator/job_search/suivi/etats.py"
+  ],
+  [
+   "orchestrator/job_search/suivi/storage.py",
+   "orchestrator/job_search/pieces.py"
+  ],
+  [
+   "orchestrator/job_search/suivi/storage.py",
+   "orchestrator/job_search/suivi/etats.py"
+  ],
+  [
+   "orchestrator/job_search/tracking/lettre_tracing.py",
+   "orchestrator/job_search/tracking/mlflow_tracking.py"
+  ],
+  [
+   "orchestrator/job_search/tracking/mlflow_tracking.py",
+   "orchestrator/job_search/paths.py"
+  ],
+  [
+   "orchestrator/job_search/verdict.py",
+   "orchestrator/job_search/storage/db.py"
+  ],
+  [
+   "orchestrator/job_search/verdict.py",
+   "orchestrator/job_search/suivi/etats.py"
+  ],
+  [
+   "orchestrator/job_search/verdict.py",
+   "orchestrator/job_search/suivi/storage.py"
+  ]
+ ],
+ "routes": {
+  "DELETE /cv/titre-defaut": "api/cv.py",
+  "DELETE /offers/{offer_id}/revue": "api/offers.py",
+  "DELETE /offers/{offer_id}/verdict": "api/offers.py",
+  "GET /a-postuler": "api/a_postuler.py",
+  "GET /ajouts": "api/ajouts.py",
+  "GET /ajouts/{ajout_id}": "api/ajouts.py",
+  "GET /avancement": "api/avancement.py",
+  "GET /cv/titre-defaut": "api/cv.py",
+  "GET /export/calibration": "api/export.py",
+  "GET /export/offers": "api/export.py",
+  "GET /health": "api/main.py",
+  "GET /offers": "api/offers.py",
+  "GET /offers/suivi/compte-etapes": "api/offers.py",
+  "GET /offers/{offer_id}": "api/offers.py",
+  "GET /offers/{offer_id}/a-postuler": "api/a_postuler.py",
+  "GET /offers/{offer_id}/avancement": "api/avancement.py",
+  "GET /offers/{offer_id}/cv": "api/cv.py",
+  "GET /offers/{offer_id}/cv/corrections": "api/cv.py",
+  "GET /offers/{offer_id}/cv/pdf": "api/cv.py",
+  "GET /offers/{offer_id}/fiche": "api/fiche.py",
+  "GET /offers/{offer_id}/lettre": "api/lettre.py",
+  "GET /offers/{offer_id}/lettre/en": "api/lettre_en.py",
+  "GET /offers/{offer_id}/lettre/en/mise-en-page": "api/lettre_en.py",
+  "GET /offers/{offer_id}/lettre/en/pdf": "api/lettre_en.py",
+  "GET /offers/{offer_id}/lettre/mes-lettres": "api/lettre_reprise.py",
+  "GET /offers/{offer_id}/lettre/mise-en-page": "api/lettre.py",
+  "GET /offers/{offer_id}/lettre/pdf": "api/lettre.py",
+  "GET /offers/{offer_id}/lettre/points": "api/lettre.py",
+  "GET /offers/{offer_id}/lettre/versions": "api/lettre.py",
+  "GET /offers/{offer_id}/lettre/versions/{version_id}/appels": "api/lettre.py",
+  "GET /offers/{offer_id}/mail": "api/mail.py",
+  "GET /offers/{offer_id}/mail/appel": "api/mail.py",
+  "GET /offers/{offer_id}/pieces": "api/pieces.py",
+  "GET /offers/{offer_id}/review": "api/offers.py",
+  "GET /reference": "api/reference.py",
+  "GET /reference/{entry_id}": "api/reference.py",
+  "GET /traces": "api/traces.py",
+  "GET /traces/counts": "api/traces.py",
+  "GET /traces/export": "api/traces.py",
+  "GET /traces/versions": "api/traces.py",
+  "PATCH /offers/{offer_id}/fiche/points/{point_idx}": "api/fiche.py",
+  "POST /ajouts": "api/ajouts.py",
+  "POST /offers/check-expirations": "api/expiration.py",
+  "POST /offers/check-known": "api/offers.py",
+  "POST /offers/{offer_id}/cv": "api/cv.py",
+  "POST /offers/{offer_id}/cv/en": "api/cv.py",
+  "POST /offers/{offer_id}/cv/skills": "api/cv.py",
+  "POST /offers/{offer_id}/fiche": "api/fiche.py",
+  "POST /offers/{offer_id}/fiche/intermediaire": "api/fiche.py",
+  "POST /offers/{offer_id}/fiche/points/{point_idx}/explain": "api/fiche.py",
+  "POST /offers/{offer_id}/geste": "api/offers.py",
+  "POST /offers/{offer_id}/lettre": "api/lettre.py",
+  "POST /offers/{offer_id}/lettre/copier": "api/lettre_reprise.py",
+  "POST /offers/{offer_id}/lettre/ecarter": "api/lettre.py",
+  "POST /offers/{offer_id}/lettre/en": "api/lettre_en.py",
+  "POST /offers/{offer_id}/lettre/ne-pas-faire": "api/lettre.py",
+  "POST /offers/{offer_id}/lettre/regenerer": "api/lettre.py",
+  "POST /offers/{offer_id}/lettre/regenerer-depuis-ma-lettre": "api/lettre.py",
+  "POST /offers/{offer_id}/lettre/remettre": "api/lettre.py",
+  "POST /offers/{offer_id}/lettre/revenir": "api/lettre.py",
+  "POST /offers/{offer_id}/mail/generer": "api/mail.py",
+  "POST /offers/{offer_id}/reference": "api/reference.py",
+  "PUT /cv/titre-defaut": "api/cv.py",
+  "PUT /offers/{offer_id}/category-review": "api/offers.py",
+  "PUT /offers/{offer_id}/cv/pret": "api/pieces.py",
+  "PUT /offers/{offer_id}/cv/profil": "api/cv.py",
+  "PUT /offers/{offer_id}/cv/titre": "api/cv.py",
+  "PUT /offers/{offer_id}/employer-url": "api/expiration.py",
+  "PUT /offers/{offer_id}/envoyee": "api/pieces.py",
+  "PUT /offers/{offer_id}/fiche/avis": "api/fiche.py",
+  "PUT /offers/{offer_id}/lettre/angle": "api/lettre.py",
+  "PUT /offers/{offer_id}/lettre/en/texte": "api/lettre_en.py",
+  "PUT /offers/{offer_id}/lettre/points": "api/lettre.py",
+  "PUT /offers/{offer_id}/lettre/pret": "api/pieces.py",
+  "PUT /offers/{offer_id}/lettre/texte": "api/lettre.py",
+  "PUT /offers/{offer_id}/mail": "api/mail.py",
+  "PUT /offers/{offer_id}/verdict": "api/offers.py",
+  "PUT /reference/{entry_id}": "api/reference.py",
+  "PUT /traces/{trace_key}/note": "api/traces.py"
+ },
+ "tables": {
+  "api/ajouts.py": {
+   "ecrites": [],
+   "lues": [
+    "ajouts"
+   ]
+  },
+  "api/avancement.py": {
+   "ecrites": [],
+   "lues": [
+    "cvs",
+    "fiches_entreprise",
+    "lettres",
+    "offers"
+   ]
+  },
+  "api/cv.py": {
+   "ecrites": [],
+   "lues": [
+    "cv_corrections",
+    "cvs"
+   ]
+  },
+  "api/expiration.py": {
+   "ecrites": [
+    "expirations"
+   ],
+   "lues": [
+    "expirations",
+    "offers"
+   ]
+  },
+  "api/export.py": {
+   "ecrites": [],
+   "lues": [
+    "human_reviews",
+    "offers"
+   ]
+  },
+  "api/fiche.py": {
+   "ecrites": [
+    "fiches_entreprise"
+   ],
+   "lues": [
+    "fiches_entreprise",
+    "offers"
+   ]
+  },
+  "api/lettre.py": {
+   "ecrites": [
+    "lettres"
+   ],
+   "lues": [
+    "fiches_entreprise",
+    "lettre_versions",
+    "lettres",
+    "offers"
+   ]
+  },
+  "api/mail.py": {
+   "ecrites": [],
+   "lues": [
+    "fiches_entreprise",
+    "lettres",
+    "offers"
+   ]
+  },
+  "api/offers.py": {
+   "ecrites": [
+    "offers"
+   ],
+   "lues": [
+    "cvs",
+    "expirations",
+    "human_reviews",
+    "lettres",
+    "offers"
+   ]
+  },
+  "api/pieces.py": {
+   "ecrites": [
+    "cvs",
+    "lettres"
+   ],
+   "lues": [
+    "cvs",
+    "lettres"
+   ]
+  },
+  "api/traces.py": {
+   "ecrites": [
+    "trace_notes"
+   ],
+   "lues": [
+    "trace_notes"
+   ]
+  },
+  "api/traces_reader.py": {
+   "ecrites": [],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/ajout/service.py": {
+   "ecrites": [
+    "ajouts"
+   ],
+   "lues": []
+  },
+  "orchestrator/job_search/cv/profil.py": {
+   "ecrites": [],
+   "lues": [
+    "fiches_entreprise"
+   ]
+  },
+  "orchestrator/job_search/cv/service.py": {
+   "ecrites": [
+    "cv_corrections",
+    "cv_settings",
+    "cvs"
+   ],
+   "lues": [
+    "cv_settings",
+    "cvs",
+    "fiches_entreprise",
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/expiration/service.py": {
+   "ecrites": [
+    "expirations"
+   ],
+   "lues": [
+    "expirations",
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/fiche/__main__.py": {
+   "ecrites": [],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/fiche/cascade.py": {
+   "ecrites": [],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/fiche/service.py": {
+   "ecrites": [
+    "fiches_entreprise"
+   ],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/ingestion.py": {
+   "ecrites": [
+    "offers"
+   ],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/lettre/boucle.py": {
+   "ecrites": [],
+   "lues": [
+    "fiches_entreprise",
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/lettre/jeu.py": {
+   "ecrites": [],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/lettre/service.py": {
+   "ecrites": [
+    "lettre_versions",
+    "lettres"
+   ],
+   "lues": [
+    "fiches_entreprise",
+    "lettre_versions",
+    "lettres",
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/lettre/stockage.py": {
+   "ecrites": [
+    "lettres"
+   ],
+   "lues": [
+    "fiches_entreprise",
+    "lettres",
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/lettre_en/stockage.py": {
+   "ecrites": [
+    "lettres_en"
+   ],
+   "lues": [
+    "lettres",
+    "lettres_en"
+   ]
+  },
+  "orchestrator/job_search/mail/generation.py": {
+   "ecrites": [
+    "mails"
+   ],
+   "lues": [
+    "mails"
+   ]
+  },
+  "orchestrator/job_search/pdf/filename.py": {
+   "ecrites": [],
+   "lues": [
+    "fiches_entreprise",
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/reference/dataset.py": {
+   "ecrites": [],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/rescore.py": {
+   "ecrites": [],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/run.py": {
+   "ecrites": [],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/storage/a_postuler.py": {
+   "ecrites": [],
+   "lues": [
+    "expirations",
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/storage/db.py": {
+   "ecrites": [
+    "ajouts",
+    "ajouts_exe82",
+    "cv_corrections",
+    "cv_settings",
+    "cvs",
+    "etats_offre",
+    "expirations",
+    "fiches_entreprise",
+    "historique_gestes",
+    "human_reviews",
+    "lettre_versions",
+    "lettres",
+    "lettres_en",
+    "mails",
+    "offers",
+    "reprise_suivi_candidatures",
+    "revues_hors_perimetre",
+    "verdicts"
+   ],
+   "lues": [
+    "ajouts",
+    "fiches_entreprise",
+    "reprise_suivi_candidatures"
+   ]
+  },
+  "orchestrator/job_search/storage/dedup.py": {
+   "ecrites": [],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/storage/offers.py": {
+   "ecrites": [
+    "offers"
+   ],
+   "lues": [
+    "offers"
+   ]
+  },
+  "orchestrator/job_search/storage/reviews.py": {
+   "ecrites": [
+    "human_reviews"
+   ],
+   "lues": [
+    "human_reviews"
+   ]
+  },
+  "orchestrator/job_search/suivi/reprise.py": {
+   "ecrites": [
+    "etats_offre",
+    "historique_gestes",
+    "revues_hors_perimetre"
+   ],
+   "lues": [
+    "verdicts"
+   ]
+  },
+  "orchestrator/job_search/suivi/storage.py": {
+   "ecrites": [
+    "etats_offre",
+    "historique_gestes",
+    "revues_hors_perimetre"
+   ],
+   "lues": [
+    "cvs",
+    "etats_offre",
+    "historique_gestes",
+    "lettres",
+    "revues_hors_perimetre"
+   ]
+  },
+  "orchestrator/job_search/verdict.py": {
+   "ecrites": [],
+   "lues": [
+    "offers"
+   ]
+  }
+ }
+}

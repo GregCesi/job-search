@@ -1,11 +1,14 @@
 """`python -m outils.carte` : régénère la carte du code, depuis la racine du dépôt.
 
 Rend 0 et imprime les signalements (fichier non rangé, fichier sans phrase,
-appel sans route trouvée, adresse illisible, table illisible), deux lignes de
-résumé, puis, en dernière ligne, le chemin de la page écrite.
-Rend 1, sans écrire la page, si le fichier de textes contredit le disque.
+appel sans route trouvée, adresse illisible, table illisible, et ce qui a changé
+depuis le relevé d'avant), deux lignes de résumé, puis, en dernière ligne, le
+chemin de la page écrite. Réécrit le relevé `docs/carte/graphe.json`.
+Rend 1, sans écrire ni la page ni le relevé, si le fichier de textes contredit
+le disque ou si une étape de parcours cite un élément absent de la carte.
 
 Usage : .venv/bin/python -m outils.carte [--racine R] [--textes T] [--sortie S]
+        [--releve G]
 """
 
 from __future__ import annotations
@@ -26,9 +29,12 @@ from outils.carte.lecture import (
     verifier_textes,
 )
 from outils.carte.page import ecrire_page
+from outils.carte.parcours import ensemble, parcours_de_la_carte
+from outils.carte.releve import comparer, ecrire_releve, lire_releve, releve
 
 TEXTES_DEFAUT = Path("docs/carte/textes.toml")
 SORTIE_DEFAUT = Path("docs/carte/index.html")
+RELEVE_DEFAUT = Path("docs/carte/graphe.json")
 
 
 def _commit_court(racine: Path) -> str:
@@ -48,6 +54,7 @@ def _arguments(argv: list[str] | None) -> argparse.Namespace:
     parseur.add_argument("--racine", type=Path, default=Path.cwd())
     parseur.add_argument("--textes", type=Path, default=None)
     parseur.add_argument("--sortie", type=Path, default=None)
+    parseur.add_argument("--releve", type=Path, default=None)
     return parseur.parse_args(argv)
 
 
@@ -60,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     racine = args.racine.resolve()
     textes_chemin = args.textes or racine / TEXTES_DEFAUT
     sortie = (args.sortie or racine / SORTIE_DEFAUT).resolve()
+    chemin_releve = (args.releve or racine / RELEVE_DEFAUT).resolve()
     try:
         textes = charger_textes(textes_chemin)
     except ErreurTextes as exc:
@@ -78,9 +86,21 @@ def main(argv: list[str] | None = None) -> int:
     }
     carte = assembler(fichiers, textes, imports_directs(racine), racine, entete)
     completer(carte, racine, textes)
+    parcours, erreurs = parcours_de_la_carte(textes, carte.donnees)
+    for erreur in erreurs:
+        print(f"erreur : {erreur}", file=sys.stderr)
+    if erreurs:
+        return 1
+    nouveau = releve(carte.donnees)
+    ancien = lire_releve(chemin_releve)
+    changements = [] if ancien is None else comparer(ancien, nouveau)
+    carte.donnees["parcours"] = parcours
+    carte.donnees["ensemble"] = ensemble(textes)
+    carte.donnees["depuis"] = {"premier": ancien is None, "changements": changements}
     ecrire_page(carte.donnees, sortie)
+    ecrire_releve(nouveau, chemin_releve)
 
-    for signalement in carte.signalements:
+    for signalement in carte.signalements + changements:
         print(f"signalé : {signalement}")
     print(
         f"Carte : {_pluriel(carte.nb_fichiers, 'fichier')}, "
