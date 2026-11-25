@@ -199,9 +199,17 @@ class TestCriteres3Et4RetenirParVerdict:
 class TestCritere5AvancementSansFiche:
     def test_fiche_ni_en_cours_ni_en_erreur(self, db_path, appels):
         _insert_offer(db_path, 5)
-        _run(_geste_retenir(5))
-        fiche = api_avancement.get_avancement(5)["fiche"]
-        assert fiche["etat"] not in {"en_cours", "en_erreur"}
+        etats = []
+
+        async def _retenir_et_lire():
+            await _geste_retenir(5)()
+            # Lu au retour du geste, avant la fin des tâches de fond, puis après.
+            etats.append(api_avancement.get_avancement(5)["fiche"]["etat"])
+
+        _run(_retenir_et_lire)
+        etats.append(api_avancement.get_avancement(5)["fiche"]["etat"])
+        for etat in etats:
+            assert etat not in {"en_cours", "en_erreur"}
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +240,9 @@ class TestCritere10LaFicheFinitLaLettrePart:
     def test_la_lettre_est_lancee_sans_autre_clic(self, db_path, appels):
         _insert_offer(db_path, 10, retenue=True)
         _run(_generer_lettre(10))
-        assert _fiche_row(db_path, 10)["statut"] == "done"
+        fiche = _fiche_row(db_path, 10)
+        assert fiche is not None
+        assert fiche["statut"] == "done"
         assert appels["lettre"] == [10]
 
 
