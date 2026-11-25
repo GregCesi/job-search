@@ -48,3 +48,6 @@ CARTE.md
 
 # Réglages locaux de Claude Code, propres à chaque machine
 .claude/settings.local.json
+
+# Carte du code (EXE-213) : régénérée par python -m outils.carte
+docs/carte/index.html

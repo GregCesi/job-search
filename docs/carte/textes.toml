@@ -1,0 +1,243 @@
+# Textes de la carte du code (EXE-213), lus par `python -m outils.carte`.
+#
+# Un système est un domaine métier, à cheval sur api/ et orchestrator/ : les
+# routes d'un domaine sont rangées avec son code. Chaque fichier Python de api/
+# et de orchestrator/ est rangé dans un système et un seul ; les `__init__.py`
+# vides ne sont pas cités.
+#
+# La phrase d'un fichier vient de sa docstring de module. La table [phrases]
+# donne celle des fichiers qui n'en ont pas, sans toucher au code.
+#
+# Écrit le 25 novembre 2026, EXE-213.
+
+[[systeme]]
+id = "socle"
+nom = "Socle"
+role = "Démarre l'API, fixe les chemins du projet, ouvre la base SQLite et crée ses tables."
+fichiers = [
+  "api/main.py",
+  "api/db.py",
+  "api/schemas.py",
+  "orchestrator/job_search/paths.py",
+  "orchestrator/job_search/storage/db.py",
+]
+
+[[systeme]]
+id = "sources"
+nom = "Sources d'offres"
+role = "Va chercher les offres chez chaque source et les traduit dans le schéma neutre JobOffer."
+fichiers = [
+  "orchestrator/job_search/sources/base.py",
+  "orchestrator/job_search/sources/_clean.py",
+  "orchestrator/job_search/sources/fingerprint.py",
+  "orchestrator/job_search/sources/france_travail.py",
+  "orchestrator/job_search/sources/remotive.py",
+  "orchestrator/job_search/sources/indeed_file.py",
+  "orchestrator/job_search/sources/eures.py",
+  "orchestrator/job_search/sources/forem.py",
+  "orchestrator/job_search/sources/actiris.py",
+]
+
+[[systeme]]
+id = "run"
+nom = "Run matinal et ingestion"
+role = "Enchaîne le run du matin : collecte, dédoublonnage, chaîne d'une offre nouvelle, rescore et digest."
+fichiers = [
+  "orchestrator/job_search/run.py",
+  "orchestrator/job_search/ingestion.py",
+  "orchestrator/job_search/rescore.py",
+  "orchestrator/job_search/storage/dedup.py",
+  "orchestrator/job_search/digest/formatter.py",
+]
+
+[[systeme]]
+id = "scoring"
+nom = "Extraction et scoring"
+role = "Extrait les faits d'une offre par le modèle local, puis calcule en Python filtres, désirabilité, atteignabilité et catégorie."
+fichiers = [
+  "orchestrator/job_search/scoring/extractor.py",
+  "orchestrator/job_search/scoring/filters.py",
+  "orchestrator/job_search/scoring/aliases.py",
+  "orchestrator/job_search/scoring/ad_language.py",
+  "orchestrator/job_search/scoring/desirability.py",
+  "orchestrator/job_search/scoring/attainability.py",
+  "orchestrator/job_search/scoring/categorize.py",
+  "orchestrator/job_search/scoring/hors_perimetre.py",
+  "orchestrator/job_search/matching/profile.py",
+]
+
+[[systeme]]
+id = "offres"
+nom = "Offres"
+role = "Range les offres en base et les sert à l'interface : liste, détail, filtre du profil de vue et expiration."
+fichiers = [
+  "api/offers.py",
+  "api/view_profile.py",
+  "api/expiration.py",
+  "orchestrator/job_search/storage/offers.py",
+  "orchestrator/job_search/expiration/service.py",
+]
+
+[[systeme]]
+id = "ajout"
+nom = "Ajout à la main"
+role = "Ajoute une offre trouvée à la main, par son URL ou son texte, et l'identifie quand elle n'a pas de titre."
+fichiers = [
+  "api/ajouts.py",
+  "orchestrator/job_search/ajout/__init__.py",
+  "orchestrator/job_search/ajout/service.py",
+  "orchestrator/job_search/ajout/identification.py",
+  "orchestrator/job_search/sources/manual.py",
+]
+
+[[systeme]]
+id = "suivi"
+nom = "Suivi des candidatures"
+role = "Tient le tri des offres, l'étape de chaque candidature et l'historique des gestes, par le seul module d'états."
+fichiers = [
+  "orchestrator/job_search/suivi/etats.py",
+  "orchestrator/job_search/suivi/storage.py",
+  "orchestrator/job_search/suivi/reprise.py",
+  "orchestrator/job_search/verdict.py",
+]
+
+[[systeme]]
+id = "a_postuler"
+nom = "À postuler"
+role = "Calcule à la lecture les files « À postuler » et « À étudier » et les sert à l'interface."
+fichiers = [
+  "api/a_postuler.py",
+  "orchestrator/job_search/a_postuler/__init__.py",
+  "orchestrator/job_search/a_postuler/calcul.py",
+  "orchestrator/job_search/a_postuler/regles.py",
+  "orchestrator/job_search/storage/a_postuler.py",
+]
+
+[[systeme]]
+id = "pieces"
+nom = "Pièces et PDF"
+role = "Suit l'état des pièces d'une offre retenue, lance le CV au geste de retenir et rend les pièces en PDF."
+fichiers = [
+  "api/pieces.py",
+  "api/avancement.py",
+  "api/cascade.py",
+  "orchestrator/job_search/pieces.py",
+  "orchestrator/job_search/pieces_state.py",
+  "orchestrator/job_search/avancement.py",
+  "orchestrator/job_search/pdf/__init__.py",
+  "orchestrator/job_search/pdf/coordonnees.py",
+  "orchestrator/job_search/pdf/filename.py",
+  "orchestrator/job_search/pdf/lettre_html.py",
+  "orchestrator/job_search/pdf/render.py",
+]
+
+[[systeme]]
+id = "fiche"
+nom = "Fiche entreprise"
+role = "Identifie l'employeur réel d'une offre retenue et rassemble, par Claude, les faits sur lesquels la lettre peut s'appuyer."
+fichiers = [
+  "api/fiche.py",
+  "orchestrator/job_search/fiche/__main__.py",
+  "orchestrator/job_search/fiche/cascade.py",
+  "orchestrator/job_search/fiche/intermediaires.py",
+  "orchestrator/job_search/fiche/prompt.py",
+  "orchestrator/job_search/fiche/service.py",
+]
+
+[[systeme]]
+id = "cv"
+nom = "CV"
+role = "Adapte le CV à une offre retenue : ajouts de compétences calculés en Python, placés par Claude, corrigés à la main, version anglaise."
+fichiers = [
+  "api/cv.py",
+  "orchestrator/job_search/cv/config.py",
+  "orchestrator/job_search/cv/corrections.py",
+  "orchestrator/job_search/cv/profil.py",
+  "orchestrator/job_search/cv/prompt.py",
+  "orchestrator/job_search/cv/service.py",
+  "orchestrator/job_search/cv/skills.py",
+  "orchestrator/job_search/cv/translation_en.py",
+]
+
+[[systeme]]
+id = "lettre"
+nom = "Lettre de motivation"
+role = "Écrit la lettre d'une offre retenue par la boucle tamis, rédaction et juge, la garde en versions et la traduit en anglais."
+fichiers = [
+  "api/lettre.py",
+  "api/lettre_en.py",
+  "api/lettre_reprise.py",
+  "orchestrator/job_search/lettre/__init__.py",
+  "orchestrator/job_search/lettre/boucle.py",
+  "orchestrator/job_search/lettre/redaction.py",
+  "orchestrator/job_search/lettre/repertoire.py",
+  "orchestrator/job_search/lettre/service.py",
+  "orchestrator/job_search/lettre/stockage.py",
+  "orchestrator/job_search/lettre_en/__init__.py",
+  "orchestrator/job_search/lettre_en/carte.py",
+  "orchestrator/job_search/lettre_en/stockage.py",
+  "orchestrator/job_search/lettre_en/traduction.py",
+  "orchestrator/job_search/tracking/lettre_tracing.py",
+]
+
+[[systeme]]
+id = "banc"
+nom = "Banc de la lettre"
+role = "Compare des modèles sur la boucle de la lettre, sur un jeu d'évaluation figé, par une commande lancée à la main."
+fichiers = [
+  "orchestrator/job_search/lettre/banc.py",
+  "orchestrator/job_search/lettre/jeu.py",
+]
+
+[[systeme]]
+id = "mail"
+nom = "Mail de candidature"
+role = "Prépare le mail de candidature d'une offre retenue, depuis un gabarit ou depuis la lettre courante."
+fichiers = [
+  "api/mail.py",
+  "orchestrator/job_search/mail/__init__.py",
+  "orchestrator/job_search/mail/candidature.py",
+  "orchestrator/job_search/mail/generation.py",
+]
+
+[[systeme]]
+id = "reference"
+nom = "Jeu de référence"
+role = "Garde des offres annotées à la main et rejoue l'extraction dessus pour mesurer un modèle ou un prompt."
+fichiers = [
+  "api/reference.py",
+  "orchestrator/job_search/reference/__init__.py",
+  "orchestrator/job_search/reference/ajouter.py",
+  "orchestrator/job_search/reference/dataset.py",
+  "orchestrator/job_search/reference/metrics.py",
+  "orchestrator/job_search/reference/rejouer.py",
+  "orchestrator/job_search/reference/replay.py",
+  "orchestrator/job_search/reference/report.py",
+]
+
+[[systeme]]
+id = "observation"
+nom = "Traces, calibration et export"
+role = "Observe les décisions : traces des appels de modèle, suivi MLflow des runs, avis humains contre l'IA et exports."
+fichiers = [
+  "api/traces.py",
+  "api/traces_reader.py",
+  "api/export.py",
+  "orchestrator/job_search/scoring/tracing.py",
+  "orchestrator/job_search/tracking/extraction_stats.py",
+  "orchestrator/job_search/tracking/mlflow_tracking.py",
+  "orchestrator/job_search/calibration/disagreement.py",
+  "orchestrator/job_search/storage/reviews.py",
+]
+
+[phrases]
+"orchestrator/job_search/matching/profile.py" = "Charge et valide le profil cible YAML, et calcule son hash."
+"orchestrator/job_search/digest/formatter.py" = "Met en forme le digest texte du run : les meilleures offres, rangées par catégorie."
+"orchestrator/job_search/storage/db.py" = "Ouvre la connexion SQLite, crée les tables et applique les migrations de schéma."
+"orchestrator/job_search/storage/reviews.py" = "Écrit et lit les avis humains par critère, dans la table human_reviews."
+"orchestrator/job_search/storage/offers.py" = "Enregistre une offre en base et relit les offres enregistrées."
+"orchestrator/job_search/storage/dedup.py" = "Écarte les offres déjà en base, par source et identifiant ou par empreinte."
+"orchestrator/job_search/sources/fingerprint.py" = "Calcule l'empreinte d'une offre depuis son titre, son entreprise et son lieu."
+"orchestrator/job_search/sources/remotive.py" = "Adapter Remotive : va chercher les offres de développement en télétravail et les traduit en JobOffer."
+"orchestrator/job_search/sources/base.py" = "Définit le schéma neutre JobOffer, les faits extraits et l'interface Source que chaque adapter implémente."
+"orchestrator/job_search/sources/france_travail.py" = "Adapter France Travail : obtient le jeton OAuth2, pagine la recherche d'offres et traduit chaque offre en JobOffer."

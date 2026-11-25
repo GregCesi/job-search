@@ -107,3 +107,11 @@ Une techno qui ne rejoint pas son nom dans le profil est un manque d'alias : il 
 ## Le profil
 
 `profiles/example.yaml` montre le format : compétences notées sur deux échelles (niveau réel et envie), zones géographiques, types de contrat, plafond de séniorité. Le barème de niveau est dans `docs/bareme-niveau.md`. `profiles/alias.yaml` unifie les écritures d'une même techno (« JS », « JavaScript »…).
+
+## Carte du code
+
+La carte est une page autonome où l'on passe des systèmes aux fichiers Python de `api/` et `orchestrator/`, avec pour chaque fichier sa phrase, ce qu'il importe, qui l'importe et les tests qui l'importent ; elle n'est pas dans git, cette ligne la régénère depuis la racine du dépôt puis l'ouvre (macOS) :
+
+```bash
+.venv/bin/python -m outils.carte && open docs/carte/index.html
+```

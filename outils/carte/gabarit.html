@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carte du code — job-search</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --fond: #f6f3ec;
+    --carte: #fffdf8;
+    --encre: #22201c;
+    --doux: #6b655b;
+    --trait: #ddd6c8;
+    --accent: #1f5f8b;
+    --accent-pale: #e3eef6;
+    --alerte: #a2471b;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--fond);
+    color: var(--encre);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;
+    padding: 16px 28px; border-bottom: 1px solid var(--trait); background: var(--carte);
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  #meta { color: var(--doux); font-size: 13px; }
+  #recherche { margin-left: auto; position: relative; }
+  #recherche input {
+    width: 340px; max-width: 80vw; padding: 7px 10px; font: inherit;
+    border: 1px solid var(--trait); border-radius: 6px; background: var(--fond);
+  }
+  #resultats {
+    position: absolute; right: 0; top: 100%; z-index: 2; margin: 4px 0 0; padding: 4px 0;
+    width: 460px; max-width: 90vw; max-height: 60vh; overflow: auto; list-style: none;
+    background: var(--carte); border: 1px solid var(--trait); border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.08);
+  }
+  #resultats:empty { display: none; }
+  #resultats li a { display: block; padding: 5px 12px; }
+  #resultats li a:hover, #resultats li a:focus { background: var(--accent-pale); }
+  #resultats small { display: block; color: var(--doux); font-family: inherit; }
+  nav.ariane { padding: 10px 28px; font-size: 14px; color: var(--doux); }
+  nav.ariane a, nav.ariane span { margin-right: 6px; }
+  nav.ariane .sep { color: var(--trait); }
+  main { padding: 4px 28px 48px; max-width: 1180px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .chemin, #resultats a, li.fichier > a, section.liens a, section.liens span.test {
+    font-family: var(--mono); font-size: 13px;
+  }
+  h2 { font-size: 22px; margin: 12px 0 4px; }
+  h2.chemin { font-size: 18px; word-break: break-all; }
+  h3 { font-size: 15px; margin: 0 0 6px; }
+  .role, .phrase { margin: 4px 0 8px; }
+  .compte, .lignes, .systeme-du-fichier { color: var(--doux); font-size: 13px; margin: 0; }
+  .grille {
+    display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    margin: 12px 0 28px;
+  }
+  article.systeme {
+    background: var(--carte); border: 1px solid var(--trait); border-radius: 8px;
+    padding: 14px 16px; border-top: 4px solid var(--accent);
+  }
+  article.systeme.autres { border-top-color: var(--alerte); }
+  article.systeme h3 a { color: var(--encre); }
+  article.systeme .role { font-size: 14px; }
+  ul.fleches { list-style: none; padding: 0; margin: 8px 0 0; }
+  li.fleche {
+    display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 12px; align-items: center;
+    padding: 4px 0; border-bottom: 1px dashed var(--trait); font-size: 14px;
+  }
+  li.fleche .barre { height: 8px; background: var(--accent); border-radius: 4px; opacity: .55; }
+  ul.fichiers { list-style: none; padding: 0; margin: 10px 0; }
+  li.fichier {
+    padding: 8px 12px; margin-bottom: 6px; background: var(--carte);
+    border: 1px solid var(--trait); border-radius: 6px;
+  }
+  li.fichier .phrase-courte { display: block; color: var(--doux); font-size: 14px; }
+  li.fichier.sans-phrase .phrase-courte, .phrase.sans-phrase { color: var(--alerte); }
+  .colonnes { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  section.liens {
+    background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 12px 14px;
+  }
+  section.liens ul { list-style: none; margin: 0; padding: 0; }
+  section.liens li { padding: 2px 0; word-break: break-all; }
+  section.liens .vide { color: var(--doux); margin: 0; font-size: 14px; }
+  .bloc { margin: 18px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Carte du code de job-search</h1>
+  <span id="meta"></span>
+  <div id="recherche">
+    <input type="search" id="champ" aria-label="Rechercher un fichier"
+           placeholder="Rechercher un fichier (nom, chemin ou phrase)" autocomplete="off">
+    <ul id="resultats"></ul>
+  </div>
+</header>
+<nav class="ariane" aria-label="Fil d'Ariane"></nav>
+<main id="vue"></main>
+<script id="donnees" type="application/json">__DONNEES__</script>
+<script>
+(function () {
+  "use strict";
+  var D = JSON.parse(document.getElementById("donnees").textContent);
+  var SANS_PHRASE = "Pas de phrase pour ce fichier.";
+  var systemes = D.systemes.slice();
+  var autres = { id: D.autres_systeme.id, nom: D.autres_systeme.nom,
+                 role: D.autres_systeme.role, fichiers: D.autres };
+  var tous = systemes.concat([autres]);
+  var parId = {};
+  tous.forEach(function (s) { parId[s.id] = s; });
+
+  function el(tag, attrs, enfants) {
+    var n = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      if (k === "texte") n.textContent = attrs[k];
+      else if (k === "classe") n.className = attrs[k];
+      else n.setAttribute(k, attrs[k]);
+    });
+    (enfants || []).forEach(function (e) { if (e) n.appendChild(e); });
+    return n;
+  }
+  function pluriel(n, mot) { return n + " " + mot + (n === 1 ? "" : "s"); }
+  function lienSysteme(s) { return el("a", { href: "#/systeme/" + encodeURIComponent(s.id), texte: s.nom }); }
+  function lienFichier(c) { return el("a", { href: "#/fichier/" + c, texte: c }); }
+
+  function ariane(etapes) {
+    var nav = document.querySelector("nav.ariane");
+    nav.textContent = "";
+    etapes.forEach(function (e, i) {
+      if (i > 0) nav.appendChild(el("span", { classe: "sep", texte: "›", "aria-hidden": "true" }));
+      if (i < etapes.length - 1) nav.appendChild(el("a", { href: e.href, texte: e.texte }));
+      else nav.appendChild(el("span", { texte: e.texte, "aria-current": "page" }));
+    });
+  }
+
+  function listeFleches(fleches) {
+    var ul = el("ul", { classe: "fleches" });
+    var max = Math.max.apply(null, fleches.map(function (f) { return f.n; }).concat([1]));
+    fleches.forEach(function (f) {
+      var texte = el("span", {}, [lienSysteme(parId[f.de]), document.createTextNode(" → "),
+        lienSysteme(parId[f.vers]), document.createTextNode(" · " + pluriel(f.n, "import"))]);
+      var barre = el("div", { classe: "barre", style: "width:" + Math.max(6, Math.round(120 * f.n / max)) + "px" });
+      ul.appendChild(el("li", { classe: "fleche", "data-de": f.de, "data-vers": f.vers }, [texte, barre]));
+    });
+    return ul;
+  }
+
+  function vueCarte() {
+    ariane([{ texte: "Carte" }]);
+    var grille = el("div", { classe: "grille" });
+    tous.forEach(function (s) {
+      grille.appendChild(el("article", { classe: "systeme" + (s.id === autres.id ? " autres" : "") }, [
+        el("h3", {}, [lienSysteme(s)]),
+        el("p", { classe: "role", texte: s.role }),
+        el("p", { classe: "compte", texte: pluriel(s.fichiers.length, "fichier") })
+      ]));
+    });
+    var blocFleches = el("section", { classe: "bloc" }, [
+      el("h2", { texte: "Flèches entre systèmes" }),
+      el("p", { classe: "compte", texte: "Une flèche compte les fichiers d'un système qui importent un fichier d'un autre (un import par couple de fichiers)." })
+    ]);
+    if (D.fleches.length) blocFleches.appendChild(listeFleches(D.fleches));
+    else blocFleches.appendChild(el("p", { classe: "vide", texte: "Aucune flèche entre systèmes." }));
+    return [el("h2", { texte: "Systèmes" }), grille, blocFleches];
+  }
+
+  function vueSysteme(s) {
+    ariane([{ texte: "Carte", href: "#/" }, { texte: s.nom }]);
+    var ul = el("ul", { classe: "fichiers" });
+    s.fichiers.forEach(function (c) {
+      var f = D.fichiers[c];
+      var sans = f.phrase === SANS_PHRASE;
+      ul.appendChild(el("li", { classe: "fichier" + (sans ? " sans-phrase" : "") }, [
+        lienFichier(c), el("span", { classe: "phrase-courte", texte: f.phrase })
+      ]));
+    });
+    var sortantes = D.fleches.filter(function (f) { return f.de === s.id; });
+    var entrantes = D.fleches.filter(function (f) { return f.vers === s.id; });
+    var parts = [
+      el("h2", { texte: s.nom }),
+      el("p", { classe: "role", texte: s.role }),
+      el("p", { classe: "compte", texte: pluriel(s.fichiers.length, "fichier") }),
+      s.fichiers.length ? ul : el("p", { classe: "vide", texte: "Aucun fichier." })
+    ];
+    if (sortantes.length) parts.push(el("section", { classe: "bloc" }, [el("h3", { texte: "Ce système importe" }), listeFleches(sortantes)]));
+    if (entrantes.length) parts.push(el("section", { classe: "bloc" }, [el("h3", { texte: "Ce système est importé par" }), listeFleches(entrantes)]));
+    return parts;
+  }
+
+  function sectionLiens(titre, chemins, vide, cliquables) {
+    var contenu;
+    if (!chemins.length) contenu = el("p", { classe: "vide", texte: vide });
+    else contenu = el("ul", {}, chemins.map(function (c) {
+      return el("li", {}, [cliquables ? lienFichier(c) : el("span", { classe: "test", texte: c })]);
+    }));
+    return el("section", { classe: "liens" }, [el("h3", { texte: titre + " (" + chemins.length + ")" }), contenu]);
+  }
+
+  function vueFichier(c) {
+    var f = D.fichiers[c];
+    var s = parId[f.systeme];
+    ariane([{ texte: "Carte", href: "#/" }, { texte: s.nom, href: "#/systeme/" + encodeURIComponent(s.id) }, { texte: c }]);
+    return [
+      el("h2", { classe: "chemin", texte: c }),
+      el("p", { classe: "phrase" + (f.phrase === SANS_PHRASE ? " sans-phrase" : ""), texte: f.phrase }),
+      el("p", { classe: "lignes", texte: pluriel(f.lignes, "ligne") }),
+      el("p", { classe: "systeme-du-fichier" }, [document.createTextNode("Système : "), lienSysteme(s)]),
+      el("div", { classe: "colonnes bloc" }, [
+        sectionLiens("Ce qu'il importe", f.importe, "Il n'importe aucun fichier de la carte.", true),
+        sectionLiens("Qui l'importe", f.importe_par, "Aucun fichier de la carte ne l'importe.", true),
+        sectionLiens("Les tests qui l'importent", f.tests, "Aucun test ne l'importe directement.", false)
+      ])
+    ];
+  }
+
+  function afficher() {
+    var h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+    var vue = document.getElementById("vue");
+    var parts;
+    if (h.indexOf("fichier/") === 0 && D.fichiers[h.slice(8)]) parts = vueFichier(h.slice(8));
+    else if (h.indexOf("systeme/") === 0 && parId[h.slice(8)]) parts = vueSysteme(parId[h.slice(8)]);
+    else parts = vueCarte();
+    vue.textContent = "";
+    champ.value = "";
+    resultats.textContent = "";
+    parts.forEach(function (p) { vue.appendChild(p); });
+    window.scrollTo(0, 0);
+  }
+
+  var champ = document.getElementById("champ");
+  var resultats = document.getElementById("resultats");
+  function chercher() {
+    var q = champ.value.trim().toLowerCase();
+    resultats.textContent = "";
+    if (!q) return;
+    Object.keys(D.fichiers).sort().filter(function (c) {
+      return c.toLowerCase().indexOf(q) !== -1 || D.fichiers[c].phrase.toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 30).forEach(function (c) {
+      var a = lienFichier(c);
+      a.appendChild(el("small", { texte: D.fichiers[c].phrase, "aria-hidden": "true" }));
+      a.setAttribute("aria-label", c);
+      resultats.appendChild(el("li", {}, [a]));
+    });
+  }
+  champ.addEventListener("input", chercher);
+  champ.addEventListener("keydown", function (e) {
+    var premier = resultats.querySelector("a");
+    if (e.key === "Enter" && premier) { location.hash = premier.getAttribute("href"); }
+    if (e.key === "Escape") { champ.value = ""; chercher(); }
+  });
+
+  document.getElementById("meta").textContent =
+    "Générée le " + D.genere_le + " · commit " + D.commit + " · " +
+    pluriel(Object.keys(D.fichiers).length, "fichier") + " · " + pluriel(systemes.length, "système");
+  window.addEventListener("hashchange", afficher);
+  afficher();
+})();
+</script>
+</body>
+</html>
