@@ -70,9 +70,7 @@ import { useNotificationsPanelStore } from '~/stores/notificationsPanel'
 type MenuEntry = { label: string; view: CandidateView } | { label: string; to: string }
 
 const MENU: MenuEntry[] = [
-  { label: 'Cibles',    view: 'cibles'   },
-  { label: 'Gaps',      view: 'gaps'     },
-  { label: 'Filet',     view: 'filet'    },
+  { label: 'À postuler', view: 'a_postuler' },
   { label: 'Suivi',     view: 'suivi'    },
   { label: 'Écartées',  view: 'ecartees' },
 ]

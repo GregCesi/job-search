@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useAPostulerStore } from '~/stores/aPostuler'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -372,7 +373,7 @@ export interface Filters {
 }
 
 // Candidat (page /)
-export type CandidateView = 'cibles' | 'gaps' | 'filet' | 'suivi' | 'ecartees'
+export type CandidateView = 'a_postuler' | 'suivi' | 'ecartees'
 // Opérateur (page /operateur)
 export type OperatorView = 'a_traiter' | 'hors_perimetre' | 'texte_manquant' | 'tout'
 
@@ -380,9 +381,9 @@ export type ActiveView = CandidateView | OperatorView
 
 const VIEW_PRESETS: Record<ActiveView, Omit<Partial<Filters>, 'sort' | 'order'> & { sort: string; order: string }> = {
   // Candidat
-  cibles:      { category: 'parfait',     verdict: 'a_trier', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
-  gaps:        { category: 'reve',        verdict: 'a_trier', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
-  filet:       { category: 'atteignable', verdict: 'a_trier', hors_perimetre: false, exclude_ad_language: 'nl', sort: 'seen_candidat,fetched_at', order: 'asc,desc' },
+  // EXE-211 : servie par GET /a-postuler (store aPostuler), pas par GET /offers ;
+  // rang, filtre et tri y sont choisis par l'API, aucun filtre n'est posé ici.
+  a_postuler:  { sort: 'rang', order: 'asc' },
   // EXE-199, critères 2-3 : toutes les retenues, quels que soient catégorie,
   // langue, périmètre et profil de vue — aucun de ces filtres n'est envoyé.
   suivi:       { verdict: 'retenu', sort: 'suivi', order: 'asc' },
@@ -406,8 +407,6 @@ export const useOffersStore = defineStore('offers', () => {
   const filters = ref<Filters>({ ...VIEW_PRESETS.a_traiter })
   const loading = ref(false)
   const checkingExpirations = ref(false)
-  const viewProfileActive = ref(true)
-  const includeRemote = ref(false)
   const traceCounts = ref<Record<string, number>>({})
   // Nombre de candidatures par étape, pour le filtre au-dessus du tableau
   // Suivi (EXE-199, critères 9, 11) — décidé par l'API, jamais recalculé ici.
@@ -453,11 +452,6 @@ export const useOffersStore = defineStore('offers', () => {
       if (filters.value.seen_candidat !== undefined) params.seen_candidat = filters.value.seen_candidat
       if (filters.value.etape !== undefined) params.etape = filters.value.etape
       if (filters.value.q) params.q = filters.value.q
-      // EXE-199, critère 3 : Suivi ne passe jamais par le profil de vue.
-      if (['cibles', 'gaps', 'filet'].includes(activeView.value)) {
-        params.view_profile = viewProfileActive.value
-        if (includeRemote.value) params.include_remote = true
-      }
 
       const data = await $fetch<OfferRow[]>(`${config.public.apiBase}/offers`, { params })
       offers.value = data
@@ -561,16 +555,21 @@ export const useOffersStore = defineStore('offers', () => {
     try {
       const body = offerIds !== undefined ? { offer_ids: offerIds } : undefined
       await $fetch(`${config.public.apiBase}/offers/check-expirations`, { method: 'POST', body })
-      await fetchOffers()
+      await rafraichir()
     } finally {
       checkingExpirations.value = false
     }
   }
 
+  // La vue À postuler a sa propre route (EXE-211) ; les autres lisent GET /offers.
+  function rafraichir() {
+    return activeView.value === 'a_postuler' ? useAPostulerStore().charger() : fetchOffers()
+  }
+
   function setView(view: ActiveView) {
     activeView.value = view
     filters.value = { ...VIEW_PRESETS[view] }
-    fetchOffers()
+    rafraichir()
     if (view === 'suivi') fetchSuiviEtapesCount()
   }
 
@@ -581,8 +580,6 @@ export const useOffersStore = defineStore('offers', () => {
     filters,
     loading,
     checkingExpirations,
-    viewProfileActive,
-    includeRemote,
     traceCounts,
     suiviEtapesCount,
     fetchOffers,

@@ -126,14 +126,10 @@ class TestCritere2Et3VuePresetSuiviSansFiltre:
         assert "'retenu'" in preset
 
     def test_suivi_nest_plus_dans_la_liste_qui_envoie_view_profile(self):
+        # EXE-211 : Cibles, Gaps et Filet, seules vues qui envoyaient le profil
+        # de vue, sont retirées ; plus aucune vue ne l'envoie, Suivi compris.
         texte = OFFERS_STORE.read_text(encoding="utf-8")
-        m = re.search(
-            r"if \(\['cibles', 'gaps', 'filet'(.*?)\]\.includes\(activeView\.value\)\)",
-            texte,
-        )
-        assert m is not None
-        assert "suivi" not in m.group(1)
-        assert "retenues" not in m.group(1)
+        assert "view_profile" not in texte
 
     def test_candidate_view_type_porte_suivi_pas_retenues(self):
         texte = OFFERS_STORE.read_text(encoding="utf-8")

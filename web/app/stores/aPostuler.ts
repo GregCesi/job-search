@@ -1,0 +1,114 @@
+import { defineStore } from 'pinia'
+
+// Liste « À postuler » et file « À étudier » (EXE-211), servies par
+// GET /a-postuler (EXE-210). Rang, ordre, famille, âge, nombres, filtre et tri
+// sont décidés par l'API : le store envoie les choix et garde ce qu'elle rend.
+
+export type FileAPostuler = 'principale' | 'a_etudier'
+export type FamilleCle = 'ia' | 'developpeur' | 'data'
+export type TriAPostuler =
+  | 'rang' | 'entreprise' | 'contrat' | 'lieu' | 'famille' | 'recuperee' | 'atteignabilite'
+
+export interface LigneAPostuler {
+  id: number
+  titre: string
+  entreprise: string
+  lieu: string
+  source: string
+  url: string
+  contrat: string
+  recuperee: string | null
+  jours: number | null
+  famille: string
+  origine_famille: string
+  niveau: string
+  marques: string[]
+  atteignabilite: number
+  technos_connues: string[]
+  technos_absentes: string[]
+  rang: number
+}
+
+export interface NombresAPostuler {
+  file_principale: number
+  file_a_etudier: number
+  familles: Record<string, number>
+  recentes: number
+}
+
+const NOMBRES_VIDES: NombresAPostuler = {
+  file_principale: 0, file_a_etudier: 0, familles: {}, recentes: 0,
+}
+
+export const useAPostulerStore = defineStore('aPostuler', () => {
+  const config = useRuntimeConfig()
+
+  const file = ref<FileAPostuler>('principale')
+  const famille = ref<FamilleCle | null>(null)
+  const recentes = ref(false)
+  const q = ref('')
+  const colonne = ref<TriAPostuler>('rang')
+  const ordre = ref<'asc' | 'desc'>('asc')
+  const lignes = ref<LigneAPostuler[]>([])
+  const nombres = ref<NombresAPostuler>({ ...NOMBRES_VIDES })
+  const loading = ref(false)
+
+  async function charger() {
+    loading.value = true
+    try {
+      const params: Record<string, string | boolean> = {
+        file: file.value,
+        tri: colonne.value,
+        ordre: ordre.value,
+      }
+      if (famille.value) params.famille = famille.value
+      if (recentes.value) params.recentes = true
+      if (q.value.trim()) params.q = q.value.trim()
+      const data = await $fetch<{ lignes: LigneAPostuler[], nombres: NombresAPostuler }>(
+        `${config.public.apiBase}/a-postuler`, { params },
+      )
+      lignes.value = data.lignes
+      nombres.value = data.nombres
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // Les boutons de famille ne valent que pour la file principale (critère 28).
+  function choisirFile(nom: FileAPostuler) {
+    file.value = nom
+    famille.value = null
+    charger()
+  }
+
+  function choisirFamille(cle: FamilleCle | null) {
+    famille.value = cle
+    charger()
+  }
+
+  function basculerRecentes() {
+    recentes.value = !recentes.value
+    charger()
+  }
+
+  function chercher(mot: string) {
+    q.value = mot
+    charger()
+  }
+
+  // Premier clic sur un en-tête : croissant ; reclic : sens inverse.
+  function trier(cle: TriAPostuler) {
+    if (colonne.value === cle) {
+      ordre.value = ordre.value === 'asc' ? 'desc' : 'asc'
+    } else {
+      colonne.value = cle
+      ordre.value = 'asc'
+    }
+    charger()
+  }
+
+  return {
+    file, famille, recentes, q, colonne, ordre, lignes, nombres, loading,
+    charger, choisirFile, choisirFamille, basculerRecentes, chercher, trier,
+  }
+})
