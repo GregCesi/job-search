@@ -20,11 +20,9 @@ sans régénérer (critère 15). GET /lettre/versions rend l'historique, jamais
 réécrit ni tronqué.
 
 Enchaînement (TCK-281, EXE-127) : `launch_lettre_if_ready` est appelé par la fiche
-entreprise (api/fiche.py) dès qu'elle se termine — jamais par un changement de
-profil ni par un rescore. Depuis EXE-195, il ne lance plus qu'après ma demande
-explicite (`decision == 'demandee'`, posée par POST /lettre) : retenir une
-offre ne met plus la lettre en route toute seule (TCK-311, « Lancement au
-geste de retenir »).
+entreprise (api/fiche.py) dès qu'elle se termine, et ne lance qu'après ma demande
+explicite (`decision == 'demandee'`, posée par POST /lettre, EXE-195). Retenir ne
+lance plus la fiche (EXE-212) : POST /lettre la lance elle-même si elle manque.
 
 Modèle (EXE-166) : POST /lettre, /lettre/regenerer et /lettre/ecarter acceptent un
 corps optionnel `{"modele": "sonnet"|"opus"}` ; absent, sonnet. Un autre modèle est
@@ -79,6 +77,7 @@ from orchestrator.job_search.pdf.render import html_to_pdf
 from orchestrator.job_search.pieces_state import mark_changed
 from orchestrator.job_search.suivi import storage as suivi_storage
 
+from . import fiche as fiche_api
 from .db import get_conn
 
 router = APIRouter(prefix="/offers")
@@ -454,11 +453,12 @@ async def create_lettre(
         blocage = blocage_lancement_lettre(fiche_statut, offer_text)
         if blocage == RAISON_TEXTE_MANQUANT:
             raise HTTPException(status_code=409, detail=blocage)
-        if blocage == RAISON_FICHE_NON_TERMINEE:
-            response.status_code = 202
-            return {"statut": "pending", "attente": blocage}
-    await launch_lettre(offer_id, modele)
     response.status_code = 202
+    if blocage == RAISON_FICHE_NON_TERMINEE:
+        if fiche_statut is None:  # EXE-212 : aucune fiche, rien d'autre ne la lance
+            await fiche_api.launch_fiche(offer_id)
+        return {"statut": "pending", "attente": blocage}
+    await launch_lettre(offer_id, modele)
     return {"statut": "pending"}
 
 

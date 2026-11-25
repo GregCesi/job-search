@@ -1,5 +1,6 @@
 """Tests EXE-127 — retenir une offre lance la fiche, le CV puis la lettre, et
-l'API dit où en est chaque pièce (TCK-281).
+l'API dit où en est chaque pièce (TCK-281). Depuis EXE-212, retenir ne lance
+plus que le CV : la fiche part de « Préparer la fiche ».
 
 Aucun test n'appelle un modèle : `query` du SDK Claude Agent (fiche, CV, lettre)
 et la cascade d'identification employeur (Ollama) sont toutes remplacées par des
@@ -329,7 +330,19 @@ async def _scenario_retenir(offer_id):
     await _drain()
 
 
-class TestCritere1FicheEtCvEnCoursSansAutreAppel:
+def _retenir_et_preparer_fiche(offer_id):
+    """EXE-212 : retenir ne lance plus la fiche — les scénarios qui observent la
+    fiche et sa suite retiennent, puis cliquent « Préparer la fiche »."""
+
+    async def _scenario():
+        await api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
+        await fiche_api.create_fiche(offer_id)
+        await _drain()
+
+    asyncio.run(_scenario())
+
+
+class TestCritere1CvEnCoursSansAutreAppel:
     def test_offre_jamais_traitee(
         self, db_path, cv_fixture_paths, lettre_fixture_paths, monkeypatch
     ):
@@ -346,16 +359,16 @@ class TestCritere1FicheEtCvEnCoursSansAutreAppel:
 
         async def _scenario():
             await api_offers.upsert_verdict(offer_id, VerdictIn(status="retenu"))
-            # Synchrone : au retour du PUT verdict, les deux pièces sont déjà
-            # passées en cours, sans autre appel de ma part.
-            assert fiche_api.is_running(offer_id)
+            # Synchrone : au retour du PUT verdict, le CV est déjà passé en
+            # cours ; la fiche ne part plus de ce geste (EXE-212).
+            assert not fiche_api.is_running(offer_id)
             assert cv_api.is_running(offer_id)
-            assert _fiche_row(db_path, offer_id)["statut"] == "pending"
+            assert _fiche_row(db_path, offer_id) is None
             assert _cv_row(db_path, offer_id)["statut"] == "pending"
             await _drain()
 
         asyncio.run(_scenario())
-        assert _fiche_row(db_path, offer_id)["statut"] == "done"
+        assert _fiche_row(db_path, offer_id) is None
         assert _cv_row(db_path, offer_id)["statut"] == "done"
 
 
@@ -407,7 +420,7 @@ class TestCritere3PointsChoisisParSysteme:
             lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
         )
 
-        _retenir(offer_id)
+        _retenir_et_preparer_fiche(offer_id)
 
         row = _lettre_row(db_path, offer_id)
         chosen = json.loads(row["points_choisis_json"])
@@ -426,7 +439,7 @@ class TestCritere4OrigineSysteme:
             lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
         )
 
-        _retenir(offer_id)
+        _retenir_et_preparer_fiche(offer_id)
 
         result = lettre_api.get_lettre(offer_id)
         assert result["points_choisis_origine"] == "systeme"
@@ -444,7 +457,7 @@ class TestCritere5OrigineMoi:
             lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
         )
 
-        _retenir(offer_id)
+        _retenir_et_preparer_fiche(offer_id)
         assert lettre_api.get_lettre(offer_id)["points_choisis_origine"] == "systeme"
 
         lettre_api.set_lettre_points(offer_id, lettre_api.PointsChoisisIn(indices=[1]))
@@ -472,7 +485,7 @@ class TestCritere6FicheSansPointLettreQuandMeme:
             lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
         )
 
-        _retenir(offer_id)
+        _retenir_et_preparer_fiche(offer_id)
 
         assert _fiche_row(db_path, offer_id)["statut"] == "done"
         row = _lettre_row(db_path, offer_id)
@@ -491,7 +504,7 @@ class TestCritere7FicheEchoueSansLettre:
             lettre_service, "generer_lettre_depuis_donnees", _lettre_jamais_appelee()
         )
 
-        _retenir(offer_id)
+        _retenir_et_preparer_fiche(offer_id)
 
         assert _fiche_row(db_path, offer_id)["statut"] == "error"
         assert not lettre_api.is_running(offer_id)
@@ -508,7 +521,7 @@ class TestCritere8FicheEchoueCvTermine:
         monkeypatch.setattr(fiche_service, "query", _make_query(_en_erreur()))
         monkeypatch.setattr(cv_service, "query", _make_query(_cv_ok()))
 
-        _retenir(offer_id)
+        _retenir_et_preparer_fiche(offer_id)
 
         assert _fiche_row(db_path, offer_id)["statut"] == "error"
         assert _cv_row(db_path, offer_id)["statut"] == "done"
@@ -530,7 +543,7 @@ class TestCritere9CvEchoueFicheEtLettreTerminent:
             lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
         )
 
-        _retenir(offer_id)
+        _retenir_et_preparer_fiche(offer_id)
 
         assert _cv_row(db_path, offer_id)["statut"] == "error"
         assert _fiche_row(db_path, offer_id)["statut"] == "done"
@@ -550,7 +563,7 @@ class TestCritere10TexteOffreManquantPasDeLettre:
             lettre_service, "generer_lettre_depuis_donnees", _lettre_jamais_appelee()
         )
 
-        _retenir(offer_id)
+        _retenir_et_preparer_fiche(offer_id)
 
         assert _fiche_row(db_path, offer_id)["statut"] == "done"
         assert not lettre_api.is_running(offer_id)
@@ -570,7 +583,7 @@ class TestCritere11PieceDejaTermineeNonRelancee:
             lettre_service, "generer_lettre_depuis_donnees", _lettre_ok()
         )
 
-        _retenir(offer_id)
+        _retenir_et_preparer_fiche(offer_id)
         fiche_before = dict(_fiche_row(db_path, offer_id))
         cv_before = dict(_cv_row(db_path, offer_id))
         lettre_before = dict(_lettre_row(db_path, offer_id))
@@ -628,7 +641,7 @@ class TestCritere12DeuxAppelsConsecutifs:
             await _drain()
 
         asyncio.run(_scenario())
-        assert compte["fiche"] == 1
+        assert compte["fiche"] == 0  # EXE-212 : retenir ne lance plus la fiche
         assert compte["cv"] == 1
 
 

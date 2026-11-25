@@ -1063,8 +1063,8 @@ async def appliquer_geste_route(offer_id: int, body: GesteIn) -> dict:
         conn.close()
 
     if launch:
-        # Geste de retenir = action explicite de lancement (TCK-281) : la fiche
-        # et le CV partent sans autre appel de ma part.
+        # Geste de retenir = action explicite de lancement (TCK-281) : le CV
+        # part seul, la fiche n'est plus lancée ici (EXE-212).
         await cascade.launch_pieces(offer_id)
     return {"etat": nouvel_etat}
 
@@ -1112,8 +1112,8 @@ async def upsert_verdict(offer_id: int, body: VerdictIn) -> None:
         conn.close()
 
     if launch:
-        # Geste de retenir = action explicite de lancement (TCK-281) : la fiche
-        # et le CV partent sans autre appel de ma part.
+        # Geste de retenir = action explicite de lancement (TCK-281) : le CV
+        # part seul, la fiche n'est plus lancée ici (EXE-212).
         await cascade.launch_pieces(offer_id)
 
 

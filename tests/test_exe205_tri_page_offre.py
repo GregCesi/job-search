@@ -206,8 +206,8 @@ class TestCriteres4a6RetenirParfait:
         expect(page.get_by_text("Génération en cours…")).to_be_visible()
         _assert_pas_recharge(page)
 
-        # Retenir ne lance que la fiche et le CV : la lettre ne part pas.
-        assert appels_modele["fiche"] == [offer_id]
+        # Retenir ne lance que le CV (EXE-212) : ni la fiche ni la lettre.
+        assert appels_modele["fiche"] == []
         assert appels_modele["cv"] == [offer_id]
         assert appels_modele["lettre"] == []
         assert _etat_en_base(db_path, offer_id) == suivi_etats.RETENUE
