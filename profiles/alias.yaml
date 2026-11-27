@@ -29,6 +29,8 @@ aliases:
   reactnative:   [react native]        # TCK-367 : rejeu du jeu de référence
   nuxt:          [nuxtjs, nuxt.js]     # TCK-367 : le profil écrit nuxt, les offres nuxtjs / nuxt.js
   tailwind:      [tailwindcss, tailwind css]   # TCK-367 : idem pour tailwind
+  html:          [html5]               # TCK-324, 26/11/2026 : les offres écrivent html5, le profil html
+  css:           [css3]                # TCK-324, 26/11/2026 : idem pour css
 
   # --- Bases de données ---
   postgresql:    [postgres]
