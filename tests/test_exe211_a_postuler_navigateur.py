@@ -165,7 +165,7 @@ def base(db_path):
         location="Belgique",
         contract="Interim",
         domain="backend",
-        seniority="senior",
+        seniority="intermediate",
         techs=(("python", "core"),),
         jours=30,
         url=URL_SANDER,
@@ -320,7 +320,7 @@ class TestListe:
         _ouvrir(page, front_url)
         expect(_ligne(page, IA_ID)).to_contain_text("junior")
         expect(_ligne(page, DEV_ID)).to_contain_text("intermédiaire")
-        expect(_ligne(page, SANDER_ID)).to_contain_text("senior")
+        expect(_ligne(page, SANDER_ID)).to_contain_text("intermédiaire")
 
     def test_critere_16_atteignabilite(self, page, front_url, base, navigateur_env):
         lignes = {li["id"]: li for li in _api(navigateur_env)["lignes"]}

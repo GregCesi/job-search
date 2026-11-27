@@ -7,21 +7,40 @@ Aucun test ne lit ni n'écrit sous data/, aucun site n'est appelé. Chaque crit�
 change une seule chose à l'offre témoin.
 """
 
-from tests.test_exe210_a_postuler import (  # noqa: F401 (fixtures)
+import pytest
+from fastapi.testclient import TestClient
+
+import orchestrator.job_search.paths as paths
+from tests.test_exe210_a_postuler import (
     DATA,
     DEV,
     IA,
+    PROFIL,
     _dehors,
     _get,
     _ids,
     _ligne,
     _offre,
-    _profil,
-    client,
 )
 
 TROP_SENIOR = "trop senior ?"
 INTERESSANT = "est-ce intéressant ?"
+
+
+@pytest.fixture(autouse=True)
+def _profil(tmp_path, monkeypatch):
+    chemin = tmp_path / "profil_personnel.yaml"
+    chemin.write_text(PROFIL, encoding="utf-8")
+    monkeypatch.setattr(paths, "PROFILE_PATH", chemin)
+    return chemin
+
+
+@pytest.fixture
+def client():
+    import api.main as api_main
+
+    with TestClient(api_main.app) as c:
+        yield c
 
 
 def _motif(client, offer_id) -> str:

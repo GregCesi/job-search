@@ -223,8 +223,9 @@ def test_critere_16_senior_dans_le_titre(client):
 
 
 def test_critere_17_senior_extrait_seulement(client):
+    # EXE-221 (H5 a) : un niveau extrait senior envoie l'offre dans « À étudier ».
     oid = _offre(title="Java Developer", seniority="senior")
-    assert oid in _ids(client)
+    assert oid in _ids(client, "a_etudier")
 
 
 @pytest.mark.parametrize(
@@ -400,14 +401,6 @@ def test_critere_39_ia_avant_developpeur(client):
     dev = _offre(jours=2)
     ia = _ia(jours=10)
     assert _ids(client) == [ia, dev]
-
-
-def test_critere_40_niveau(client):
-    intermediaire = _offre(techs=(("python", "core"), ("cobol", "core")))
-    senior = _offre(seniority="senior", title="Java Developer")
-    lignes = _get(client)["lignes"]
-    assert [li["id"] for li in lignes] == [intermediaire, senior]
-    assert lignes[0]["atteignabilite"] < lignes[1]["atteignabilite"]
 
 
 def test_critere_41_atteignabilite(client):

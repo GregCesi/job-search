@@ -43,6 +43,12 @@ FILE_DE_FAMILLE = {IA: PRINCIPALE, DEVELOPPEUR: PRINCIPALE, DATA: A_ETUDIER}
 # Dans la file principale, « IA et automatisation » passe avant « Développeur ».
 _ORDRE_FAMILLE = {IA: 0, DEVELOPPEUR: 1, DATA: 0}
 
+# Groupes de la file « À étudier » (EXE-221) : la famille décide d'abord, puis le
+# niveau extrait (niveaux de `niveaux_a_etudier`, profiles/a_postuler.yaml).
+TROP_SENIOR = "trop senior ?"
+INTERESSANT = "est-ce intéressant ?"
+GROUPES = (TROP_SENIOR, INTERESSANT)
+
 MARQUE_NEERLANDAIS = "néerlandais en atout"
 
 # Motifs, dans l'ordre où ils sont cherchés (H5) : le premier rencontré est rendu.
@@ -104,6 +110,8 @@ class Ligne:
     technos_connues: list[str] = field(default_factory=list)
     technos_absentes: list[str] = field(default_factory=list)
     rang: int = 0
+    # Groupe de la file « À étudier » (EXE-221) ; None dans la file principale.
+    groupe: str | None = None
     # Les offres de même clé regroupées sous cette ligne (EXE-219) : id et source.
     jumelles: list[dict] = field(default_factory=list)
     # Ce que dit le parcours de candidature (EXE-220).
@@ -429,6 +437,16 @@ def _ligne(
     )
 
 
+def groupe(ligne: Ligne, regles: Regles) -> str | None:
+    """Le groupe de « À étudier » où va la ligne, ou None pour la file principale :
+    un poste data reste « est-ce intéressant ? » quel que soit son niveau (H3)."""
+    if FILE_DE_FAMILLE[ligne.famille] == A_ETUDIER:
+        return INTERESSANT
+    if ligne.niveau in regles.niveaux_a_etudier:
+        return TROP_SENIOR
+    return None
+
+
 def est_recente(ligne: Ligne, regles: Regles) -> bool:
     return ligne.jours is not None and ligne.jours <= regles.jours_recents
 
@@ -444,8 +462,13 @@ def _cle_ordre(ligne: Ligne, regles: Regles) -> tuple:
     )
 
 
-def _ordonner(lignes: list[Ligne], regles: Regles) -> list[Ligne]:
-    lignes = sorted(lignes, key=lambda ligne: _cle_ordre(ligne, regles))
+def _cle_ordre_a_etudier(ligne: Ligne, regles: Regles) -> tuple:
+    """Tranche d'âge, puis atteignabilité (EXE-221, H3)."""
+    return (0 if est_recente(ligne, regles) else 1, -ligne.atteignabilite, ligne.id)
+
+
+def _ordonner(lignes: list[Ligne], regles: Regles, cle=_cle_ordre) -> list[Ligne]:
+    lignes = sorted(lignes, key=lambda ligne: cle(ligne, regles))
     for rang, ligne in enumerate(lignes, start=1):
         ligne.rang = rang
     return lignes
@@ -494,10 +517,12 @@ def classer(
         _ligne(c, jumelles, profil, alias, regles, maintenant)
         for c, jumelles in _sans_doublons(candidates, cles, regles, classement)
     ]
+    for li in lignes:
+        li.groupe = groupe(li, regles)
     classement.principale = _ordonner(
-        [li for li in lignes if FILE_DE_FAMILLE[li.famille] == PRINCIPALE], regles
+        [li for li in lignes if li.groupe is None], regles
     )
     classement.a_etudier = _ordonner(
-        [li for li in lignes if FILE_DE_FAMILLE[li.famille] == A_ETUDIER], regles
+        [li for li in lignes if li.groupe is not None], regles, _cle_ordre_a_etudier
     )
     return classement

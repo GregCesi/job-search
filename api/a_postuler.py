@@ -30,6 +30,7 @@ Tri = Literal[
     "rang", "entreprise", "contrat", "lieu", "famille", "recuperee", "atteignabilite"
 ]
 FAMILLES = {"ia": calcul.IA, "developpeur": calcul.DEVELOPPEUR, "data": calcul.DATA}
+GROUPES = {"trop_senior": calcul.TROP_SENIOR, "interessant": calcul.INTERESSANT}
 
 _CLES_TRI = {
     "rang": lambda li: li.rang,
@@ -73,14 +74,18 @@ def _classement() -> tuple[calcul.Classement, Regles]:
 
 
 def _nombres(classement: calcul.Classement, file: str, regles: Regles) -> dict:
-    """Nombres de la file entière, avant tout filtre (critère 54)."""
-    toutes = classement.principale + classement.a_etudier
+    """Nombres de la file entière, avant tout filtre (critère 54). Les familles
+    comptent la file principale seule, les groupes la file à étudier (EXE-221)."""
     return {
         "file_principale": len(classement.principale),
         "file_a_etudier": len(classement.a_etudier),
         "familles": {
-            nom: sum(1 for li in toutes if li.famille == nom)
+            nom: sum(1 for li in classement.principale if li.famille == nom)
             for nom in FAMILLES.values()
+        },
+        "groupes": {
+            nom: sum(1 for li in classement.a_etudier if li.groupe == nom)
+            for nom in calcul.GROUPES
         },
         "recentes": sum(
             1 for li in classement.file(file) if calcul.est_recente(li, regles)
@@ -92,11 +97,14 @@ def _filtrer(
     lignes: list[calcul.Ligne],
     regles: Regles,
     famille: str | None,
+    groupe: str | None,
     recentes: bool,
     q: str | None,
 ) -> list[calcul.Ligne]:
     if famille is not None:
         lignes = [li for li in lignes if li.famille == FAMILLES[famille]]
+    if groupe is not None:
+        lignes = [li for li in lignes if li.groupe == GROUPES[groupe]]
     if recentes:
         lignes = [li for li in lignes if calcul.est_recente(li, regles)]
     if q:
@@ -113,13 +121,14 @@ def _filtrer(
 def a_postuler(
     file: Literal["principale", "a_etudier"] = calcul.PRINCIPALE,
     famille: Literal["ia", "developpeur", "data"] | None = None,
+    groupe: Literal["trop_senior", "interessant"] | None = None,
     recentes: bool = False,
     q: str | None = None,
     tri: Tri = "rang",
     ordre: Literal["asc", "desc"] = Query("asc"),
 ) -> dict:
     classement, regles = _classement()
-    lignes = _filtrer(classement.file(file), regles, famille, recentes, q)
+    lignes = _filtrer(classement.file(file), regles, famille, groupe, recentes, q)
     cle = _CLES_TRI[tri]
     lignes = sorted(lignes, key=lambda li: (cle(li), li.rang), reverse=ordre == "desc")
     return {
@@ -143,6 +152,7 @@ def a_postuler_offre(offer_id: int) -> dict:
                     "file": nom,
                     "rang": li.rang,
                     "famille": li.famille,
+                    "groupe": li.groupe,
                     "motif": None,
                     "meme_offre_que": None,
                 }
@@ -153,6 +163,7 @@ def a_postuler_offre(offer_id: int) -> dict:
         "file": None,
         "rang": None,
         "famille": None,
+        "groupe": None,
         "motif": classement.motifs[offer_id],
         "meme_offre_que": classement.meme_offre_que.get(offer_id),
     }

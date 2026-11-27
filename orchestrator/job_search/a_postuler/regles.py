@@ -67,6 +67,7 @@ class Regles:
     domaines_techniques: frozenset[str]
     domaines_developpeur: frozenset[str]
     domaines_data: frozenset[str]
+    niveaux_a_etudier: frozenset[str]
     niveaux_premier_groupe: frozenset[str]
     jours_recents: int
     marqueurs_titre: re.Pattern[str] | None
@@ -143,6 +144,7 @@ def charger_regles(chemin: str | Path) -> Regles:
         domaines_techniques=frozenset(domaines.get("techniques", [])),
         domaines_developpeur=frozenset(domaines.get("developpeur", [])),
         domaines_data=frozenset(domaines.get("data", [])),
+        niveaux_a_etudier=frozenset(data.get("niveaux_a_etudier", [])),
         niveaux_premier_groupe=frozenset(data.get("niveaux_premier_groupe", [])),
         jours_recents=int(data["jours_recents"]),
         marqueurs_titre=_marqueurs(data.get("marqueurs_titre", [])),

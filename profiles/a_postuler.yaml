@@ -260,6 +260,13 @@ domaines:
     - data_science
     - data_engineering
 
+# Niveaux extraits qui envoient l'offre dans « À étudier », groupe « trop senior ? »
+# (EXE-221, TCK-393). Une offre « Data et analyse » reste dans le groupe
+# « est-ce intéressant ? » quel que soit son niveau : la famille décide d'abord.
+niveaux_a_etudier:
+  - senior
+  - lead
+
 # Niveaux extraits du premier groupe de l'ordre (avant les autres).
 niveaux_premier_groupe:
   - junior
