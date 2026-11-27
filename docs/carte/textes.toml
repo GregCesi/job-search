@@ -79,6 +79,7 @@ fichiers = [
   "orchestrator/job_search/expiration/fin_de_run.py",
   "orchestrator/job_search/parcours/adresses.py",
   "orchestrator/job_search/parcours/lecture.py",
+  "orchestrator/job_search/parcours/ouverture.py",
   "orchestrator/job_search/parcours/reseau.py",
   "orchestrator/job_search/parcours/service.py",
   "orchestrator/job_search/parcours/stockage.py",
