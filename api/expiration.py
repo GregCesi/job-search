@@ -1,18 +1,22 @@
 """Vérification d'expiration des offres retenues (EXE-76) et, sur désignation
 explicite, de n'importe quelle offre affichée dans un onglet de la vue
-candidat (EXE-78).
+candidat (EXE-78), avec la lecture de leur parcours de candidature (EXE-217).
 
-URL employeur (saisie manuelle) et lancement de la vérification : deux actions
-explicites, jamais déclenchées par l'ingestion, le rescore ou un changement de
-profil. La logique de vérification vit dans
+L'URL employeur se saisit à la main. La vérification part de deux endroits, et
+d'aucun autre : cette route, POST /offers/check-expirations, et la fin d'un run,
+pour les offres des files « À postuler » et « À étudier », qui lance la même
+vérification (EXE-217, H7). Jamais le rescore, un changement de profil, le
+démarrage de l'API ni l'affichage d'une file. La logique de vérification vit dans
 `orchestrator.job_search.expiration.service` ; cette route ne fait que le
 garde-fou "offre retenue" (URL employeur), la résolution des offres désignées,
-et la persistance de l'URL employeur.
+et la persistance de l'URL employeur. GET /offers/{id}/parcours rend le parcours
+lu, sans rien lire.
 """
 
 from fastapi import APIRouter, HTTPException
 
 from orchestrator.job_search.expiration.service import run_expiration_check
+from orchestrator.job_search.parcours.service import parcours_de
 from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
@@ -79,3 +83,16 @@ def check_expirations(body: CheckExpirationsIn | None = None) -> None:
         run_expiration_check(conn, offer_ids=offer_ids)
     finally:
         conn.close()
+
+
+@router.get("/{offer_id}/parcours")
+def get_parcours(offer_id: int) -> dict:
+    """Le parcours de candidature gardé pour l'offre (EXE-217, H5). Ne lit rien."""
+    conn = get_conn()
+    try:
+        rendu = parcours_de(conn, offer_id)
+    finally:
+        conn.close()
+    if rendu is None:
+        raise HTTPException(status_code=404, detail="Offre introuvable")
+    return rendu

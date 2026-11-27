@@ -18,6 +18,7 @@ import pytest
 import api.db as api_db
 import orchestrator.job_search.cv.profil as cv_profil
 import orchestrator.job_search.mail.candidature as mail_candidature
+import orchestrator.job_search.parcours.reseau as parcours_reseau
 import orchestrator.job_search.paths as paths
 import orchestrator.job_search.storage.db as storage_db
 import orchestrator.job_search.tracking.mlflow_tracking  # noqa: F401
@@ -73,3 +74,17 @@ def _isolate_profil_dev_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "CV_PROFIL_DEV_EN_PATH", en)
     monkeypatch.setattr(cv_profil, "CV_PROFIL_DEV_FR_PATH", fr)
     monkeypatch.setattr(cv_profil, "CV_PROFIL_DEV_EN_PATH", en)
+
+
+@pytest.fixture(autouse=True)
+def _parcours_sans_reseau(monkeypatch):
+    """EXE-217, H9 : le point d'appel réseau du parcours de candidature échoue
+    pour CHAQUE test qui ne l'a pas remplacé. Sans ce garde-fou, un test qui lance
+    une vérification ou un run irait lire de vrais sites. L'erreur levée n'est pas
+    une panne réseau : la lecture de l'offre est abandonnée, et ni le run ni le
+    verdict d'expiration n'en sont changés."""
+
+    def _refus(adresse: str):
+        raise RuntimeError(f"réseau interdit en test : {adresse}")
+
+    monkeypatch.setattr(parcours_reseau, "lire", _refus)

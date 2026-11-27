@@ -230,3 +230,17 @@ marqueurs_titre:
   - f/h
   - m/w/x
   - m/f
+
+# Parcours de candidature (EXE-217, H4) : paramètres de suivi retirés des
+# adresses avant de les comparer. Sans casse : tout paramètre qui commence par
+# un préfixe, et chaque nom de la liste.
+parcours:
+  parametres_suivi:
+    prefixes:
+      - utm_
+    noms:
+      - cid
+      - trid
+      - oga
+      - gclid
+      - fbclid

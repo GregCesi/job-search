@@ -230,6 +230,19 @@ def init_db(conn: sqlite3.Connection) -> None:
             created_at       TEXT NOT NULL,
             finished_at      TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS parcours (
+            offer_id         INTEGER PRIMARY KEY REFERENCES offers(id),
+            lu_le            TEXT NOT NULL,  -- date et heure de la dernière lecture (EXE-217)
+            maillons_json    TEXT NOT NULL,  -- JSON array [{site, adresse, reponse}]
+            fin_forme        TEXT NOT NULL,  -- page|mail|formulaire|accueil|inconnue
+            fin_adresse      TEXT,
+            cle              TEXT,           -- clé de comparaison ; NULL pour une fin inconnue
+            lieu_reel        TEXT,
+            code_postal      TEXT,
+            provinces_json   TEXT,           -- JSON array des provinces
+            en_ligne_depuis  TEXT            -- AAAA-MM-JJ
+        );
     """)
     migrate_offers_schema(conn)
     migrate_legacy_extraction_failures(conn)

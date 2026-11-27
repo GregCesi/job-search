@@ -69,13 +69,19 @@ fichiers = [
 [[systeme]]
 id = "offres"
 nom = "Offres"
-role = "Range les offres en base et les sert à l'interface : liste, détail, filtre du profil de vue et expiration."
+role = "Range les offres en base et les sert à l'interface : liste, détail, filtre du profil de vue, expiration et parcours de candidature."
 fichiers = [
   "api/offers.py",
   "api/view_profile.py",
   "api/expiration.py",
   "orchestrator/job_search/storage/offers.py",
   "orchestrator/job_search/expiration/service.py",
+  "orchestrator/job_search/expiration/fin_de_run.py",
+  "orchestrator/job_search/parcours/adresses.py",
+  "orchestrator/job_search/parcours/lecture.py",
+  "orchestrator/job_search/parcours/reseau.py",
+  "orchestrator/job_search/parcours/service.py",
+  "orchestrator/job_search/parcours/stockage.py",
 ]
 
 [[systeme]]

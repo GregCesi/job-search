@@ -1,9 +1,13 @@
 """Vérification d'expiration des offres retenues (EXE-76), étendue à toute
-offre désignée explicitement depuis un onglet de la vue candidat (EXE-78).
+offre désignée explicitement depuis un onglet de la vue candidat (EXE-78), et
+lecture du parcours de candidature des mêmes offres (EXE-217).
 
-Action explicite (jamais déclenchée par l'ingestion, le rescore ou un changement
-de profil) : pour chaque offre concernée, interroge son URL en base et son URL
-employeur optionnelle, et recalcule l'état expiré/non-expiré — cf. H2 du ticket.
+Deux déclencheurs, et aucun autre (EXE-217, H7) : POST /offers/check-expirations,
+et la fin d'un run, pour les offres des files « À postuler » et « À étudier »
+(`expiration.fin_de_run`). Jamais le rescore, un changement de profil, le
+démarrage de l'API ni l'affichage d'une file. Pour chaque offre concernée,
+interroge son URL en base et son URL employeur optionnelle, recalcule l'état
+expiré/non-expiré — cf. H2 d'EXE-76 —, puis lit son parcours de candidature.
 """
 
 import json
@@ -12,6 +16,7 @@ from datetime import datetime, timezone
 
 import requests
 
+from orchestrator.job_search.parcours.service import lire_parcours
 from orchestrator.job_search.suivi import storage as suivi_storage
 
 TIMEOUT_SECONDS = 10
@@ -48,7 +53,8 @@ def run_expiration_check(
 
     `offer_ids=None` (comportement d'avant EXE-78) : seules les offres
     retenues sont vérifiées. `offer_ids` désigné : exactement ces offres, quel
-    que soit leur verdict — l'appelant garantit qu'elles existent toutes."""
+    que soit leur verdict — l'appelant garantit qu'elles existent toutes.
+    Le parcours de candidature des mêmes offres est lu ensuite (EXE-217)."""
     if offer_ids is not None:
         if not offer_ids:
             rows = []
@@ -105,3 +111,4 @@ def run_expiration_check(
             (row["offer_id"], int(expired), now, checks_json),
         )
     conn.commit()
+    lire_parcours(conn, [row["offer_id"] for row in rows])

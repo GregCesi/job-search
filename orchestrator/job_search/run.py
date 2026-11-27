@@ -248,6 +248,7 @@ def main() -> None:
     load_dotenv()
 
     from orchestrator.job_search.digest.formatter import generate_digest
+    from orchestrator.job_search.expiration.fin_de_run import verifier_en_fin_de_run
     from orchestrator.job_search.ingestion import (
         rattraper_filtre_contrat,
         rattraper_offres_categorisees_sans_texte,
@@ -649,6 +650,11 @@ def main() -> None:
         digest_path = REPO_ROOT / f"data/digest_{run_at.strftime('%Y%m%d_%H%M')}.txt"
         digest_path.write_text(digest)
         print(f"[run] digest → {digest_path}")
+
+        # 7. Vérification des files « À postuler » et « À étudier » (EXE-217) —
+        #    expiration et parcours de candidature, après le digest ; elle ne
+        #    fait jamais échouer le run.
+        verifier_en_fin_de_run(conn, profile, alias_table)
 
         stop_reason_final = second_pass_report.stop_reason or "termine"
     except BaseException:
