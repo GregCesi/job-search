@@ -63,10 +63,11 @@ def _classement() -> tuple[calcul.Classement, Regles]:
         offres = stockage.lire_offres(conn)
         expirees = stockage.offres_expirees(conn)
         etats_stockes = suivi_storage.etat_map(conn)
+        cles = stockage.cles_comparaison(conn)
     finally:
         conn.close()
     return calcul.classer(
-        offres, etats_stockes, expirees, regles, profil, alias
+        offres, etats_stockes, expirees, regles, profil, alias, cles
     ), regles
 
 
@@ -130,7 +131,8 @@ def a_postuler(
 
 @router.get("/offers/{offer_id}/a-postuler")
 def a_postuler_offre(offer_id: int) -> dict:
-    """La file et le rang d'une offre, ou le motif qui la laisse dehors."""
+    """La file et le rang d'une offre, ou le motif qui la laisse dehors ; pour un
+    motif venu d'une autre offre, l'id et l'état de cette offre (EXE-219)."""
     classement, _ = _classement()
     for nom in (calcul.PRINCIPALE, calcul.A_ETUDIER):
         for li in classement.file(nom):
@@ -141,6 +143,7 @@ def a_postuler_offre(offer_id: int) -> dict:
                     "rang": li.rang,
                     "famille": li.famille,
                     "motif": None,
+                    "meme_offre_que": None,
                 }
     if offer_id not in classement.motifs:
         raise HTTPException(status_code=404, detail="Offre introuvable")
@@ -150,4 +153,5 @@ def a_postuler_offre(offer_id: int) -> dict:
         "rang": None,
         "famille": None,
         "motif": classement.motifs[offer_id],
+        "meme_offre_que": classement.meme_offre_que.get(offer_id),
     }

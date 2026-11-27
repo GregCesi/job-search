@@ -31,6 +31,7 @@ def ids_des_files(
         charger_regles(paths.A_POSTULER_PATH),
         profil,
         alias,
+        stockage.cles_comparaison(conn),
     )
     return [li.id for li in classement.principale + classement.a_etudier]
 

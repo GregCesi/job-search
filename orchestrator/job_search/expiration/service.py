@@ -13,6 +13,11 @@ est expirée, une offre dont il dit « ouverte » ne l'est plus. Un parcours
 répond. Un parcours qui n'a pas pu être lu laisse le calcul d'avant, sur les
 codes de l'URL de l'offre et de l'URL employeur (cf. H2 d'EXE-76). Dans tous les
 cas, un code 404 ou 410 d'une de ces URL expire l'offre, comme avant.
+
+Une vérification lancée avec des identifiants lit aussi, une seule fois, le
+parcours des offres déjà traitées qui n'ont jamais été lues (EXE-219, H4) : leur
+clé de comparaison sort des files les offres de même lien. Cette lecture ne
+donne aucun verdict d'expiration.
 """
 
 import json
@@ -21,8 +26,10 @@ from datetime import datetime, timezone
 
 import requests
 
+from orchestrator.job_search.parcours import stockage as parcours_stockage
 from orchestrator.job_search.parcours.ouverture import FERMEE, OUVERTE
 from orchestrator.job_search.parcours.service import ouvrir_lecteur, verifier_parcours
+from orchestrator.job_search.suivi import etats
 from orchestrator.job_search.suivi import storage as suivi_storage
 
 TIMEOUT_SECONDS = 10
@@ -85,6 +92,17 @@ def _offres(conn: sqlite3.Connection, offer_ids: list[int] | None) -> list:
     ).fetchall()
 
 
+def _traitees_jamais_lues(conn: sqlite3.Connection, exclues: list[int]) -> list[int]:
+    """Les offres dont l'état n'est pas « à trier » et dont le parcours n'a jamais
+    été lu, hors `exclues` (EXE-219)."""
+    lues = parcours_stockage.offres_lues(conn) | set(exclues)
+    return sorted(
+        oid
+        for oid, etat in suivi_storage.etat_map(conn).items()
+        if etat != etats.A_TRIER and oid not in lues
+    )
+
+
 def _codes(checks: list[tuple[str, int | None, str]]) -> list[int]:
     return [code for _, code, _ in checks if code is not None]
 
@@ -99,7 +117,8 @@ def run_expiration_check(
     retenues sont vérifiées. `offer_ids` désigné : exactement ces offres, quel
     que soit leur verdict — l'appelant garantit qu'elles existent toutes.
     Le parcours de candidature de chaque offre est lu et gardé (EXE-217), et
-    donne le verdict (EXE-218)."""
+    donne le verdict (EXE-218). Avec `offer_ids`, le parcours des offres déjà
+    traitées jamais lues est lu aussi, sans verdict (EXE-219)."""
     lecteur = ouvrir_lecteur()
     for row in _offres(conn, offer_ids):
         offre = [(u, *check_url(u)) for u in (row["offer_url"],) if u]
@@ -126,4 +145,7 @@ def run_expiration_check(
             """,
             (row["offer_id"], int(expired), now, checks_json),
         )
+    if offer_ids is not None:
+        for oid in _traitees_jamais_lues(conn, offer_ids):
+            verifier_parcours(conn, oid, lecteur)
     conn.commit()

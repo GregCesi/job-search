@@ -100,6 +100,8 @@ class Ligne:
     technos_connues: list[str] = field(default_factory=list)
     technos_absentes: list[str] = field(default_factory=list)
     rang: int = 0
+    # Les offres de même clé regroupées sous cette ligne (EXE-219) : id et source.
+    jumelles: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -107,6 +109,9 @@ class Classement:
     principale: list[Ligne]
     a_etudier: list[Ligne]
     motifs: dict[int, str]
+    # Pour un motif « doublon » ou « déjà traitée » venu d'une autre offre
+    # (EXE-219, H4) : l'id et l'état de cette offre.
+    meme_offre_que: dict[int, dict] = field(default_factory=dict)
 
     def file(self, nom: str) -> list[Ligne]:
         return self.principale if nom == PRINCIPALE else self.a_etudier
@@ -304,25 +309,94 @@ def cle_doublon(offre: OffreLue, regles: Regles) -> tuple[str, str]:
     )
 
 
+class _Groupes:
+    """Regroupement des candidates en postes (EXE-219, H4). Deux clés différentes
+    ne se rejoignent jamais ; une candidate sans clé rejoint par entreprise et titre."""
+
+    def __init__(self, cles: list[str | None]) -> None:
+        self.parent = list(range(len(cles)))
+        self.cle = dict(enumerate(cles))
+
+    def racine(self, i: int) -> int:
+        while self.parent[i] != i:
+            self.parent[i] = self.parent[self.parent[i]]
+            i = self.parent[i]
+        return i
+
+    def unir(self, i: int, j: int) -> bool:
+        ri, rj = self.racine(i), self.racine(j)
+        if ri == rj:
+            return True
+        ki, kj = self.cle[ri], self.cle[rj]
+        if ki and kj and ki != kj:
+            return False
+        self.parent[rj] = ri
+        self.cle[ri] = ki or kj
+        return True
+
+
+def _groupes(
+    candidates: list[_Candidate], cles: dict[int, str], regles: Regles
+) -> list[list[_Candidate]]:
+    """Les postes, dans l'ordre de leur première candidate : même clé d'abord, puis
+    même entreprise et même titre quand l'une des deux n'a pas de clé."""
+    cles_c = [cles.get(c.offre.id) for c in candidates]
+    g = _Groupes(cles_c)
+    par_cle: dict[str, int] = {}
+    for i, cle in enumerate(cles_c):
+        if cle is not None:
+            g.unir(par_cle.setdefault(cle, i), i)
+    par_poste: dict[tuple[str, str], list[int]] = {}
+    for i, c in enumerate(candidates):
+        reps = par_poste.setdefault(cle_doublon(c.offre, regles), [])
+        if not any(g.unir(r, i) for r in reps):
+            reps.append(i)
+    postes: dict[int, list[_Candidate]] = {}
+    for i, c in enumerate(candidates):
+        postes.setdefault(g.racine(i), []).append(c)
+    return list(postes.values())
+
+
 def _sans_doublons(
-    candidates: list[_Candidate], regles: Regles, motifs: dict[int, str]
-) -> list[_Candidate]:
-    """Garde, par poste, l'offre récupérée le plus récemment ; les autres sont dehors."""
-    gardees: dict[tuple[str, str], _Candidate] = {}
-    for c in candidates:
-        cle = cle_doublon(c.offre, regles)
-        autre = gardees.get(cle)
-        if autre is None:
-            gardees[cle] = c
-            continue
-        if (c.offre.recuperee or "") > (autre.offre.recuperee or ""):
-            gardees[cle], c = c, autre
-        motifs[c.offre.id] = DOUBLON
-    return list(gardees.values())
+    candidates: list[_Candidate],
+    cles: dict[int, str],
+    regles: Regles,
+    classement: Classement,
+) -> list[tuple[_Candidate, list[_Candidate]]]:
+    """Garde, par poste, l'offre récupérée le plus récemment, avec ses jumelles ;
+    les autres sont dehors, au motif « doublon »."""
+    gardees = []
+    for poste in _groupes(candidates, cles, regles):
+        gardee = max(poste, key=lambda c: c.offre.recuperee or "")
+        autres = [c for c in poste if c is not gardee]
+        for c in autres:
+            classement.motifs[c.offre.id] = DOUBLON
+            classement.meme_offre_que[c.offre.id] = {
+                "id": gardee.offre.id,
+                "etat": etats.A_TRIER,
+            }
+        gardees.append((gardee, autres))
+    return gardees
+
+
+def _traitees_par_cle(
+    offres: list[OffreLue], etats_de: dict[int, str], cles: dict[int, str]
+) -> dict[str, dict]:
+    """Par clé, la première offre déjà traitée qui la porte : son id et son état."""
+    traitees: dict[str, dict] = {}
+    for o in offres:
+        cle, etat = cles.get(o.id), etats_de[o.id]
+        if cle is not None and etat != etats.A_TRIER:
+            traitees.setdefault(cle, {"id": o.id, "etat": etat})
+    return traitees
 
 
 def _ligne(
-    c: _Candidate, profil: Profile, alias: AliasTable, maintenant: datetime
+    c: _Candidate,
+    jumelles: list[_Candidate],
+    profil: Profile,
+    alias: AliasTable,
+    maintenant: datetime,
 ) -> Ligne:
     attein = compute_attainability(c.faits, profil, alias)
     o = c.offre
@@ -343,6 +417,7 @@ def _ligne(
         atteignabilite=attein.score,
         technos_connues=attein.techs_matched,
         technos_absentes=attein.techs_missing,
+        jumelles=[{"id": j.offre.id, "source": j.offre.source} for j in jumelles],
     )
 
 
@@ -375,29 +450,41 @@ def classer(
     regles: Regles,
     profil: Profile,
     alias: AliasTable,
+    cles: dict[int, str],
     maintenant: datetime | None = None,
 ) -> Classement:
-    """Les deux files, rangées, et le motif de chaque offre laissée dehors."""
+    """Les deux files, rangées, et le motif de chaque offre laissée dehors.
+
+    `cles` : la clé de comparaison du parcours lu de chaque offre qui en a une
+    (EXE-219). Une offre à trier dont la clé est celle d'une offre déjà traitée
+    sort au motif « déjà traitée », avant toute autre règle."""
     maintenant = maintenant or datetime.now(timezone.utc)
-    motifs: dict[int, str] = {}
+    classement = Classement(principale=[], a_etudier=[], motifs={})
+    etats_de = {o.id: etats_stockes.get(o.id, etats.A_TRIER) for o in offres}
+    traitees = _traitees_par_cle(offres, etats_de, cles)
     candidates: list[_Candidate] = []
     for offre in offres:
-        etat = etats_stockes.get(offre.id, etats.A_TRIER)
-        resultat = evaluer(offre, etat, offre.id in expirees, regles)
+        etat = etats_de[offre.id]
+        soeur = traitees.get(cles.get(offre.id, "")) if etat == etats.A_TRIER else None
+        resultat = (
+            DEJA_TRAITEE
+            if soeur
+            else evaluer(offre, etat, offre.id in expirees, regles)
+        )
+        if soeur:
+            classement.meme_offre_que[offre.id] = soeur
         if isinstance(resultat, str):
-            motifs[offre.id] = resultat
+            classement.motifs[offre.id] = resultat
         else:
             candidates.append(resultat)
     lignes = [
-        _ligne(c, profil, alias, maintenant)
-        for c in _sans_doublons(candidates, regles, motifs)
+        _ligne(c, jumelles, profil, alias, maintenant)
+        for c, jumelles in _sans_doublons(candidates, cles, regles, classement)
     ]
-    return Classement(
-        principale=_ordonner(
-            [li for li in lignes if FILE_DE_FAMILLE[li.famille] == PRINCIPALE], regles
-        ),
-        a_etudier=_ordonner(
-            [li for li in lignes if FILE_DE_FAMILLE[li.famille] == A_ETUDIER], regles
-        ),
-        motifs=motifs,
+    classement.principale = _ordonner(
+        [li for li in lignes if FILE_DE_FAMILLE[li.famille] == PRINCIPALE], regles
     )
+    classement.a_etudier = _ordonner(
+        [li for li in lignes if FILE_DE_FAMILLE[li.famille] == A_ETUDIER], regles
+    )
+    return classement

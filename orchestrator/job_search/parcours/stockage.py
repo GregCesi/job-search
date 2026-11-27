@@ -56,6 +56,11 @@ def lire(conn: sqlite3.Connection, offer_id: int) -> ParcoursLu | None:
     )
 
 
+def offres_lues(conn: sqlite3.Connection) -> set[int]:
+    """Les offres dont le parcours a déjà été lu au moins une fois (EXE-219)."""
+    return {r[0] for r in conn.execute("SELECT offer_id FROM parcours").fetchall()}
+
+
 def ecrire(
     conn: sqlite3.Connection,
     offer_id: int,

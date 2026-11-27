@@ -177,9 +177,7 @@ def _file(client, oid: int) -> dict:
 def _paire_sander(*, cle_b: str = CLE) -> tuple[int, int]:
     """Critère 1 : eures « Sander », actiris « OFFRE D'UNE AUTRE REGION ».
     La première est récupérée avant la seconde."""
-    a = _offre(
-        title="Laravel Developer", company="Sander", source="eures", jours=4
-    )
+    a = _offre(title="Laravel Developer", company="Sander", source="eures", jours=4)
     b = _offre(
         title="Laravel developer (H/F)",
         company="OFFRE D'UNE AUTRE REGION",
@@ -325,9 +323,7 @@ def test_critere_13_entreprises_differentes_sans_cle(client):
 
 def _traitee_et_soeur(etat: str = "candidature_envoyee") -> tuple[int, int]:
     a = _offre(title="Laravel Developer", company="Sander", source="eures", jours=6)
-    b = _offre(
-        title="Laravel developer", company="OFFRE D'UNE AUTRE REGION", jours=1
-    )
+    b = _offre(title="Laravel developer", company="OFFRE D'UNE AUTRE REGION", jours=1)
     _etat(a, etat)
     _parcours(a, CLE)
     _parcours(b, CLE)
