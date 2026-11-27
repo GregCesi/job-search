@@ -6,8 +6,12 @@
 # d'une lettre ou d'un chiffre. « sous-chaîne » : le terme peut être dans un mot.
 
 lieu:
+  # Zone de recherche (TCK-393, EXE-220) : 40 km au plus de la Grand-Place de
+  # Bruxelles, à vol d'oiseau. Le lieu réel lu par le parcours de candidature
+  # l'emporte sur celui de l'annonce ; sans lieu réel, le lieu de l'annonce décide.
+  #
   # Une commune acceptée (mot entier) fait entrer l'offre. Testée avant les
-  # lieux refusés : « louvain-la-neuve » entre, « louvain » seul sort.
+  # lieux refusés : « charleroi et bruxelles » entre, « charleroi » seul sort.
   communes_acceptees:
     - bruxelles
     - brussels
@@ -44,11 +48,13 @@ lieu:
     - genval
     - mont-saint-guibert
     - tubize
-    - charleroi
-    - gosselies
-    - namur
-    - gembloux
-  # Mot entier. « louvain » ne touche pas « louvain-la-neuve », déjà accepté.
+    - leuven
+    - louvain
+    - malines
+    - mechelen
+    - alost
+    - aalst
+  # Mot entier. Plus de 40 km de Bruxelles : « gembloux » est à 40,2 km.
   lieux_refuses:
     - gand
     - ghent
@@ -56,28 +62,67 @@ lieu:
     - anvers
     - antwerpen
     - antwerp
-    - leuven
-    - louvain
     - bruges
     - brugge
-    - malines
-    - mechelen
     - hasselt
     - courtrai
     - kortrijk
     - ostende
     - oostende
-    - alost
-    - aalst
     - genk
     - liège
     - liege
     - luik
+    - charleroi
+    - gosselies
+    - namur
+    - gembloux
   # Sous-chaîne : sans commune acceptée ni lieu refusé, l'offre entre avec la
   # marque « lieu non précisé ».
   pays_non_precis:
     - belgique
     - belgium
+  # Codes postaux belges de la zone, bornes comprises : un code de quatre
+  # chiffres (espaces retirées) hors de ces plages fait sortir l'offre. Calculées
+  # le 27 novembre 2026 (EXE-220, H5) : distance à la Grand-Place des 1158 codes
+  # postaux belges, gardés à 40,0 km ou moins ; 2020 (Anvers, 39,9 km) retiré à
+  # la main. Changer la distance, c'est recalculer et remplacer cette liste.
+  plages_codes_postaux:
+    - 1000-1348
+    - "1360"
+    - 1370-1982
+    - "2150"
+    - 2220-2221
+    - "2500"
+    - 2530-2890
+    - 3000-3200
+    - 3210-3221
+    - "3320"
+    - 3360-3370
+    - 3384-3390
+    - "6181"
+    - 6210-6211
+    - 6221-6223
+    - 6230-6238
+    - "7060"
+    - 7062-7063
+    - "7090"
+    - 7180-7191
+    - 7830-7860
+    - 7864-7866
+    - 9100-9111
+    - 9140-9150
+    - 9200-9572
+    - "9620"
+    - "9661"
+  # Sans code postal : l'offre sort quand toutes les provinces du parcours sont
+  # dans cette liste. Comparées sans casse ni accents.
+  provinces_refusees:
+    - liège
+    - luxembourg
+  # Jours en ligne au-delà desquels une ligne porte la marque « en ligne depuis
+  # plus de 6 mois » (184 jours la porte, 183 non).
+  jours_en_ligne_max: 183
 
 # Valeur exacte du contrat, sans casse.
 contrats_refuses:

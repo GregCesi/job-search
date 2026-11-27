@@ -32,6 +32,7 @@ def ids_des_files(
         profil,
         alias,
         stockage.cles_comparaison(conn),
+        parcours=stockage.parcours_des_offres(conn),
     )
     return [li.id for li in classement.principale + classement.a_etudier]
 

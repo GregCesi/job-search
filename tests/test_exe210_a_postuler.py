@@ -439,7 +439,7 @@ def test_critere_43_champs(client):
     assert ligne["famille"] == DEV
     assert ligne["origine_famille"]
     assert ligne["niveau"] == "intermediate"
-    assert ligne["marques"] == []
+    assert ligne["marques"] == ["jamais vérifiée"]
 
 
 def test_critere_44_atteignabilite(client):
@@ -514,7 +514,7 @@ def test_critere_50_sept_tris(client):
         jours=1,
         techs=(("python", "core"), ("cobol", "core")),
     )
-    _ia(company="Gamma", contract_type="cdd", location="Namur", jours=5)
+    _ia(company="Gamma", contract_type="cdd", location="Nivelles", jours=5)
     _offre(company="Alpha", contract_type="directhire", location="Bruxelles", jours=9)
     for tri, cle in TRIS.items():
         lignes = _get(client, tri=tri)["lignes"]

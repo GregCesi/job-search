@@ -64,10 +64,11 @@ def _classement() -> tuple[calcul.Classement, Regles]:
         expirees = stockage.offres_expirees(conn)
         etats_stockes = suivi_storage.etat_map(conn)
         cles = stockage.cles_comparaison(conn)
+        parcours = stockage.parcours_des_offres(conn)
     finally:
         conn.close()
     return calcul.classer(
-        offres, etats_stockes, expirees, regles, profil, alias, cles
+        offres, etats_stockes, expirees, regles, profil, alias, cles, parcours=parcours
     ), regles
 
 

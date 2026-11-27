@@ -8,6 +8,7 @@ que les charger et dire si un texte en contient un : aucun mot de la règle n'es
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,11 +35,20 @@ def premiere_sous_chaine(termes: tuple[str, ...], texte: str) -> str | None:
     return next((t for t in termes if t in bas), None)
 
 
+def sans_accents(texte: str) -> str:
+    """Le texte sans casse ni accents, espaces de bord retirées."""
+    decompose = unicodedata.normalize("NFKD", texte.casefold().strip())
+    return "".join(c for c in decompose if not unicodedata.combining(c))
+
+
 @dataclass(frozen=True)
 class Regles:
     communes_acceptees: re.Pattern[str] | None
     lieux_refuses: re.Pattern[str] | None
     pays_non_precis: tuple[str, ...]
+    plages_codes_postaux: tuple[tuple[int, int], ...]
+    provinces_refusees: frozenset[str]
+    jours_en_ligne_max: int | None
     contrats_refuses: frozenset[str]
     titre_stage: re.Pattern[str] | None
     titre_senior: re.Pattern[str] | None
@@ -78,6 +88,15 @@ def _bas(valeurs: list[str] | None) -> tuple[str, ...]:
     return tuple(v.casefold() for v in valeurs or [])
 
 
+def _plages(valeurs: list | None) -> tuple[tuple[int, int], ...]:
+    """« 1000-1348 » ou « 1360 » : bornes comprises. Lève ValueError sur une plage mal écrite."""
+    plages = []
+    for valeur in valeurs or []:
+        debut, _, fin = str(valeur).partition("-")
+        plages.append((int(debut), int(fin or debut)))
+    return tuple(plages)
+
+
 def _marqueurs(termes: list[str]) -> re.Pattern[str] | None:
     """Un marqueur (H/F…), avec ses parenthèses s'il en a (H6)."""
     if not termes:
@@ -87,7 +106,8 @@ def _marqueurs(termes: list[str]) -> re.Pattern[str] | None:
 
 
 def charger_regles(chemin: str | Path) -> Regles:
-    """Lève OSError si le fichier est illisible, yaml.YAMLError ou KeyError s'il est mal formé."""
+    """Lève OSError si le fichier est illisible, yaml.YAMLError, KeyError ou
+    ValueError s'il est mal formé."""
     data = yaml.safe_load(Path(chemin).read_text(encoding="utf-8")) or {}
     lieu = data.get("lieu", {})
     titre = data.get("titre", {})
@@ -98,6 +118,13 @@ def charger_regles(chemin: str | Path) -> Regles:
         communes_acceptees=_mot_entier(lieu.get("communes_acceptees", [])),
         lieux_refuses=_mot_entier(lieu.get("lieux_refuses", [])),
         pays_non_precis=_bas(lieu.get("pays_non_precis")),
+        plages_codes_postaux=_plages(lieu.get("plages_codes_postaux")),
+        provinces_refusees=frozenset(
+            sans_accents(p) for p in lieu.get("provinces_refusees") or []
+        ),
+        jours_en_ligne_max=(
+            int(lieu["jours_en_ligne_max"]) if "jours_en_ligne_max" in lieu else None
+        ),
         contrats_refuses=frozenset(_bas(data.get("contrats_refuses"))),
         titre_stage=_mot_entier(titre.get("stage", [])),
         titre_senior=_mot_entier(titre.get("senior", [])),

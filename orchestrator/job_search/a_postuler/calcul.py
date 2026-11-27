@@ -16,6 +16,11 @@ from datetime import datetime, timezone
 
 from pydantic import ValidationError
 
+from orchestrator.job_search.a_postuler.lieu import (
+    ParcoursFile,
+    juger_lieu,
+    marques_parcours,
+)
 from orchestrator.job_search.a_postuler.regles import (
     Regles,
     premier_mot,
@@ -38,14 +43,13 @@ FILE_DE_FAMILLE = {IA: PRINCIPALE, DEVELOPPEUR: PRINCIPALE, DATA: A_ETUDIER}
 # Dans la file principale, « IA et automatisation » passe avant « Développeur ».
 _ORDRE_FAMILLE = {IA: 0, DEVELOPPEUR: 1, DATA: 0}
 
-MARQUE_LIEU = "lieu non précisé"
 MARQUE_NEERLANDAIS = "néerlandais en atout"
 
 # Motifs, dans l'ordre où ils sont cherchés (H5) : le premier rencontré est rendu.
 DEJA_TRAITEE = "déjà traitée"
 FILTREE = "filtrée à l'ingestion"
 PAS_DE_FAITS = "pas de faits"
-LIEU = "lieu"
+# LIEU, le motif de lieu, vit avec sa règle (a_postuler/lieu.py).
 FREELANCE = "freelance"
 STAGE = "stage ou alternance"
 EXPIREE = "annonce expirée"
@@ -102,6 +106,11 @@ class Ligne:
     rang: int = 0
     # Les offres de même clé regroupées sous cette ligne (EXE-219) : id et source.
     jumelles: list[dict] = field(default_factory=list)
+    # Ce que dit le parcours de candidature (EXE-220).
+    fin_forme: str | None = None
+    fin_adresse: str | None = None
+    en_ligne_depuis: str | None = None
+    verifiee_le: str | None = None
 
 
 @dataclass
@@ -127,6 +136,8 @@ class _Candidate:
     famille: str
     origine: str
     marques: list[str]
+    lieu: str
+    parcours: ParcoursFile | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -156,19 +167,6 @@ def jours_depuis(recuperee: str | None, maintenant: datetime) -> int | None:
     if date.tzinfo is None:
         date = date.replace(tzinfo=timezone.utc)
     return (maintenant - date).days
-
-
-def motif_lieu(lieu: str, regles: Regles) -> tuple[str | None, list[str]]:
-    texte = lieu.casefold().strip()
-    if re.match(r"\d{2}", texte):
-        return LIEU, []
-    if premier_mot(regles.communes_acceptees, texte):
-        return None, []
-    if premier_mot(regles.lieux_refuses, texte):
-        return LIEU, []
-    if premiere_sous_chaine(regles.pays_non_precis, texte):
-        return None, [MARQUE_LIEU]
-    return LIEU, []
 
 
 def motif_neerlandais(
@@ -260,15 +258,17 @@ def evaluer(
     etat: str,
     expiree: bool,
     regles: Regles,
+    parcours: ParcoursFile | None = None,
 ) -> _Candidate | str:
-    """La candidate d'une offre qui passe les refus, ou son motif (H5)."""
+    """La candidate d'une offre qui passe les refus, ou son motif (H5). Le lieu
+    se juge sur le lieu réel du parcours quand il en donne un (EXE-220)."""
     faits = lire_faits(offre.faits_json)
     motif = _motif_avant_faits(offre, etat, faits)
     if motif or faits is None:
         return motif or PAS_DE_FAITS
-    motif, marques = motif_lieu(offre.lieu, regles)
-    if motif:
-        return motif
+    lieu = juger_lieu(offre.lieu, parcours, regles)
+    if lieu.motif:
+        return lieu.motif
     if offre.contrat.casefold().strip() in regles.contrats_refuses:
         return FREELANCE
     if premier_mot(regles.titre_stage, offre.titre):
@@ -290,7 +290,9 @@ def evaluer(
         return FAMILLE
     if nom != IA and premier_mot(regles.titre_cloud_reseau, offre.titre):
         return CLOUD
-    return _Candidate(offre, faits, nom, origine, marques + marques_nl)
+    return _Candidate(
+        offre, faits, nom, origine, lieu.marques + marques_nl, lieu.affiche, parcours
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -396,15 +398,17 @@ def _ligne(
     jumelles: list[_Candidate],
     profil: Profile,
     alias: AliasTable,
+    regles: Regles,
     maintenant: datetime,
 ) -> Ligne:
     attein = compute_attainability(c.faits, profil, alias)
     o = c.offre
+    p = c.parcours
     return Ligne(
         id=o.id,
         titre=o.titre,
         entreprise=o.entreprise,
-        lieu=o.lieu,
+        lieu=c.lieu,
         source=o.source,
         url=o.url,
         contrat=o.contrat,
@@ -413,11 +417,15 @@ def _ligne(
         famille=c.famille,
         origine_famille=c.origine,
         niveau=c.faits.seniority_required.value,
-        marques=c.marques,
+        marques=c.marques + marques_parcours(p, regles, maintenant),
         atteignabilite=attein.score,
         technos_connues=attein.techs_matched,
         technos_absentes=attein.techs_missing,
         jumelles=[{"id": j.offre.id, "source": j.offre.source} for j in jumelles],
+        fin_forme=p.fin_forme if p else None,
+        fin_adresse=p.fin_adresse if p else None,
+        en_ligne_depuis=p.en_ligne_depuis if p else None,
+        verifiee_le=p.verifiee_le if p else None,
     )
 
 
@@ -452,13 +460,16 @@ def classer(
     alias: AliasTable,
     cles: dict[int, str],
     maintenant: datetime | None = None,
+    parcours: dict[int, ParcoursFile] | None = None,
 ) -> Classement:
     """Les deux files, rangées, et le motif de chaque offre laissée dehors.
 
     `cles` : la clé de comparaison du parcours lu de chaque offre qui en a une
     (EXE-219). Une offre à trier dont la clé est celle d'une offre déjà traitée
-    sort au motif « déjà traitée », avant toute autre règle."""
+    sort au motif « déjà traitée », avant toute autre règle. `parcours` : ce que
+    dit le parcours de chaque offre, pour son lieu réel et ses marques (EXE-220)."""
     maintenant = maintenant or datetime.now(timezone.utc)
+    parcours = parcours or {}
     classement = Classement(principale=[], a_etudier=[], motifs={})
     etats_de = {o.id: etats_stockes.get(o.id, etats.A_TRIER) for o in offres}
     traitees = _traitees_par_cle(offres, etats_de, cles)
@@ -469,7 +480,9 @@ def classer(
         resultat = (
             DEJA_TRAITEE
             if soeur
-            else evaluer(offre, etat, offre.id in expirees, regles)
+            else evaluer(
+                offre, etat, offre.id in expirees, regles, parcours.get(offre.id)
+            )
         )
         if soeur:
             classement.meme_offre_que[offre.id] = soeur
@@ -478,7 +491,7 @@ def classer(
         else:
             candidates.append(resultat)
     lignes = [
-        _ligne(c, jumelles, profil, alias, maintenant)
+        _ligne(c, jumelles, profil, alias, regles, maintenant)
         for c, jumelles in _sans_doublons(candidates, cles, regles, classement)
     ]
     classement.principale = _ordonner(

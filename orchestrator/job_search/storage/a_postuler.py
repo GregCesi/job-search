@@ -4,10 +4,12 @@ Lecture seule : rang, famille, file et motif ne s'écrivent jamais en base. L'é
 d'une offre ne se lit pas ici, mais par le module d'états (suivi/storage.py).
 """
 
+import json
 import sqlite3
 
 from orchestrator.job_search.a_postuler.calcul import OffreLue
-from orchestrator.job_search.parcours.lecture import INCONNUE
+from orchestrator.job_search.a_postuler.lieu import ParcoursFile
+from orchestrator.job_search.parcours.lecture import INCONNUE, Depart, depart_possible
 
 
 def lire_offres(conn: sqlite3.Connection) -> list[OffreLue]:
@@ -49,3 +51,30 @@ def cles_comparaison(conn: sqlite3.Connection) -> dict[int, str]:
         (INCONNUE,),
     ).fetchall()
     return {r[0]: r[1] for r in rows}
+
+
+def parcours_des_offres(conn: sqlite3.Connection) -> dict[int, ParcoursFile]:
+    """Ce que les files lisent du parcours de chaque offre (EXE-220) : lu ou non,
+    point de départ, lieu réel, fin, date de mise en ligne et de vérification."""
+    rows = conn.execute(
+        "SELECT o.id, o.source, o.source_id, o.url, p.offer_id, p.lieu_reel, "
+        "p.code_postal, p.provinces_json, p.fin_forme, p.fin_adresse, "
+        "p.en_ligne_depuis, p.verifiee_le "
+        "FROM offers o LEFT JOIN parcours p ON p.offer_id = o.id"
+    ).fetchall()
+    return {
+        r[0]: ParcoursFile(
+            lu=r[4] is not None,
+            adresse=depart_possible(
+                Depart(source=r[1] or "", source_id=r[2] or "", url=r[3] or None)
+            ),
+            lieu_reel=r[5],
+            code_postal=r[6],
+            provinces=tuple(json.loads(r[7] or "[]")),
+            fin_forme=r[8],
+            fin_adresse=r[9],
+            en_ligne_depuis=r[10],
+            verifiee_le=r[11],
+        )
+        for r in rows
+    }

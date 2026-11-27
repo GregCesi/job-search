@@ -116,6 +116,7 @@ fichiers = [
   "api/a_postuler.py",
   "orchestrator/job_search/a_postuler/__init__.py",
   "orchestrator/job_search/a_postuler/calcul.py",
+  "orchestrator/job_search/a_postuler/lieu.py",
   "orchestrator/job_search/a_postuler/regles.py",
   "orchestrator/job_search/storage/a_postuler.py",
 ]
