@@ -15,11 +15,11 @@ hors_stockage = 190
 seuil = 800
 
 [taille.exceptions]
-"web/app/pages/offers/[id].vue" = 2670
+"web/app/pages/offers/[id].vue" = 2658
 "orchestrator/job_search/lettre/boucle.py" = 1568
 "api/offers.py" = 1239
 "orchestrator/job_search/lettre/banc.py" = 930
-"api/lettre.py" = 863
+"api/lettre.py" = 862
 "orchestrator/job_search/lettre/service.py" = 811
 
 [complexite]

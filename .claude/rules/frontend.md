@@ -6,7 +6,9 @@ paths: ["web/**"]
 
 ## VIEW_PRESETS = source de vérité des vues
 
-`stores/offers.ts:VIEW_PRESETS` définit les 6 vues (candidat : cibles/gaps/filet/retenues ; opérateur : a_traiter/hors_perimetre/tout) avec leurs filtres et tri. Toute nouvelle vue = nouvelle entrée dans PRESETS. Jamais de logique de filtrage dans les composants — les composants lisent `filters` depuis le store.
+`stores/offers.ts:VIEW_PRESETS` définit les 7 vues (candidat : a_postuler/suivi/ecartees ; opérateur : a_traiter/hors_perimetre/texte_manquant/tout) avec leurs filtres et tri. Toute nouvelle vue = nouvelle entrée dans PRESETS. Jamais de logique de filtrage dans les composants — les composants lisent `filters` depuis le store.
+
+Exception : la vue À postuler (liste principale et file « À étudier ») ne lit pas `filters`. Elle lit ses choix (file, famille, filtre, tri) dans son propre store, `stores/aPostuler.ts`, servi par `GET /a-postuler` ; rang, ordre et filtrage y sont décidés par l'API, et son entrée dans VIEW_PRESETS ne porte que le tri (EXE-211, TCK-391).
 
 ## Champs dérivés : ne jamais persister
 
