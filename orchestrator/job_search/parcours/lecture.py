@@ -7,6 +7,9 @@ suivies ; chaque adresse traversée fait un maillon, 8 au plus.
 
 Aucun appel de modèle, aucun navigateur : seulement des lectures de pages, par le
 seul point d'appel réseau (`reseau.lire`). Ce qui n'est pas lu reste vide.
+
+La lecture dit aussi si l'offre est encore ouverte (EXE-218) : ce que la source a
+répondu et la page de fin sont jugés par `ouverture`.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from datetime import datetime
 
 import requests
 
+from orchestrator.job_search.parcours import ouverture as ouv
 from orchestrator.job_search.parcours import reseau
 from orchestrator.job_search.parcours.adresses import (
     Suivi,
@@ -46,6 +50,8 @@ _EDITX_ANNONCE = re.compile(
 )
 _HREF = re.compile(r"""href\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
 _BLOC_ACTIRIS = "bloc-emploi__apply"
+# EDITx répond 403 pour une annonce retirée, 404 pour un numéro inconnu (EXE-218, H3).
+_EDITX_FERME = frozenset({403, 404, 410})
 # Le bouton « Postuler » d'Actiris mène à son espace citoyen, jamais à l'employeur (H2).
 _BOUTON_ACTIRIS = "my.actiris.brussels"
 
@@ -74,14 +80,17 @@ class Parcours:
     provinces: list[str] = field(default_factory=list)
     en_ligne_depuis: str | None = None
     panne: bool = False
+    ouverture: str | None = None
+    fermeture: dict | None = None
 
 
 class Lecteur:
     """Une vérification : la politesse (une demi-seconde entre deux requêtes vers
-    le même site) et la liste des paramètres de suivi."""
+    le même site), la liste des paramètres de suivi et les phrases de fermeture."""
 
-    def __init__(self, suivi: Suivi) -> None:
+    def __init__(self, suivi: Suivi, phrases: tuple[str, ...] = ()) -> None:
         self.suivi = suivi
+        self.phrases = phrases
         self._derniere: dict[str, float] = {}
 
     def demander(self, adresse: str) -> reseau.Reponse:
@@ -167,13 +176,53 @@ class Course:
         self.editx: str | None = None
         self.panne = False
         self.lieux: dict = {}
+        self.source_fermee: dict | None = None
+        self.page: ouv.PageLue | None = None
 
     def lire(self) -> Parcours:
+        return self._juger(self._lire())
+
+    def _juger(self, p: Parcours) -> Parcours:
+        """Ordre des signes (H4) : la source, puis la page de fin (code, phrase,
+        renvoi). Un mail, un formulaire ou une page non lue ne se vérifient pas."""
+        if self.source_fermee is not None:
+            p.ouverture, p.fermeture = ouv.FERMEE, self.source_fermee
+        elif self.page is None or p.fin_forme in (MAIL, FORMULAIRE):
+            p.ouverture = ouv.NON_VERIFIABLE
+        else:
+            p.ouverture, p.fermeture = ouv.juger_page(self.page, self.lecteur.phrases)
+            if p.fermeture is not None and p.fermeture["signe"] == ouv.RENVOI:
+                p.fin_forme = PAGE
+                p.fin_adresse = p.cle = self.page.demandee
+        return p
+
+    def _fermer_source(
+        self, signe: str, nom_site: str, rep: reseau.Reponse, phrase: str | None = None
+    ) -> None:
+        if self.source_fermee is None:
+            code = rep.chaine[-1][1]
+            self.source_fermee = ouv.fermeture(signe, nom_site, code, phrase)
+
+    def _source(self, rep: reseau.Reponse | None, nom_site: str, phrases: bool) -> None:
+        """La source ne rend plus l'offre : code 404 ou 410, ou, pour une page
+        d'annonce (Actiris), une phrase de fermeture."""
+        if rep is None:
+            return
+        phrase = (
+            ouv.phrase_trouvee(rep.texte, self.lecteur.phrases) if phrases else None
+        )
+        if rep.chaine[-1][1] in ouv.CODES_FERMES or phrase is not None:
+            self._fermer_source(ouv.SOURCE, nom_site, rep, phrase)
+
+    def _lire(self) -> Parcours:
         if self.depart.source == "eures":
-            rep = self._get(EURES_DETAIL.format(id=self.depart.source_id))
+            adresse = EURES_DETAIL.format(id=self.depart.source_id)
+            rep = self._get(adresse)
+            self._source(rep, site(adresse), phrases=False)
             lien = lien_eures(rep.texte) if rep is not None else None
         elif self.depart.source == "actiris":
             rep = self._get(self.depart.url or "")
+            self._source(rep, site(self.depart.url or ""), phrases=True)
             lien = lien_actiris(rep.texte) if rep is not None else None
         else:
             return self._suivre(self.depart.url or "")
@@ -221,7 +270,8 @@ class Course:
         rep = self._get(lien)
         if rep is None or len(self.maillons) > MAX_MAILLONS:
             return self._fin(INCONNUE)
-        arrivee = rep.chaine[-1][0]
+        arrivee, code = rep.chaine[-1]
+        self.page = ouv.PageLue(self._propre(lien), arrivee, code, rep.texte)
         return self._fin(
             ACCUEIL if est_accueil(arrivee) else PAGE, self._propre(arrivee)
         )
@@ -229,9 +279,13 @@ class Course:
     def _editx(self, lien: str, numero: str) -> Parcours:
         self.editx = numero
         rep = self._get(EDITX_API.format(num=numero), nom_site=site(lien))
+        if rep is not None and rep.chaine[-1][1] in _EDITX_FERME:
+            self._fermer_source(ouv.SOURCE, site(lien), rep)
         data = _json(rep.texte) if rep is not None else None
         if not isinstance(data, dict):
             return self._fin(INCONNUE)
+        if data.get("openToApply") is False:
+            self._fermer_source(ouv.EDITX_FERMEE, site(lien), rep)
         areas = data.get("areas") if isinstance(data.get("areas"), list) else []
         self.lieux = {
             "lieu_reel": _texte(data.get("locality")),

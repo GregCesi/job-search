@@ -17,6 +17,7 @@ from orchestrator.job_search.parcours.lecture import Depart, Parcours
 class ParcoursLu:
     lu_le: str
     parcours: Parcours
+    verifiee_le: str | None = None
 
 
 def lire_depart(conn: sqlite3.Connection, offer_id: int) -> Depart | None:
@@ -31,13 +32,15 @@ def lire_depart(conn: sqlite3.Connection, offer_id: int) -> Depart | None:
 def lire(conn: sqlite3.Connection, offer_id: int) -> ParcoursLu | None:
     row = conn.execute(
         "SELECT lu_le, maillons_json, fin_forme, fin_adresse, cle, lieu_reel, "
-        "code_postal, provinces_json, en_ligne_depuis FROM parcours WHERE offer_id = ?",
+        "code_postal, provinces_json, en_ligne_depuis, ouverture, verifiee_le, "
+        "fermeture_json FROM parcours WHERE offer_id = ?",
         (offer_id,),
     ).fetchone()
     if row is None:
         return None
     return ParcoursLu(
         lu_le=row[0],
+        verifiee_le=row[10],
         parcours=Parcours(
             maillons=json.loads(row[1] or "[]"),
             fin_forme=row[2],
@@ -47,17 +50,26 @@ def lire(conn: sqlite3.Connection, offer_id: int) -> ParcoursLu | None:
             code_postal=row[6],
             provinces=json.loads(row[7] or "[]"),
             en_ligne_depuis=row[8],
+            ouverture=row[9],
+            fermeture=json.loads(row[11]) if row[11] else None,
         ),
     )
 
 
-def ecrire(conn: sqlite3.Connection, offer_id: int, lu_le: str, p: Parcours) -> None:
+def ecrire(
+    conn: sqlite3.Connection,
+    offer_id: int,
+    lu_le: str,
+    p: Parcours,
+    verifiee_le: str | None = None,
+) -> None:
     """Une seconde lecture remplace la première."""
     conn.execute(
         """
         INSERT INTO parcours (offer_id, lu_le, maillons_json, fin_forme, fin_adresse,
-                              cle, lieu_reel, code_postal, provinces_json, en_ligne_depuis)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              cle, lieu_reel, code_postal, provinces_json, en_ligne_depuis,
+                              ouverture, verifiee_le, fermeture_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(offer_id) DO UPDATE SET
             lu_le           = excluded.lu_le,
             maillons_json   = excluded.maillons_json,
@@ -67,7 +79,10 @@ def ecrire(conn: sqlite3.Connection, offer_id: int, lu_le: str, p: Parcours) -> 
             lieu_reel       = excluded.lieu_reel,
             code_postal     = excluded.code_postal,
             provinces_json  = excluded.provinces_json,
-            en_ligne_depuis = excluded.en_ligne_depuis
+            en_ligne_depuis = excluded.en_ligne_depuis,
+            ouverture       = excluded.ouverture,
+            verifiee_le     = excluded.verifiee_le,
+            fermeture_json  = excluded.fermeture_json
         """,
         (
             offer_id,
@@ -80,5 +95,8 @@ def ecrire(conn: sqlite3.Connection, offer_id: int, lu_le: str, p: Parcours) -> 
             p.code_postal,
             json.dumps(p.provinces, ensure_ascii=False),
             p.en_ligne_depuis,
+            p.ouverture,
+            verifiee_le,
+            json.dumps(p.fermeture, ensure_ascii=False) if p.fermeture else None,
         ),
     )

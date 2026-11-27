@@ -241,7 +241,10 @@ def init_db(conn: sqlite3.Connection) -> None:
             lieu_reel        TEXT,
             code_postal      TEXT,
             provinces_json   TEXT,           -- JSON array des provinces
-            en_ligne_depuis  TEXT            -- AAAA-MM-JJ
+            en_ligne_depuis  TEXT,           -- AAAA-MM-JJ
+            ouverture        TEXT,           -- ouverte|fermée|non vérifiable (EXE-218)
+            verifiee_le      TEXT,
+            fermeture_json   TEXT            -- JSON {signe, site, code, phrase}
         );
     """)
     migrate_offers_schema(conn)
@@ -252,6 +255,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     migrate_lettre_versions_schema(conn)
     migrate_ajouts_schema(conn)
     migrate_verdicts_schema(conn)
+    migrate_parcours_schema(conn)
     run_reprise_candidatures(conn)
 
 
@@ -297,6 +301,18 @@ def migrate_verdicts_schema(conn: sqlite3.Connection) -> None:
     }
     if "envoyee_at" not in existing:
         conn.execute("ALTER TABLE verdicts ADD COLUMN envoyee_at TEXT")
+    conn.commit()
+
+
+def migrate_parcours_schema(conn: sqlite3.Connection) -> None:
+    """EXE-218 : l'ouverture lue sur le parcours, sa date et le signe de
+    fermeture — idempotent."""
+    existing = {
+        row[1] for row in conn.execute("PRAGMA table_info(parcours)").fetchall()
+    }
+    for colonne in ("ouverture", "verifiee_le", "fermeture_json"):
+        if colonne not in existing:
+            conn.execute(f"ALTER TABLE parcours ADD COLUMN {colonne} TEXT")
     conn.commit()
 
 

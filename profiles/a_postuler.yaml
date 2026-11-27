@@ -244,3 +244,12 @@ parcours:
       - oga
       - gclid
       - fbclid
+  # Phrases qui valent fermeture (EXE-218, H3), cherchées sans casse dans le
+  # titre et le texte visible de la page de fin, et de la page d'annonce pour
+  # Actiris, hors balises script et style. Compléter la liste ne touche pas au code.
+  phrases_fermeture:
+    - n'est plus disponible
+    - no longer available
+    - has been filled
+    - n'existe pas ou plus
+    - offer not found

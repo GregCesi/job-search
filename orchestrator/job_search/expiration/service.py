@@ -5,9 +5,14 @@ lecture du parcours de candidature des mêmes offres (EXE-217).
 Deux déclencheurs, et aucun autre (EXE-217, H7) : POST /offers/check-expirations,
 et la fin d'un run, pour les offres des files « À postuler » et « À étudier »
 (`expiration.fin_de_run`). Jamais le rescore, un changement de profil, le
-démarrage de l'API ni l'affichage d'une file. Pour chaque offre concernée,
-interroge son URL en base et son URL employeur optionnelle, recalcule l'état
-expiré/non-expiré — cf. H2 d'EXE-76 —, puis lit son parcours de candidature.
+démarrage de l'API ni l'affichage d'une file.
+
+Le verdict vient du parcours (EXE-218) : une offre dont le parcours dit « fermée »
+est expirée, une offre dont il dit « ouverte » ne l'est plus. Un parcours
+« non vérifiable » ne change rien, sauf une URL employeur saisie à la main qui
+répond. Un parcours qui n'a pas pu être lu laisse le calcul d'avant, sur les
+codes de l'URL de l'offre et de l'URL employeur (cf. H2 d'EXE-76). Dans tous les
+cas, un code 404 ou 410 d'une de ces URL expire l'offre, comme avant.
 """
 
 import json
@@ -16,7 +21,8 @@ from datetime import datetime, timezone
 
 import requests
 
-from orchestrator.job_search.parcours.service import lire_parcours
+from orchestrator.job_search.parcours.ouverture import FERMEE, OUVERTE
+from orchestrator.job_search.parcours.service import ouvrir_lecteur, verifier_parcours
 from orchestrator.job_search.suivi import storage as suivi_storage
 
 TIMEOUT_SECONDS = 10
@@ -45,57 +51,67 @@ def compute_expired(status_codes: list[int], previous_expired: bool) -> bool:
     return previous_expired
 
 
+def decider(
+    ouverture: str | None,
+    codes_offre: list[int],
+    codes_employeur: list[int],
+    previous_expired: bool,
+) -> bool:
+    """Le verdict d'expiration, du parcours d'abord (EXE-218)."""
+    if any(code in _CLOSED_CODES for code in codes_offre + codes_employeur):
+        return True
+    if ouverture == FERMEE:
+        return True
+    if ouverture == OUVERTE:
+        return False
+    if ouverture is None:
+        return compute_expired(codes_offre + codes_employeur, previous_expired)
+    return compute_expired(codes_employeur, previous_expired)
+
+
+def _offres(conn: sqlite3.Connection, offer_ids: list[int] | None) -> list:
+    ids = suivi_storage.offer_ids_retenues(conn) if offer_ids is None else offer_ids
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    return conn.execute(
+        f"""
+        SELECT o.id AS offer_id, o.url AS offer_url, e.employer_url, e.expired
+        FROM offers o
+        LEFT JOIN expirations e ON e.offer_id = o.id
+        WHERE o.id IN ({placeholders})
+        """,
+        list(ids),
+    ).fetchall()
+
+
+def _codes(checks: list[tuple[str, int | None, str]]) -> list[int]:
+    return [code for _, code, _ in checks if code is not None]
+
+
 def run_expiration_check(
     conn: sqlite3.Connection, offer_ids: list[int] | None = None
 ) -> None:
-    """Vérifie les URL des offres concernées et persiste l'état recalculé dans
+    """Vérifie les offres concernées et persiste l'état recalculé dans
     `expirations`. Ne touche jamais `offers` ni le tri des offres.
 
     `offer_ids=None` (comportement d'avant EXE-78) : seules les offres
     retenues sont vérifiées. `offer_ids` désigné : exactement ces offres, quel
     que soit leur verdict — l'appelant garantit qu'elles existent toutes.
-    Le parcours de candidature des mêmes offres est lu ensuite (EXE-217)."""
-    if offer_ids is not None:
-        if not offer_ids:
-            rows = []
-        else:
-            placeholders = ",".join("?" for _ in offer_ids)
-            rows = conn.execute(
-                f"""
-                SELECT o.id AS offer_id, o.url AS offer_url, e.employer_url, e.expired
-                FROM offers o
-                LEFT JOIN expirations e ON e.offer_id = o.id
-                WHERE o.id IN ({placeholders})
-                """,
-                offer_ids,
-            ).fetchall()
-    else:
-        retenues = suivi_storage.offer_ids_retenues(conn)
-        if not retenues:
-            rows = []
-        else:
-            placeholders = ",".join("?" for _ in retenues)
-            rows = conn.execute(
-                f"""
-                SELECT o.id AS offer_id, o.url AS offer_url, e.employer_url, e.expired
-                FROM offers o
-                LEFT JOIN expirations e ON e.offer_id = o.id
-                WHERE o.id IN ({placeholders})
-                """,
-                retenues,
-            ).fetchall()
-
-    for row in rows:
-        urls = [u for u in (row["offer_url"], row["employer_url"]) if u]
-        checks = [(u, *check_url(u)) for u in urls]
-        status_codes = [code for _, code, _ in checks if code is not None]
+    Le parcours de candidature de chaque offre est lu et gardé (EXE-217), et
+    donne le verdict (EXE-218)."""
+    lecteur = ouvrir_lecteur()
+    for row in _offres(conn, offer_ids):
+        offre = [(u, *check_url(u)) for u in (row["offer_url"],) if u]
+        employeur = [(u, *check_url(u)) for u in (row["employer_url"],) if u]
+        ouverture = verifier_parcours(conn, row["offer_id"], lecteur)
         previous_expired = bool(row["expired"]) if row["expired"] is not None else False
-        expired = compute_expired(status_codes, previous_expired)
+        expired = decider(ouverture, _codes(offre), _codes(employeur), previous_expired)
         now = datetime.now(timezone.utc).isoformat()
         checks_json = json.dumps(
             [
                 {"url": u, "status_code": code, "checked_at": checked_at}
-                for u, code, checked_at in checks
+                for u, code, checked_at in offre + employeur
             ],
             ensure_ascii=False,
         )
@@ -111,4 +127,3 @@ def run_expiration_check(
             (row["offer_id"], int(expired), now, checks_json),
         )
     conn.commit()
-    lire_parcours(conn, [row["offer_id"] for row in rows])

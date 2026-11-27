@@ -1,9 +1,13 @@
 """Lecture et rendu du parcours de candidature (EXE-217).
 
-`lire_parcours` part uniquement de la vérification (`run_expiration_check`), lancée
-par POST /offers/check-expirations ou par la fin d'un run (H7). Une panne sur une
-offre n'arrête pas la lecture des suivantes ; un site injoignable laisse la fin,
-la clé et le lieu lus auparavant tels quels.
+`verifier_parcours` part uniquement de la vérification (`run_expiration_check`),
+lancée par POST /offers/check-expirations ou par la fin d'un run (H7). Une panne
+sur une offre n'arrête pas la lecture des suivantes ; un site injoignable laisse la
+fin, la clé et le lieu lus auparavant tels quels.
+
+La lecture rend l'ouverture de l'offre (EXE-218) : « ouverte », « fermée » ou
+« non vérifiable ». Une offre constatée fermée que la lecture suivante ne peut pas
+vérifier garde son constat de fermeture.
 """
 
 from __future__ import annotations
@@ -24,6 +28,11 @@ from orchestrator.job_search.parcours.lecture import (
     Lecteur,
     depart_possible,
 )
+from orchestrator.job_search.parcours.ouverture import (
+    FERMEE,
+    NON_VERIFIABLE,
+    charger_phrases,
+)
 
 JAMAIS_LU = "jamais lu"
 SANS_LIEN = "sans lien"
@@ -40,11 +49,14 @@ _CE_QUI_SE_GARDE = (
 )
 
 
-def _lire_une(conn: sqlite3.Connection, offer_id: int, lecteur: Lecteur) -> None:
+def _lire_une(conn: sqlite3.Connection, offer_id: int, lecteur: Lecteur) -> str | None:
     depart = stockage.lire_depart(conn, offer_id)
     if depart is None or not depart_possible(depart):
-        return
+        return None
     parcours = Course(depart, lecteur).lire()
+    constat = parcours.ouverture
+    maintenant = datetime.now(timezone.utc).isoformat()
+    verifiee_le = maintenant
     precedent = stockage.lire(conn, offer_id)
     if (
         parcours.panne
@@ -53,23 +65,42 @@ def _lire_une(conn: sqlite3.Connection, offer_id: int, lecteur: Lecteur) -> None
     ):
         gardes = {nom: getattr(precedent.parcours, nom) for nom in _CE_QUI_SE_GARDE}
         parcours = dataclasses.replace(parcours, **gardes)
-    stockage.ecrire(conn, offer_id, datetime.now(timezone.utc).isoformat(), parcours)
+    if (
+        constat == NON_VERIFIABLE
+        and precedent is not None
+        and precedent.parcours.ouverture == FERMEE
+    ):
+        parcours = dataclasses.replace(
+            parcours, ouverture=FERMEE, fermeture=precedent.parcours.fermeture
+        )
+        verifiee_le = precedent.verifiee_le
+    stockage.ecrire(conn, offer_id, maintenant, parcours, verifiee_le)
+    return constat
 
 
-def lire_parcours(conn: sqlite3.Connection, offer_ids: list[int]) -> None:
-    """Lit le parcours de chaque offre désignée et le garde dans `parcours`."""
+def ouvrir_lecteur() -> Lecteur | None:
+    """Le lecteur d'une vérification, ou None si le fichier des règles est illisible."""
     try:
         suivi = charger_suivi(paths.A_POSTULER_PATH)
+        phrases = charger_phrases(paths.A_POSTULER_PATH)
     except (OSError, yaml.YAMLError) as exc:
-        print(f"[parcours] paramètres de suivi illisibles : {exc}")
-        return
-    lecteur = Lecteur(suivi)
-    for offer_id in offer_ids:
-        try:
-            _lire_une(conn, offer_id, lecteur)
-        except Exception as exc:  # une panne sur une offre n'arrête pas les suivantes
-            print(f"[parcours] offre {offer_id} : lecture abandonnée ({exc})")
-    conn.commit()
+        print(f"[parcours] paramètres du parcours illisibles : {exc}")
+        return None
+    return Lecteur(suivi, phrases)
+
+
+def verifier_parcours(
+    conn: sqlite3.Connection, offer_id: int, lecteur: Lecteur | None
+) -> str | None:
+    """Lit et garde le parcours de l'offre ; rend l'ouverture constatée par cette
+    lecture, ou None si le parcours n'a pas pu être lu."""
+    if lecteur is None:
+        return None
+    try:
+        return _lire_une(conn, offer_id, lecteur)
+    except Exception as exc:  # une panne sur une offre n'arrête pas les suivantes
+        print(f"[parcours] offre {offer_id} : lecture abandonnée ({exc})")
+        return None
 
 
 def rendu(depart: Depart, lu: stockage.ParcoursLu | None) -> dict:
@@ -78,6 +109,9 @@ def rendu(depart: Depart, lu: stockage.ParcoursLu | None) -> dict:
         return {
             "etat": JAMAIS_LU if depart_possible(depart) else SANS_LIEN,
             "lu_le": None,
+            "ouverture": None,
+            "verifiee_le": None,
+            "fermeture": None,
             "maillons": [],
             "fin": None,
             "cle": None,
@@ -90,6 +124,9 @@ def rendu(depart: Depart, lu: stockage.ParcoursLu | None) -> dict:
     return {
         "etat": LU,
         "lu_le": lu.lu_le,
+        "ouverture": p.ouverture,
+        "verifiee_le": lu.verifiee_le,
+        "fermeture": p.fermeture,
         "maillons": p.maillons,
         "fin": {"forme": p.fin_forme, "adresse": p.fin_adresse},
         "cle": p.cle,
