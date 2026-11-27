@@ -6,6 +6,7 @@ import { defineStore } from 'pinia'
 
 export type FileAPostuler = 'principale' | 'a_etudier'
 export type FamilleCle = 'ia' | 'developpeur' | 'data'
+export type GroupeCle = 'trop_senior' | 'interessant'
 export type TriAPostuler =
   | 'rang' | 'entreprise' | 'contrat' | 'lieu' | 'famille' | 'recuperee' | 'atteignabilite'
 
@@ -27,17 +28,27 @@ export interface LigneAPostuler {
   technos_connues: string[]
   technos_absentes: string[]
   rang: number
+  // Groupe de « À étudier » (EXE-221) ; null dans la file principale.
+  groupe: string | null
+  // Offres de même poste regroupées sous la ligne (EXE-219).
+  jumelles: { id: number, source: string }[]
+  // Fin du parcours de candidature et date de mise en ligne (EXE-220).
+  fin_forme: string | null
+  fin_adresse: string | null
+  en_ligne_depuis: string | null
+  verifiee_le: string | null
 }
 
 export interface NombresAPostuler {
   file_principale: number
   file_a_etudier: number
   familles: Record<string, number>
+  groupes: Record<string, number>
   recentes: number
 }
 
 const NOMBRES_VIDES: NombresAPostuler = {
-  file_principale: 0, file_a_etudier: 0, familles: {}, recentes: 0,
+  file_principale: 0, file_a_etudier: 0, familles: {}, groupes: {}, recentes: 0,
 }
 
 export const useAPostulerStore = defineStore('aPostuler', () => {
@@ -45,12 +56,15 @@ export const useAPostulerStore = defineStore('aPostuler', () => {
 
   const file = ref<FileAPostuler>('principale')
   const famille = ref<FamilleCle | null>(null)
+  const groupe = ref<GroupeCle | null>(null)
   const recentes = ref(false)
   const q = ref('')
   const colonne = ref<TriAPostuler>('rang')
   const ordre = ref<'asc' | 'desc'>('asc')
   const lignes = ref<LigneAPostuler[]>([])
   const nombres = ref<NombresAPostuler>({ ...NOMBRES_VIDES })
+  // Nombre d'offres sorties des files, par motif, tel que l'API le rend.
+  const horsFiles = ref<Record<string, number>>({})
   const loading = ref(false)
 
   async function charger() {
@@ -62,22 +76,33 @@ export const useAPostulerStore = defineStore('aPostuler', () => {
         ordre: ordre.value,
       }
       if (famille.value) params.famille = famille.value
+      if (groupe.value) params.groupe = groupe.value
       if (recentes.value) params.recentes = true
       if (q.value.trim()) params.q = q.value.trim()
-      const data = await $fetch<{ lignes: LigneAPostuler[], nombres: NombresAPostuler }>(
-        `${config.public.apiBase}/a-postuler`, { params },
-      )
+      const data = await $fetch<{
+        lignes: LigneAPostuler[]
+        nombres: NombresAPostuler
+        hors_files: Record<string, number>
+      }>(`${config.public.apiBase}/a-postuler`, { params })
       lignes.value = data.lignes
       nombres.value = data.nombres
+      horsFiles.value = data.hors_files
     } finally {
       loading.value = false
     }
   }
 
-  // Les boutons de famille ne valent que pour la file principale (critère 28).
+  // Les boutons de famille ne valent que pour la file principale (critère 28),
+  // ceux de groupe que pour « À étudier », qui s'ouvre sur « Tous » (EXE-222).
   function choisirFile(nom: FileAPostuler) {
     file.value = nom
     famille.value = null
+    groupe.value = null
+    charger()
+  }
+
+  function choisirGroupe(cle: GroupeCle | null) {
+    groupe.value = cle
     charger()
   }
 
@@ -108,7 +133,7 @@ export const useAPostulerStore = defineStore('aPostuler', () => {
   }
 
   return {
-    file, famille, recentes, q, colonne, ordre, lignes, nombres, loading,
-    charger, choisirFile, choisirFamille, basculerRecentes, chercher, trier,
+    file, famille, groupe, recentes, q, colonne, ordre, lignes, nombres, horsFiles, loading,
+    charger, choisirFile, choisirFamille, choisirGroupe, basculerRecentes, chercher, trier,
   }
 })
