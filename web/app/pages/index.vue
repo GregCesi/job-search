@@ -11,8 +11,8 @@
         <span class="text-sm font-semibold text-gray-800 tracking-tight shrink-0">job-search</span>
 
         <!-- Vérification d'expiration (EXE-76/77/78) — les onglets candidat.
-             Suivi vérifie toutes les offres retenues (comportement EXE-77
-             inchangé) ; les autres désignent les offres affichées. -->
+             À postuler et Suivi vérifient tout (EXE-224) ; Écartées désigne
+             les offres affichées. -->
         <button
           v-if="CANDIDATE_VIEWS.includes(store.activeView as CandidateView)"
           :disabled="store.checkingExpirations"
@@ -97,11 +97,10 @@ async function handleSelect(offer: OfferRow) {
   }
 }
 
+// À postuler et Suivi vérifient tout (EXE-224) ; les autres vues, les offres affichées.
 function handleCheckExpirations() {
-  if (store.activeView === 'suivi') {
-    store.checkExpirations()
-  } else if (store.activeView === 'a_postuler') {
-    store.checkExpirations(aPostuler.lignes.map(l => l.id))
+  if (store.activeView === 'suivi' || store.activeView === 'a_postuler') {
+    store.checkExpirations('tout')
   } else {
     store.checkExpirations(store.offers.map(o => o.id))
   }

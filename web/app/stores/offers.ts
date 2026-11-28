@@ -373,6 +373,14 @@ export interface Filters {
 }
 
 // Candidat (page /)
+export interface SuiviAnnonce {
+  id: number
+  ouverture: string | null
+  signe: string | null
+  site: string | null
+  verifiee_le: string | null
+}
+
 export type CandidateView = 'a_postuler' | 'suivi' | 'ecartees'
 // Opérateur (page /operateur)
 export type OperatorView = 'a_traiter' | 'hors_perimetre' | 'texte_manquant' | 'tout'
@@ -411,10 +419,18 @@ export const useOffersStore = defineStore('offers', () => {
   // Nombre de candidatures par étape, pour le filtre au-dessus du tableau
   // Suivi (EXE-199, critères 9, 11) — décidé par l'API, jamais recalculé ici.
   const suiviEtapesCount = ref<Record<string, number>>({})
+  const suiviAnnonces = ref<Record<number, SuiviAnnonce>>({})
 
   async function fetchTraceCounts() {
     const data = await $fetch<Record<string, number>>(`${config.public.apiBase}/traces/counts`)
     traceCounts.value = data
+  }
+
+  // Ce que la vérification a vu de l'annonce de chaque candidature en cours
+  // (EXE-224), par offre, tel que GET /suivi/annonces le rend.
+  async function fetchSuiviAnnonces() {
+    const data = await $fetch<SuiviAnnonce[]>(`${config.public.apiBase}/suivi/annonces`)
+    suiviAnnonces.value = Object.fromEntries(data.map(a => [a.id, a]))
   }
 
   async function fetchSuiviEtapesCount() {
@@ -550,10 +566,13 @@ export const useOffersStore = defineStore('offers', () => {
     await _resyncOffer(id)
   }
 
-  async function checkExpirations(offerIds?: number[]) {
+  // `'tout'` : le corps {"tout": true}, le périmètre de la fin du run (EXE-224).
+  async function checkExpirations(offerIds?: number[] | 'tout') {
     checkingExpirations.value = true
     try {
-      const body = offerIds !== undefined ? { offer_ids: offerIds } : undefined
+      const body = offerIds === 'tout'
+        ? { tout: true }
+        : offerIds !== undefined ? { offer_ids: offerIds } : undefined
       await $fetch(`${config.public.apiBase}/offers/check-expirations`, { method: 'POST', body })
       await rafraichir()
     } finally {
@@ -563,7 +582,9 @@ export const useOffersStore = defineStore('offers', () => {
 
   // La vue À postuler a sa propre route (EXE-211) ; les autres lisent GET /offers.
   function rafraichir() {
-    return activeView.value === 'a_postuler' ? useAPostulerStore().charger() : fetchOffers()
+    if (activeView.value === 'a_postuler') return useAPostulerStore().charger()
+    if (activeView.value === 'suivi') return Promise.all([fetchOffers(), fetchSuiviAnnonces()])
+    return fetchOffers()
   }
 
   function setView(view: ActiveView) {
@@ -582,6 +603,7 @@ export const useOffersStore = defineStore('offers', () => {
     checkingExpirations,
     traceCounts,
     suiviEtapesCount,
+    suiviAnnonces,
     fetchOffers,
     fetchTraceCounts,
     fetchSuiviEtapesCount,

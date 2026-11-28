@@ -47,7 +47,19 @@
             @click="$emit('select', offer)"
           >
             <td class="px-3 py-3 whitespace-nowrap">
-              <VerdictBadge :tri="offer.tri" :etape="offer.etape" :revue="offer.revue_hors_perimetre" />
+              <div class="flex items-center gap-1.5">
+                <VerdictBadge :tri="offer.tri" :etape="offer.etape" :revue="offer.revue_hors_perimetre" />
+                <span
+                  v-if="offer.expired"
+                  class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium"
+                >
+                  Expiré
+                </span>
+                <!-- Signe vu par la vérification, rendu par GET /suivi/annonces (EXE-224). -->
+                <span v-if="annonceVue(offer.id)" class="text-xs text-gray-500">
+                  {{ annonceVue(offer.id) }}
+                </span>
+              </div>
             </td>
             <td class="px-3 py-3 whitespace-nowrap">{{ offer.company ?? '—' }}</td>
             <td class="px-3 py-3 max-w-xs">
@@ -196,6 +208,7 @@
 import { useOffersStore } from '~/stores/offers'
 
 import type { OfferRow } from '~/stores/offers'
+import { jourDeBruxelles } from '~/utils/jourDeBruxelles'
 defineEmits<{ select: [offer: OfferRow] }>()
 const props = withDefaults(defineProps<{ selectedId?: number; mode?: 'candidat' | 'operateur' }>(), { mode: 'candidat' })
 
@@ -241,6 +254,14 @@ const etapeChips = computed(() => {
   }
   return chips
 })
+
+// « <signe>, vue le JJ/MM/AAAA » quand l'API rend un signe de fermeture (H4).
+function annonceVue(id: number): string {
+  const a = store.suiviAnnonces[id]
+  if (!a?.signe) return ''
+  const jour = jourDeBruxelles(a.verifiee_le)
+  return jour ? `${a.signe}, vue le ${jour}` : a.signe
+}
 
 function isEtapeActive(key: string | null): boolean {
   return (store.filters.etape ?? null) === key

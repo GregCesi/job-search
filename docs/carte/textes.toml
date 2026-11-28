@@ -278,6 +278,7 @@ fichiers = [
 "web/app/components/OfferSidePanel.vue" = "Affiche le résumé d'une offre dans la page de l'offre : titre, entreprise, lieu et informations de l'annonce."
 "web/app/components/OffersTable.vue" = "Affiche le tableau des offres d'une vue, avec ses colonnes de suivi et son filtre par étape."
 "web/app/components/PieceReadyToggle.vue" = "Affiche l'interrupteur « Prête » d'une pièce et émet un événement à chaque bascule."
+"web/app/components/SortiesPanneau.vue" = "Affiche sous la liste « À postuler » les offres que la vérification a sorties de la file affichée, avec leur raison, leur preuve et leur date, et remet une offre dans la liste au clic."
 "web/app/components/TriGestes.vue" = "Affiche les boutons de tri d'une offre, d'après les gestes rendus par l'API pour cette offre."
 "web/app/components/VerdictBadge.vue" = "Affiche le tri ou l'étape d'une offre et sa revue hors périmètre, côte à côte."
 "web/app/stores/aPostuler.ts" = "Charge la liste « À postuler » et la file « À étudier » depuis GET /a-postuler et garde ce que l'API rend."
@@ -287,6 +288,7 @@ fichiers = [
 "web/app/stores/pieceNotifications.ts" = "Interroge GET /avancement à intervalles et produit les notifications d'avancement des pièces des offres retenues."
 "web/app/stores/traces.ts" = "Charge les traces d'extraction et leurs versions, et enregistre la note portée sur une trace."
 "web/app/utils/categorie.ts" = "Donne le libellé et la couleur d'affichage d'une catégorie d'offre."
+"web/app/utils/jourDeBruxelles.ts" = "Affiche une date rendue par l'API au format JJ/MM/AAAA, au jour de Bruxelles."
 
 # ── Vue d'ensemble (EXE-215) ─────────────────────────────────────────────────
 # Sept blocs, de l'écran à la base, et les flèches qui les relient. `lien` est

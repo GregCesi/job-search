@@ -447,7 +447,9 @@ class TestPanneau:
         expect(_sortie(page, EXP_ETUDE)).to_have_count(0)
         expect(_bouton(page, "À étudier (0)")).to_be_visible()
         _bouton(page, "À étudier (0)").click()
-        _ouvrir_sorties(page, 1)
+        # Le panneau ouvert le reste d'une file à l'autre.
+        expect(_bouton(page, "Sorties (1)")).to_be_visible()
+        expect(_panneau(page).locator("li")).to_have_count(1)
         expect(_sortie(page, EXP_ETUDE)).to_be_visible()
         expect(_sortie(page, EXP1)).to_have_count(0)
 

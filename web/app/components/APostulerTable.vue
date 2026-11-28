@@ -151,6 +151,9 @@
         Chargement…
       </div>
     </div>
+
+    <!-- Sorties de la file affichée, sous la liste (EXE-224). -->
+    <SortiesPanneau />
   </div>
 </template>
 

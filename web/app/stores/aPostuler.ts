@@ -47,6 +47,26 @@ export interface NombresAPostuler {
   recentes: number
 }
 
+// Une offre que la vérification a sortie d'une file (EXE-223), telle que
+// GET /a-postuler/sorties la rend : motif, signe, preuve et date viennent de l'API.
+export interface SortieAPostuler {
+  id: number
+  titre: string
+  entreprise: string
+  source: string
+  file: FileAPostuler
+  motif: string
+  signe: string | null
+  site: string | null
+  code: number | null
+  phrase: string | null
+  lieu_reel: string | null
+  code_postal: string | null
+  meme_offre_que: { id: number, titre: string, etat: string | null } | null
+  preuve: string
+  verifiee_le: string | null
+}
+
 const NOMBRES_VIDES: NombresAPostuler = {
   file_principale: 0, file_a_etudier: 0, familles: {}, groupes: {}, recentes: 0,
 }
@@ -65,10 +85,31 @@ export const useAPostulerStore = defineStore('aPostuler', () => {
   const nombres = ref<NombresAPostuler>({ ...NOMBRES_VIDES })
   // Nombre d'offres sorties des files, par motif, tel que l'API le rend.
   const horsFiles = ref<Record<string, number>>({})
+  // Sorties de la vérification, dans l'ordre de l'API (EXE-224) ; le panneau
+  // est fermé à l'ouverture de la page.
+  const sorties = ref<SortieAPostuler[]>([])
+  const panneauSorties = ref(false)
+  const sortiesDeLaFile = computed(() => sorties.value.filter(s => s.file === file.value))
   const loading = ref(false)
+
+  async function chargerSorties() {
+    sorties.value = await $fetch<SortieAPostuler[]>(`${config.public.apiBase}/a-postuler/sorties`)
+  }
+
+  function basculerSorties() {
+    panneauSorties.value = !panneauSorties.value
+  }
+
+  // Seul le clic sur « Remettre dans la liste » l'appelle ; liste et panneau se
+  // rechargent ensuite.
+  async function remettre(id: number) {
+    await $fetch(`${config.public.apiBase}/offers/${id}/remise`, { method: 'POST' })
+    await charger()
+  }
 
   async function charger() {
     loading.value = true
+    const sortiesLues = chargerSorties()
     try {
       const params: Record<string, string | boolean> = {
         file: file.value,
@@ -87,6 +128,7 @@ export const useAPostulerStore = defineStore('aPostuler', () => {
       lignes.value = data.lignes
       nombres.value = data.nombres
       horsFiles.value = data.hors_files
+      await sortiesLues
     } finally {
       loading.value = false
     }
@@ -134,6 +176,7 @@ export const useAPostulerStore = defineStore('aPostuler', () => {
 
   return {
     file, famille, groupe, recentes, q, colonne, ordre, lignes, nombres, horsFiles, loading,
+    sorties, sortiesDeLaFile, panneauSorties, basculerSorties, remettre,
     charger, choisirFile, choisirFamille, choisirGroupe, basculerRecentes, chercher, trier,
   }
 })
