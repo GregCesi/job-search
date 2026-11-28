@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 
 from orchestrator.job_search.a_postuler.lieu import (
+    LieuJuge,
     ParcoursFile,
     juger_lieu,
     marques_parcours,
@@ -50,6 +51,8 @@ INTERESSANT = "est-ce intéressant ?"
 GROUPES = (TROP_SENIOR, INTERESSANT)
 
 MARQUE_NEERLANDAIS = "néerlandais en atout"
+# Une offre sortie par la vérification et remise à la main (EXE-223).
+MARQUE_REMISE = "remise à la main"
 
 # Motifs, dans l'ordre où ils sont cherchés (H5) : le premier rencontré est rendu.
 DEJA_TRAITEE = "déjà traitée"
@@ -146,6 +149,7 @@ class _Candidate:
     marques: list[str]
     lieu: str
     parcours: ParcoursFile | None = None
+    remise: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -261,27 +265,40 @@ def _motif_avant_faits(
     return None
 
 
+def _juger_lieu(
+    offre: OffreLue, parcours: ParcoursFile | None, regles: Regles, remise: bool
+) -> LieuJuge:
+    """Le lieu jugé ; pour une offre remise à la main, le motif « lieu » tiré du
+    lieu réel ne s'applique plus, celui du lieu d'annonce reste (EXE-223, H3)."""
+    lieu = juger_lieu(offre.lieu, parcours, regles)
+    if remise and lieu.motif and not juger_lieu(offre.lieu, None, regles).motif:
+        return LieuJuge(lieu.affiche, None, lieu.marques)
+    return lieu
+
+
 def evaluer(
     offre: OffreLue,
     etat: str,
     expiree: bool,
     regles: Regles,
     parcours: ParcoursFile | None = None,
+    remise: bool = False,
 ) -> _Candidate | str:
     """La candidate d'une offre qui passe les refus, ou son motif (H5). Le lieu
-    se juge sur le lieu réel du parcours quand il en donne un (EXE-220)."""
+    se juge sur le lieu réel du parcours quand il en donne un (EXE-220). Une offre
+    remise à la main n'est plus tenue pour expirée (EXE-223)."""
     faits = lire_faits(offre.faits_json)
     motif = _motif_avant_faits(offre, etat, faits)
     if motif or faits is None:
         return motif or PAS_DE_FAITS
-    lieu = juger_lieu(offre.lieu, parcours, regles)
+    lieu = _juger_lieu(offre, parcours, regles, remise)
     if lieu.motif:
         return lieu.motif
     if offre.contrat.casefold().strip() in regles.contrats_refuses:
         return FREELANCE
     if premier_mot(regles.titre_stage, offre.titre):
         return STAGE
-    if expiree:
+    if expiree and not remise:
         return EXPIREE
     if (offre.langue_annonce or "").casefold() == "nl":
         return ANNONCE_NL
@@ -298,8 +315,9 @@ def evaluer(
         return FAMILLE
     if nom != IA and premier_mot(regles.titre_cloud_reseau, offre.titre):
         return CLOUD
+    marques = lieu.marques + marques_nl + ([MARQUE_REMISE] if remise else [])
     return _Candidate(
-        offre, faits, nom, origine, lieu.marques + marques_nl, lieu.affiche, parcours
+        offre, faits, nom, origine, marques, lieu.affiche, parcours, remise
     )
 
 
@@ -374,9 +392,11 @@ def _sans_doublons(
     classement: Classement,
 ) -> list[tuple[_Candidate, list[_Candidate]]]:
     """Garde, par poste, l'offre récupérée le plus récemment, avec ses jumelles ;
-    les autres sont dehors, au motif « doublon »."""
-    gardees = []
-    for poste in _groupes(candidates, cles, regles):
+    les autres sont dehors, au motif « doublon ». Une offre remise à la main garde
+    sa ligne, seule (EXE-223)."""
+    gardees = [(c, []) for c in candidates if c.remise]
+    autres_candidates = [c for c in candidates if not c.remise]
+    for poste in _groupes(autres_candidates, cles, regles):
         gardee = max(poste, key=lambda c: c.offre.recuperee or "")
         autres = [c for c in poste if c is not gardee]
         for c in autres:
@@ -484,27 +504,41 @@ def classer(
     cles: dict[int, str],
     maintenant: datetime | None = None,
     parcours: dict[int, ParcoursFile] | None = None,
+    remises: set[int] | None = None,
 ) -> Classement:
     """Les deux files, rangées, et le motif de chaque offre laissée dehors.
 
     `cles` : la clé de comparaison du parcours lu de chaque offre qui en a une
     (EXE-219). Une offre à trier dont la clé est celle d'une offre déjà traitée
     sort au motif « déjà traitée », avant toute autre règle. `parcours` : ce que
-    dit le parcours de chaque offre, pour son lieu réel et ses marques (EXE-220)."""
+    dit le parcours de chaque offre, pour son lieu réel et ses marques (EXE-220).
+    `remises` : les offres remises à la main, que l'expiration, le lieu réel, le
+    doublon et la clé d'une offre déjà traitée ne sortent plus (EXE-223, H3)."""
     maintenant = maintenant or datetime.now(timezone.utc)
     parcours = parcours or {}
+    remises = remises or set()
     classement = Classement(principale=[], a_etudier=[], motifs={})
     etats_de = {o.id: etats_stockes.get(o.id, etats.A_TRIER) for o in offres}
     traitees = _traitees_par_cle(offres, etats_de, cles)
     candidates: list[_Candidate] = []
     for offre in offres:
         etat = etats_de[offre.id]
-        soeur = traitees.get(cles.get(offre.id, "")) if etat == etats.A_TRIER else None
+        remise = offre.id in remises
+        soeur = (
+            traitees.get(cles.get(offre.id, ""))
+            if etat == etats.A_TRIER and not remise
+            else None
+        )
         resultat = (
             DEJA_TRAITEE
             if soeur
             else evaluer(
-                offre, etat, offre.id in expirees, regles, parcours.get(offre.id)
+                offre,
+                etat,
+                offre.id in expirees,
+                regles,
+                parcours.get(offre.id),
+                remise,
             )
         )
         if soeur:

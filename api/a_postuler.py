@@ -15,12 +15,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import ValidationError
 
 import orchestrator.job_search.paths as paths
-from orchestrator.job_search.a_postuler import calcul
+from orchestrator.job_search.a_postuler import calcul, sorties
 from orchestrator.job_search.a_postuler.regles import Regles, charger_regles
-from orchestrator.job_search.matching.profile import load_profile
-from orchestrator.job_search.scoring.aliases import load_alias_table
+from orchestrator.job_search.matching.profile import Profile, load_profile
+from orchestrator.job_search.scoring.aliases import AliasTable, load_alias_table
 from orchestrator.job_search.storage import a_postuler as stockage
-from orchestrator.job_search.suivi import storage as suivi_storage
 
 from .db import get_conn
 
@@ -43,7 +42,8 @@ _CLES_TRI = {
 }
 
 
-def _classement() -> tuple[calcul.Classement, Regles]:
+def charger() -> tuple[sorties.Entrees, Regles, Profile, AliasTable]:
+    """Ce que les files lisent : la base, la règle des files, le profil, les alias."""
     try:
         profil, _ = load_profile(paths.PROFILE_PATH)
     except (OSError, yaml.YAMLError, ValidationError, TypeError, AttributeError):
@@ -61,16 +61,15 @@ def _classement() -> tuple[calcul.Classement, Regles]:
     alias = load_alias_table(paths.ALIAS_PATH)
     conn = get_conn()
     try:
-        offres = stockage.lire_offres(conn)
-        expirees = stockage.offres_expirees(conn)
-        etats_stockes = suivi_storage.etat_map(conn)
-        cles = stockage.cles_comparaison(conn)
-        parcours = stockage.parcours_des_offres(conn)
+        entrees = stockage.entrees(conn)
     finally:
         conn.close()
-    return calcul.classer(
-        offres, etats_stockes, expirees, regles, profil, alias, cles, parcours=parcours
-    ), regles
+    return entrees, regles, profil, alias
+
+
+def classement_des_files() -> tuple[calcul.Classement, Regles]:
+    entrees, regles, profil, alias = charger()
+    return sorties.classer(entrees, regles, profil, alias), regles
 
 
 def _nombres(classement: calcul.Classement, file: str, regles: Regles) -> dict:
@@ -127,7 +126,7 @@ def a_postuler(
     tri: Tri = "rang",
     ordre: Literal["asc", "desc"] = Query("asc"),
 ) -> dict:
-    classement, regles = _classement()
+    classement, regles = classement_des_files()
     lignes = _filtrer(classement.file(file), regles, famille, groupe, recentes, q)
     cle = _CLES_TRI[tri]
     lignes = sorted(lignes, key=lambda li: (cle(li), li.rang), reverse=ordre == "desc")
@@ -143,7 +142,7 @@ def a_postuler(
 def a_postuler_offre(offer_id: int) -> dict:
     """La file et le rang d'une offre, ou le motif qui la laisse dehors ; pour un
     motif venu d'une autre offre, l'id et l'état de cette offre (EXE-219)."""
-    classement, _ = _classement()
+    classement, _ = classement_des_files()
     for nom in (calcul.PRINCIPALE, calcul.A_ETUDIER):
         for li in classement.file(nom):
             if li.id == offer_id:

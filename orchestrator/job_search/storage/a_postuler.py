@@ -9,7 +9,10 @@ import sqlite3
 
 from orchestrator.job_search.a_postuler.calcul import OffreLue
 from orchestrator.job_search.a_postuler.lieu import ParcoursFile
+from orchestrator.job_search.a_postuler.sorties import Entrees, Verification
 from orchestrator.job_search.parcours.lecture import INCONNUE, Depart, depart_possible
+from orchestrator.job_search.storage.remises import remises
+from orchestrator.job_search.suivi import storage as suivi_storage
 
 
 def lire_offres(conn: sqlite3.Connection) -> list[OffreLue]:
@@ -75,6 +78,39 @@ def parcours_des_offres(conn: sqlite3.Connection) -> dict[int, ParcoursFile]:
             fin_adresse=r[9],
             en_ligne_depuis=r[10],
             verifiee_le=r[11],
+        )
+        for r in rows
+    }
+
+
+def entrees(conn: sqlite3.Connection) -> Entrees:
+    """Tout ce que les files lisent en base, remises à la main comprises (EXE-223).
+    L'état de chaque offre vient du module d'états."""
+    return Entrees(
+        offres=lire_offres(conn),
+        etats=suivi_storage.etat_map(conn),
+        expirees=offres_expirees(conn),
+        cles=cles_comparaison(conn),
+        parcours=parcours_des_offres(conn),
+        remises=remises(conn),
+    )
+
+
+def verifications(conn: sqlite3.Connection) -> dict[int, Verification]:
+    """Ce que la vérification a gardé de chaque offre vérifiée : le signe de
+    fermeture et les dates du parcours, la date du verdict d'expiration (EXE-223)."""
+    rows = conn.execute(
+        "SELECT o.id, p.fermeture_json, p.lu_le, p.verifiee_le, e.last_checked_at "
+        "FROM offers o LEFT JOIN parcours p ON p.offer_id = o.id "
+        "LEFT JOIN expirations e ON e.offer_id = o.id "
+        "WHERE p.offer_id IS NOT NULL OR e.offer_id IS NOT NULL"
+    ).fetchall()
+    return {
+        r[0]: Verification(
+            fermeture=json.loads(r[1]) if r[1] else None,
+            lu_le=r[2],
+            verifiee_le=r[3],
+            expiration_le=r[4],
         )
         for r in rows
     }

@@ -57,6 +57,10 @@ ETATS_RETENUS = {
     ABANDONNEE,
 }
 
+# Candidatures en cours (EXE-223, H3) : celles dont l'annonce se revérifie à
+# chaque vérification. Les candidatures closes ne sont pas relues.
+ETATS_EN_COURS = {RETENUE, CANDIDATURE_ENVOYEE, ENTRETIEN, OFFRE_RECUE}
+
 # Étape affichée dérivée, jamais stockée (critère 6).
 PRETE_A_L_ENVOI = "prete_a_l_envoi"
 

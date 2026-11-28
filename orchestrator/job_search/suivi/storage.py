@@ -75,6 +75,17 @@ def offer_ids_retenues(conn: sqlite3.Connection) -> list[int]:
     return [r["offer_id"] for r in rows]
 
 
+def offer_ids_en_cours(conn: sqlite3.Connection) -> list[int]:
+    """Les candidatures en cours : retenue, envoyée, entretien, offre reçue (EXE-223)."""
+    placeholders = ",".join("?" * len(etats.ETATS_EN_COURS))
+    rows = conn.execute(
+        f"SELECT offer_id FROM etats_offre WHERE etat IN ({placeholders}) "
+        "ORDER BY offer_id",
+        tuple(etats.ETATS_EN_COURS),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
 def etape(conn: sqlite3.Connection, offer_id: int) -> str | None:
     etat = etat_stocke(conn, offer_id)
     cv_pret, lettre_pret, lettre_sans = _pieces_pretes(conn, offer_id)

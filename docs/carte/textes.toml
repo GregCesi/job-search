@@ -114,11 +114,14 @@ nom = "À postuler"
 role = "Calcule à la lecture les files « À postuler » et « À étudier » et les sert à l'interface."
 fichiers = [
   "api/a_postuler.py",
+  "api/sorties.py",
   "orchestrator/job_search/a_postuler/__init__.py",
   "orchestrator/job_search/a_postuler/calcul.py",
   "orchestrator/job_search/a_postuler/lieu.py",
   "orchestrator/job_search/a_postuler/regles.py",
+  "orchestrator/job_search/a_postuler/sorties.py",
   "orchestrator/job_search/storage/a_postuler.py",
+  "orchestrator/job_search/storage/remises.py",
 ]
 
 [[systeme]]

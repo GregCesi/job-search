@@ -246,6 +246,11 @@ def init_db(conn: sqlite3.Connection) -> None:
             verifiee_le      TEXT,
             fermeture_json   TEXT            -- JSON {signe, site, code, phrase}
         );
+
+        CREATE TABLE IF NOT EXISTS remises (
+            offer_id   INTEGER PRIMARY KEY REFERENCES offers(id),
+            remise_le  TEXT NOT NULL  -- offre remise à la main dans sa file (EXE-223)
+        );
     """)
     migrate_offers_schema(conn)
     migrate_legacy_extraction_failures(conn)

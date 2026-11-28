@@ -11,14 +11,19 @@ démarrage de l'API ni l'affichage d'une file. La logique de vérification vit d
 garde-fou "offre retenue" (URL employeur), la résolution des offres désignées,
 et la persistance de l'URL employeur. GET /offers/{id}/parcours rend le parcours
 lu, sans rien lire.
+
+Le corps {"tout": true} vérifie le périmètre de la fin du run : les lignes des
+deux files, leurs jumelles et les candidatures en cours (EXE-223).
 """
 
 from fastapi import APIRouter, HTTPException
 
+from orchestrator.job_search.expiration.fin_de_run import ids_a_verifier
 from orchestrator.job_search.expiration.service import run_expiration_check
 from orchestrator.job_search.parcours.service import parcours_de
 from orchestrator.job_search.suivi import storage as suivi_storage
 
+from .a_postuler import classement_des_files
 from .db import get_conn
 from .schemas import CheckExpirationsIn, EmployerUrlIn
 
@@ -62,6 +67,9 @@ def set_employer_url(offer_id: int, body: EmployerUrlIn) -> None:
 
 @router.post("/check-expirations", status_code=204)
 def check_expirations(body: CheckExpirationsIn | None = None) -> None:
+    if body is not None and body.tout:
+        _verifier_tout()
+        return
     offer_ids = body.offer_ids if body is not None else None
     conn = get_conn()
     try:
@@ -81,6 +89,16 @@ def check_expirations(body: CheckExpirationsIn | None = None) -> None:
                     detail=f"Offre(s) introuvable(s) : {missing}",
                 )
         run_expiration_check(conn, offer_ids=offer_ids)
+    finally:
+        conn.close()
+
+
+def _verifier_tout() -> None:
+    """Le corps {"tout": true} (EXE-223, H3) : le périmètre de la fin du run."""
+    classement, _ = classement_des_files()
+    conn = get_conn()
+    try:
+        run_expiration_check(conn, offer_ids=ids_a_verifier(conn, classement))
     finally:
         conn.close()
 

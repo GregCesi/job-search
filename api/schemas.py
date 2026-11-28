@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 def valider_effet_at_optionnel(v: str | None) -> str | None:
@@ -166,6 +166,15 @@ class CheckExpirationsIn(BaseModel):
     = comportement d'avant ce ticket : seules les offres retenues sont vérifiées."""
 
     offer_ids: list[int] | None = None
+    # Vérifier tout (EXE-223, H3) : les lignes des deux files, leurs jumelles et
+    # les candidatures en cours. Ne se combine pas avec offer_ids.
+    tout: bool = False
+
+    @model_validator(mode="after")
+    def _tout_ou_identifiants(self) -> "CheckExpirationsIn":
+        if self.tout and self.offer_ids is not None:
+            raise ValueError("« tout » et « offer_ids » ne se combinent pas")
+        return self
 
 
 class VerdictIn(BaseModel):
